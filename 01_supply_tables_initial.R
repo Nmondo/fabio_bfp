@@ -10,9 +10,6 @@ library(stringr)
 library(magrittr)
 library(janitor)
 
-
-
-
 ###########################################################
 ########### LOADING DATA #########
 ###########################################################
@@ -819,7 +816,7 @@ saveRDS(object = y_eia,
 
 ###### Remove temporary objects
 
-rm(list = ls(pattern = "^(supply_intermediate|keys_bind)"),supply_consumption_iea,eia_prod_and_cons,x_faostat,x_eia,x_iea,oecd_fao_supply,faostat_bioenergy,dups_keys)
+rm(list = ls(pattern = "^(supply_intermediate|keys_bind)"),supply_consumption_iea,eia_prod_and_cons,x_faostat,x_eia,x_iea,oecd_fao_supply,faostat_bioenergy)
 rm(list = nms, envir = .GlobalEnv)
 
 

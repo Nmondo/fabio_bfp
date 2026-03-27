@@ -21,6 +21,8 @@ regions <- read.csv("inst/regions.csv")
 ########### FAO data (non-food use) #########
 
 cbs_full <- readRDS("data/cbs_full.rds")
+tcf_sua_final <- readRDS("data/sua/tcf_sua_final.rds")
+
 
 ############# Supply data from own collection ##################
 
@@ -31,9 +33,126 @@ setwd("/home/mmondolfo/")
 capacities_bb_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="filter")
 output_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="capacities_and_production")
 
+supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
+
 ########### Technical conversion factors #########
 
 tcf_table <- readRDS("tcf_table_clean.rds")  
+
+
+
+
+
+######################################################################################################################
+######### CLEANING AND CALCULATING TCFs STARCH / SUGAR EXTRACTION FROM CROPS #########
+######################################################################################################################
+
+######################################################################################################################
+#1. Cleaning TCFs (crop from starch and starch to sugar) #########
+######################################################################################################################
+
+tcf_starch <- tcf_sua_final %>% 
+  filter(grepl("Starch", child),
+         !grepl("Flour|Sweet potatoes",parent)) %>%
+  rename(tcf = extraction_rate) %>%
+  mutate(parent = case_when(parent == "Cassava, fresh"          ~ "Cassava and products",
+                            parent == "Maize (corn)"            ~ "Maize and products",
+                            parent == "Potatoes"                ~ "Potatoes and products",
+                            parent == "Rice, broken"            ~ "Rice and products",
+                            parent == "Wheat and meslin flour"  ~ "Wheat and products",
+                            TRUE                                ~ parent))
+
+tcf_sugar <- tcf_sua_final %>% 
+  filter(grepl("Raw cane or beet sugar|Glucose", child),
+         !grepl("Malt",parent)) %>%
+  mutate(moisture = case_when(grepl("Glucose",child) ~ 0.12,
+                              TRUE ~ 0),
+         child = "Sugar",
+         tcf = (1-moisture)*extraction_rate) %>%
+  select(-moisture, -extraction_rate)
+
+
+## Making the TCF table
+tcf_crop_bp <- bind_rows(tcf_starch, tcf_sugar)
+
+
+######################################################################################################################
+#2. Computing world averages for imputation #########
+######################################################################################################################
+
+world_avg_tcf <- tcf_crop_bp %>%
+  group_by(parent, child) %>%
+  summarise(tcf = mean(tcf, na.rm = TRUE), .groups = "drop")
+
+
+######################################################################################################################
+#3. Computation of direct Crop-to-sugar conversion factor #########
+######################################################################################################################
+
+tcf_starch_crop_to_sugar <- tcf_starch %>%
+  left_join(
+    tcf_sugar %>%
+      select(parent, area, starch_to_sugar_tcf = tcf),
+    by = c("child" = "parent", "area")
+  ) %>%
+  # imputation from world average for missing joins
+  rows_patch(
+    world_avg_tcf %>%
+      rename(starch_to_sugar_tcf = tcf),
+    by = c("parent", "child"),
+    unmatched = "ignore"
+  ) %>%
+  mutate(tcf = tcf*starch_to_sugar_tcf,
+         child = "Sugar") %>%
+  select(-starch_to_sugar_tcf)
+
+## Updating the TCF table
+
+tcf_crop_bp <- bind_rows(tcf_crop_bp, tcf_starch_crop_to_sugar) %>%
+  select(-parent_code, -proc, -proc_code, -child_code, -min, -max) %>%
+  #Removing starch-to-sugar because we have crop-to-sugar
+  filter(
+    !((grepl("^Starch", parent) & grepl("Sugar", child)))
+    )
+
+
+######################################################################################################################
+#4. Adding world average crop-to-sugar conversion factors #########
+######################################################################################################################
+
+world_avg_tcf <- bind_rows(world_avg_tcf,
+                           tcf_starch_crop_to_sugar %>% 
+                             group_by(parent, child) %>%
+                             summarise(tcf = mean(tcf, na.rm = TRUE), .groups = "drop")) %>%
+  #Removing starch-to-sugar because we have crop-to-sugar
+  filter(
+    !((grepl("^Starch", parent) & grepl("Sugar", child)))
+  )
+
+
+######################################################################################################################
+#5. Adding world average crop-to-sugar conversion factors #########
+######################################################################################################################
+
+## Making a full table 
+tcf_crop_bp <- tcf_crop_bp %>%
+  distinct(parent, child) %>%
+  crossing(area_code = regions$code) %>%
+  left_join(tcf_crop_bp, by = c("parent", "child", "area_code")) %>%
+  rows_update(regions %>% select(area = name, area_code = code), by = "area_code") %>%
+  left_join(regions %>% select(area_code = code, iso3c), by = "area_code") %>%
+  select(-area_code, -area)
+
+## Joining missing values
+tcf_crop_bp <- tcf_crop_bp %>% rows_patch(world_avg_tcf, by = c("parent","child"))
+
+## Names to "Starch" when contain "Starch"
+tcf_crop_bp <- tcf_crop_bp %>%
+  mutate(child = ifelse(grepl("^Starch", child), "Starch", child),
+         crop_requirement_multiplier = ifelse(is.na(tcf), NA, 1/tcf)) # Multiplier on qty of sugar or starch used that gives the crop qty required to meet this, in each country
+
+# This is not applicable directly because we don't know the origins of the feedstock mix without taking into account trade flows.
+# We will take world averages by default.
 
 
 
@@ -44,14 +163,12 @@ tcf_table <- readRDS("tcf_table_clean.rds")
 
 ########### List of "Starch" and "Sugar" (incl. sugar from starch) crops, and corresponding subsets of fao_nonfood #########
 
-sugar_crops <- c("Wheat and products","Rice and products","Barley and products","Maize and products","Rye and products","Sorghum and products","Cassava and products","Potatoes and products","Sugar cane","Sugar beet")
-starch_crops <- c("Wheat and products","Rice and products","Barley and products","Maize and products","Rye and products","Sorghum and products","Cassava and products","Potatoes and products")
+sugar_crops <- c("Wheat and products","Rice and products","Maize and products","Cassava and products","Potatoes and products","Sugar cane","Sugar beet")
+starch_crops <- c("Wheat and products","Rice and products","Maize and products","Cassava and products","Potatoes and products")
 
 fao_nonfood <- subset(cbs_full, !is.na(other) &
                         year >= 2010 &
-                        (item %in% c("Wheat and products","Rice and products","Barley and products","Maize and products","Rye and products","Sorghum and products","Cereals, Other","Cassava and products","Sugar cane","Sugar beet","Sweeteners, Other",
-                                     "Soyabean Oil","Sunflowerseed Oil","Rape and Mustard Oil","Cottonseed Oil","Palmkernel Oil","Palm Oil","Coconut Oil","Maize Germ Oil","Oilcrops Oil, Other","Fats, Animals, Raw",
-                                     "Potatoes and products")))
+                        (item %in% c("Wheat and products","Rice and products","Maize and products","Cassava and products","Sugar cane","Sugar beet","Potatoes and products")))
 
 nonfood_sugar <- subset(fao_nonfood, item %in% sugar_crops)
 nonfood_starch <- subset(fao_nonfood, item %in% starch_crops)
@@ -341,11 +458,17 @@ btd_bb_bp <- btd_bb_bp %>%
              qty_available  = est_prod),
     by = c("chain", "year")
   ) %>%
-  mutate(exporter_iso3 = ifelse(input %in% c("Bionaphtha", "Biopropane"), "NLD", exporter_iso3),
-         flow = pmin(use, qty_available)) %>%
+  mutate(exporter_iso3 = ifelse(input %in% c("Bionaphtha", "Biopropane"), "NLD", exporter_iso3)) %>%
+  rows_update(supply_final_bf_sua %>% 
+                select(iso3c, year, supply, product) %>%
+                rename(input = product,
+                       qty_available = supply, 
+                       exporter_iso3 = iso3c),
+              by = c("exporter_iso3", "input", "year"),
+              unmatched = "ignore") %>%
+  mutate(flow = pmin(use, qty_available)) %>%
   select(chain, product, input, exporter_iso3, importer_iso3, year, qty_available, use, flow) %>%
   arrange(chain, year, exporter_iso3, importer_iso3)
-
 
 
 ###########################################################
@@ -382,7 +505,7 @@ use_to_estimate <- bind_rows(
   left_join(use_to_estimate %>% filter(feedstock_category=="Sugar"), nonfood_sugar, by = c("year","iso3c"), relationship = "many-to-many"),
   left_join(use_to_estimate %>% filter(feedstock_category=="Starch"), nonfood_starch, by = c("year","iso3c"), relationship = "many-to-many")
   ) %>%
-  rename(share_in_use = other) %>%
+  rename(share_crop_in_use = other) %>%
   mutate(input = coalesce(item, input),
          feedstock_details = feedstock_category) %>%
   select(-item, -feedstock_category)
@@ -413,9 +536,9 @@ sugar_shares <- input_long %>%
     by = c("iso3c", "year", "input_item" = "item")
   ) %>%
   group_by(iso3c, year) %>%
-  mutate(share_in_use = other / sum(other, na.rm = TRUE)) %>%
+  mutate(share_crop_in_use = other / sum(other, na.rm = TRUE)) %>%
   ungroup() %>%
-  select(iso3c, year, feedstock_details, input_item, share_in_use)
+  select(iso3c, year, feedstock_details, input_item, share_crop_in_use)
 
 # ── Step 2b: Starch → look up nonfood_starch, compute shares within (iso3c, year)
 starch_shares <- input_long %>%
@@ -425,18 +548,18 @@ starch_shares <- input_long %>%
     by = c("iso3c", "year", "input_item" = "item")
   ) %>%
   group_by(iso3c, year) %>%
-  mutate(share_in_use = other / sum(other, na.rm = TRUE)) %>%
+  mutate(share_crop_in_use = other / sum(other, na.rm = TRUE)) %>%
   ungroup() %>%
-  select(iso3c, year, feedstock_details, input_item, share_in_use)
+  select(iso3c, year, feedstock_details, input_item, share_crop_in_use)
 
 # ── Step 3: Combine shares
 shares_all <- bind_rows(sugar_shares, starch_shares) %>%
   group_by(iso3c, year, feedstock_details) %>%
-  mutate(share_in_use = case_when(
-    year == 2024 ~ share_in_use,
-    is.na(share_in_use) & n() == 1 ~ 1,
-    is.na(share_in_use) & n() >  1 ~ 0,
-    TRUE                            ~ share_in_use
+  mutate(share_crop_in_use = case_when(
+    year == 2024 ~ share_crop_in_use,
+    is.na(share_crop_in_use) & n() == 1 ~ 1,
+    is.na(share_crop_in_use) & n() >  1 ~ 0,
+    TRUE                                ~ share_crop_in_use
   )) %>%
   ungroup()
 
@@ -466,7 +589,22 @@ use_bb_bp_intermediate <- bind_rows(
   use_to_estimate2
 ) %>%
   select(-feedstock_category) %>%
-  filter(year <= 2023) %>%
-  mutate(share_in_use = coalesce(share_in_use, 1))
+  filter(year <= 2023)
 
-unique(use_bb_bp_intermediate$input)
+
+######################################################################################################################
+#4. Joining crop requirements for   #########
+######################################################################################################################
+
+use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
+  left_join(tcf_crop_bp %>% select(-tcf), by = c("input" = "parent", "feedstock_details" = "child", "iso3c"))
+  
+use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
+  group_by(iso3c, product, feedstock_details, year) %>%
+  mutate(share_sugar_or_starch_from_crop = (share_crop_in_use / crop_requirement_multiplier) /
+           sum(share_crop_in_use / crop_requirement_multiplier)) %>%
+  ungroup() %>%
+  #compute total sugar or starch use from each crop; and total qty of each crop as a result
+  mutate(sugar_or_starch_from_crop = share_sugar_or_starch_from_crop * use,
+         crop_use  = sugar_or_starch_from_crop * crop_requirement_multiplier)
+

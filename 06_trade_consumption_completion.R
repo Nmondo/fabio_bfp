@@ -449,9 +449,6 @@ y_rd %<>% mutate(
   imports_nettrade_rd = ifelse(y_rd > supply_rd, y_rd - supply_rd, 0)
 )
 
-unique(y_rd$iso3c[y_rd$y_rd > 0 | y_rd$supply_rd > 0])
-unique(y_rd$iso3c[y_rd$supply_rd > 0])
-
 
 ###################################################################################################
 #2. Collecting information to fill the renewable diesel trade balancing matrix #########
@@ -1065,7 +1062,7 @@ full_compile_balanced %>%
 #1. Final supply table without by-products ########### 
 ###########################################################
 
-supply_final_biofuels <- full_compile_balanced %>%
+supply_final_bf <- full_compile_balanced %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline")) %>%
   select(iso3c,product,process,year,total_supply,unit_supply) %>%
   rename(supply = total_supply,
@@ -1077,9 +1074,9 @@ supply_final_biofuels <- full_compile_balanced %>%
 #2. Modeling glycerol production as a by-product of FAME (10% of biodiesel output weight) ########### 
 ###########################################################
 
-supply_final_biofuels %<>%
+supply_final_bf %<>%
   dplyr::bind_rows(
-    supply_final_biofuels %>%
+    supply_final_bf %>%
       dplyr::filter(product == "Biodiesel") %>%
       dplyr::mutate(product = "Glycerol, crude",
                     supply  = 0.1 * (supply/1.136),
@@ -1091,9 +1088,9 @@ supply_final_biofuels %<>%
 #3. Modeling naphtha production as a by-product of HVO (8% of Renewable diesel output weight) ########### 
 ###########################################################
 
-supply_final_biofuels %<>%
+supply_final_bf %<>%
   dplyr::bind_rows(
-    supply_final_biofuels %>%
+    supply_final_bf %>%
       dplyr::filter(product == "Renewable diesel") %>%
       dplyr::mutate(product = "Bionaphtha",
                     supply  = 0.08 * (supply/1.282),
@@ -1105,9 +1102,9 @@ supply_final_biofuels %<>%
 #4. Modeling propane production as a by-product of HVO (4% of Renewable diesel output weight) ########### 
 ###########################################################
 
-supply_final_biofuels %<>%
+supply_final_bf %<>%
   dplyr::bind_rows(
-    supply_final_biofuels %>%
+    supply_final_bf %>%
       dplyr::filter(product == "Renewable diesel") %>%
       dplyr::mutate(product = "Biopropane",
                     supply  = 0.1 * (supply/1.282),
@@ -1121,14 +1118,14 @@ supply_final_biofuels %<>%
 ########### MAKING FINAL TABLES FOR USE IN FINAL DEMAND AND BILATERAL TRADE ########### 
 ###########################################################
 
-y_final_biofuels <- full_compile_balanced %>%
+y_final_bf <- full_compile_balanced %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline")) %>%
   select(iso3c,product,process,year,y_Fuel,y_Non_fuel,unit_y) %>%
   rename(fuel = y_Fuel,
          non_fuel = y_Non_fuel,
          unit = unit_y)
 
-btd_final_biofuels <- btd_intermediate_balanced1 %>%
+btd_final_bf <- btd_intermediate_balanced1 %>%
   filter(year >= 2012,
          product %in% c("Biodiesel","Renewable diesel","Bioethanol","ETBE")) %>%
   mutate(product = case_when(product %in% c("Bioethanol", "ETBE") ~ "Biogasoline",
@@ -1143,12 +1140,13 @@ btd_final_biofuels <- btd_intermediate_balanced1 %>%
 ###########################################################
 ########### SAVING FINAL DATASETS ########### 
 ###########################################################
-setwd("/home/mmondolfo/")
-dir.create("inputs_for_final_data",      recursive = TRUE, showWarnings = FALSE)
 
-saveRDS(supply_final_biofuels, "inputs_for_final_data/supply_final_biofuels.rds")
-saveRDS(btd_final_biofuels, "inputs_for_final_data/btd_final_biofuels.rds")
-saveRDS(y_final_biofuels, "inputs_for_final_data/y_final_biofuels.rds")
+setwd("/home/mmondolfo/")
+dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
+
+saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
+saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
+saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
 
 
 

@@ -24,7 +24,7 @@ library(magrittr)
 
 setwd("/home/mmondolfo/")
 
-supply_final_biofuels <- readRDS("final_data/supply_final_biofuels.rds") %>%
+supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds") %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline"))
 
 ########### Intermediate use table #########
@@ -89,7 +89,7 @@ use_table_nonzero <- use_table %>%
   #joining TCFs
   left_join(tcf_table_clean, by=c("proc","item"= "input")) %>%
   #joining total supply of biofuels by process, year, country
-  left_join(supply_final_biofuels, by = c("proc","year","iso3c")) %>%
+  left_join(supply_final_bf, by = c("proc","year","iso3c")) %>%
   
   rename(unit_use = unit.x,
          unit_supply = unit.y)
@@ -134,7 +134,7 @@ balancing_use_diff_for_sensitivity <- use_table_supply_adjust %>%
 #0. Collecting the (country-year-process) that are currently missing feedstock use estimates
 ###########################################################################################
 
-missing_use <- supply_final_biofuels %>%
+missing_use <- supply_final_bf %>%
   filter(supply > 0) %>%
   select(iso3c, year, proc, supply) %>%
   anti_join(
@@ -284,7 +284,7 @@ last_missing_use <- subset(faostat_gapfill, (is.na(item))) %>%
   left_join(tcf_table_clean, by=c("proc","item"="input")) %>%
   
   #Joining the estimated supply by process
-  left_join(supply_final_biofuels, by = c("proc","year","iso3c"))
+  left_join(supply_final_bf, by = c("proc","year","iso3c"))
 
 #6c. Calculating shares in supply, contribution to supply and from that estimated use
 last_missing_use <- last_missing_use %>%
@@ -321,7 +321,9 @@ use_table_final <- bind_rows(use_table_intermediate, last_missing_use) %>%
 ########### SAVING FINAL USE DATASET #########
 ###########################################################################################
 
-saveRDS(use_table_final, "final_data/use_final_biofuels.rds")
+setwd("/home/mmondolfo/")
+
+saveRDS(use_table_final, "inputs_for_final_data/use_final_bf.rds")
 
 
 rm(missing_use, last_missing_use, rd_shares, rd_combos, new_rd_rows, faostat_gapfill, use_table_continent, use_table_intermediate, use_table_supply_adjust, use_table_nonzero)

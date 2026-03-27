@@ -16,10 +16,10 @@ regions <- read.csv("inst/regions.csv")
 
 ############## Final tables for biofuels ############## 
 
-setwd("/home/mmondolfo/final_data/")
+setwd("/home/mmondolfo/")
 
-btd_final_biofuels <- readRDS("btd_final_biofuels.rds")
-supply_final_biofuels <- readRDS("supply_final_biofuels.rds")
+btd_final_bf <- readRDS("inputs_for_final_data/btd_final_bf.rds")
+supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds")
 
 ############## Pre-cleaned SUA extension ############## 
 
@@ -53,10 +53,10 @@ sua_extension_supply <- sua_extension_clean %>%
   left_join(items_supply_nonfood %>% select(proc, item), by = c("product" = "item"))
 
 #joining
-supply_final_biofuels_sua <- bind_rows(supply_final_biofuels,
+supply_final_bf_sua <- bind_rows(supply_final_bf,
                           sua_extension_supply)
 
-
+print(subset(sua_extension_supply, is.na(iso3c)))
 
 
 ###########################################################
@@ -75,5 +75,17 @@ sua_extension_btd <- sua_extension_btd_clean %>%
   rename(product = item)
 
 #joining
-btd_final_biofuels_sua <- bind_rows(btd_final_biofuels, sua_extension_btd)
-  
+btd_final_bf_sua <- bind_rows(btd_final_bf, sua_extension_btd)
+
+
+
+
+###########################################################
+########### SAVING TABLES #########
+###########################################################
+
+setwd("/home/mmondolfo/")
+
+saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
+saveRDS(btd_final_bf_sua, "inputs_for_final_data/btd_final_bf_sua.rds")
+

@@ -5,17 +5,23 @@
 library(tidyr)
 
 ###########################################################
+########### MAKING VECTORS #########
+###########################################################
+
+area_code_exclusion <- c(18,45,127,145,148,196,219,227)
+
+###########################################################
 ########### LOADING DATA #########
 ###########################################################
 
 ########### FAO data #########
 
 setwd("/home/mmondolfo/fabio_data_local/")
-sua <- readRDS("data/tidy/sua_tidy.rds")
-sua_btd <- readRDS("data/tidy/btd_sua_tidy.rds")
-cbs_full <- readRDS("data/cbs_full.rds")
 
-setwd("/home/mmondolfo/")
+sua <- readRDS("data/tidy/sua_tidy.rds") %>% filter(! area_code %in% area_code_exclusion)
+sua_btd <- readRDS("data/tidy/btd_sua_tidy.rds") %>% filter(! from_code %in% area_code_exclusion,
+                                                            ! to_code   %in% area_code_exclusion)
+cbs_full <- readRDS("data/cbs_full.rds") %>% filter(! area_code %in% area_code_exclusion)
 
 
 
@@ -111,6 +117,8 @@ sua_extension_btd_clean <- sua_btd_disaggregation %>%
 ######################################################################################################################
 ########### SAVING TABLES #########
 ######################################################################################################################
+
+setwd("/home/mmondolfo/")
 
 saveRDS(sua_extension_clean, "sua_extension_clean.rds")
 saveRDS(sua_extension_btd_clean, "sua_extension_btd_clean.rds")

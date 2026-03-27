@@ -472,7 +472,7 @@ btd <- trade_all %>%
   arrange(importer_iso3, exporter_iso3, product, year)
 
 btd_excluded <- trade_all %>%
-  anti_join(btd_final,
+  anti_join(btd,
             by = c("exporter_iso3","importer_iso3","product","year","FLOW","source","value")) %>%
   arrange(importer_iso3, exporter_iso3, product, year)
 
@@ -482,6 +482,8 @@ btd_excluded <- trade_all %>%
 ###########################################################
 ########### WRITING TRADE DATA TABLES #########
 ###########################################################
+
+setwd("/home/mmondolfo/")
 
 saveRDS(total_trade,   "btd_total.rds")
 saveRDS(btd,           "btd_intermediate.rds")
