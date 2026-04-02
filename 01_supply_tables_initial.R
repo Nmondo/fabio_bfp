@@ -14,15 +14,13 @@ library(janitor)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 
 
 ############# Supply data from own collection ##################
-
-setwd("/home/mmondolfo/")
 
 supply <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply")
 supply_selection <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply_selection")
@@ -36,6 +34,8 @@ oecd_fao_supply <- read.csv("own_data/oecd_fao_use_complete.csv")
 faostat_bioenergy <- read.csv("own_data/FAOSTAT_bioenergy.csv",sep=";",header=TRUE)
 
 y_oecd_fao <- read.csv("own_data/oecd_fao_y_complete.csv")
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 
 

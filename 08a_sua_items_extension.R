@@ -35,13 +35,14 @@ sua_btd_disaggregation <- sua_btd %>%
     grepl("^Animal or vegetable fats and oils and their fractions", item) |
       item == "Molasses" |
       item == "Oil of castor beans" |
+      item == "Castor oil seeds" |
       item == "Triticale"
   ) %>% 
   filter(unit == "tonnes")
 
 rm(sua_btd)
 
-
+unique(sua$item[grepl("Castor",sua$item)])
 
 
 ######################################################################################################################
@@ -53,15 +54,16 @@ rm(sua_btd)
 #################################################################################################
 
 sua_extension <- sua %>%
-  filter(grepl("^Animal or vegetable fats and oils and their fractions|Oil of castor beans|Molasses|Triticale", item)) %>%
+  filter(grepl("^Animal or vegetable fats and oils and their fractions|Oil of castor beans|Castor oil seeds|Molasses|Triticale", item)) %>%
   mutate(cbs_match = case_when(grepl("Animal or vegetable|Oil of castor beans", item) ~ "Oilcrops Oil, Other",
+                               item == "Castor oil seeds" ~ "Oilcrops, Other",
                                item == "Molasses" ~ "Sweeteners, Other",
                                item == "Triticale" ~ "Cereals, Other"))
 
 sua_total_subtract <- sua_extension %>% group_by(area_code,year,cbs_match) %>%
   summarize(across(exports:use, ~ sum(.x,na.rm=TRUE)))
 
-cbs_extension <- cbs_full %>% filter(item %in% c("Oilcrops Oil, Other","Sweeteners, Other","Cereals, Other"),
+cbs_extension <- cbs_full %>% filter(item %in% c("Oilcrops Oil, Other","Oilcrops, Other","Sweeteners, Other","Cereals, Other"),
                                      year >= 2010)
 
 
@@ -83,7 +85,8 @@ cbs_extension <- cbs_extension %>%
 #3. Updating the full CBS #########
 #################################################################################################
 
-cbs_full_after_extension <- cbs_full %>% rows_update(cbs_extension, by = c("area_code","year","item"))
+cbs_full_after_extension <- cbs_full %>% rows_update(cbs_extension, by = c("area_code","year","item")) %>%
+  filter(year %in% 2012:2022)
 
 
 

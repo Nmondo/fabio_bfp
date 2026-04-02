@@ -29,8 +29,8 @@ sua_extension_clean <- readRDS("sua_extension_clean.rds")
 sua_extension_btd_clean <- readRDS("sua_extension_btd_clean.rds")
 cbs_full_after_extension <- readRDS("cbs_extension_full.rds")
 
-items_full_nonfood <- readRDS("items_full_nonfood.rds")
-items_supply_nonfood <- readRDS("items_supply_nonfood.rds")
+items_full_bpc <- read_csv("items_full_bpc.csv")
+items_supply_bpc <- read_csv("items_supply_bpc.csv")
 
 
 
@@ -50,7 +50,7 @@ sua_extension_supply <- sua_extension_clean %>%
          product = item) %>%
   mutate(unit = "tonnes") %>%
   #Joining process name
-  left_join(items_supply_nonfood %>% select(proc, item), by = c("product" = "item"))
+  left_join(items_supply_bpc  %>% select(proc, item), by = c("product" = "item"))
 
 #joining
 supply_final_bf_sua <- bind_rows(supply_final_bf,
@@ -63,7 +63,7 @@ print(subset(sua_extension_supply, is.na(iso3c)))
 #2. To BTD table #########
 ###########################################################
 
-sua_extension_btd <- sua_extension_btd_clean %>%
+btd_final_sua <- sua_extension_btd_clean %>%
   #joining exporter ISO3c
   left_join(regions %>% select(code, iso3c), by = c("from_code" = "code")) %>%
   rename(exporter_iso3 = iso3c) %>%
@@ -74,9 +74,29 @@ sua_extension_btd <- sua_extension_btd_clean %>%
   select(-c(to, to_code, from, from_code, item_code)) %>%
   rename(product = item)
 
-#joining
-btd_final_bf_sua <- bind_rows(btd_final_bf, sua_extension_btd)
 
+
+######################################################################################################################
+########### USE TABLE EXTENSION #########
+######################################################################################################################
+
+use_sua_final <- sua_extension_clean %>%
+  filter(item == "Castor oil seeds") %>%
+  left_join(regions %>% select(code, iso3c), by = c("area_code" = "code"))
+
+use_sua_final <- use_sua_final %>%
+  select(iso3c, year, processing) %>%
+  right_join(
+    use_sua_final %>% distinct(iso3c, year),
+    by = c("iso3c", "year")
+  ) %>%
+  rename(use = processing) %>%
+  mutate(
+    proc = "Castor oil production",
+    item = "Castor oil seeds",
+    unit = "tonnes"
+  ) %>%
+  select(proc, iso3c, year, item, use, unit)
 
 
 
@@ -86,6 +106,8 @@ btd_final_bf_sua <- bind_rows(btd_final_bf, sua_extension_btd)
 
 setwd("/home/mmondolfo/")
 
+saveRDS(use_sua_final, "inputs_for_final_data/use_final_sua.rds")
 saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
-saveRDS(btd_final_bf_sua, "inputs_for_final_data/btd_final_bf_sua.rds")
-
+saveRDS(btd_final_sua, "inputs_for_final_data/btd_final_sua.rds")
+saveRDS(sua_extension_clean, "inputs_for_final_data/y_final_sua.rds")
+saveRDS(cbs_full_after_extension, "inputs_for_final_data/y_final_cbs.rds")

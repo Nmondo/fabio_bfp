@@ -18,8 +18,7 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
-
+setwd("/home/mmondolfo/fabio_bfp/")
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 

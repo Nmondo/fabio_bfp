@@ -21,7 +21,7 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
@@ -29,21 +29,20 @@ regions <- read.csv("inst/regions.csv")
 
 ########### FAO data (non-food use) #########
 
+setwd("/home/mmondolfo/fabio_bfp/fabio_data_local")
+
 cbs_full <- readRDS("data/cbs_full.rds")
 
 ############# Supply data from own collection ##################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 supply <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply")
 supply_selection <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply_selection")
 supply_pretreatment <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply_pretreatment")
 
-############# Supply table for biogasoline ##################
-supply_biogasoline <- readRDS("sup_biogasoline_initial.rds")
-supply_fame_hvo <- readRDS("sup_fame_hvo_initial.rds")
-
 ########### Use data from own collection #########
+
 use <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="use")
 use_selection <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="use_selection")
 use_pretreatment <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="use_pretreatment")
@@ -53,6 +52,12 @@ oecd_fao_use <- read.csv("own_data/oecd_fao_use_complete.csv")
 
 tcf_table <- read_excel("own_data/tcf_table.xlsx")
 
+############# Supply tables ##################
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+
+supply_biogasoline <- readRDS("sup_biogasoline_initial.rds")
+supply_fame_hvo <- readRDS("sup_fame_hvo_initial.rds")
 
 
 
@@ -632,6 +637,8 @@ supply_feedstock <- supply_feedstock %>% left_join(tcf_table %>% select(input,in
 ###########################################################
 ########### SAVING CLEANED TABLES #########
 ###########################################################
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 saveRDS(supply_feedstock,
         "supply_feedstock.rds")

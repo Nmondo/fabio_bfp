@@ -12,6 +12,7 @@ library(janitor)
 library(zoo)
 library(httr2)
 library(comtradr)
+library(censusapi)
 library(purrr)
 
 
@@ -49,7 +50,7 @@ url_data <- paste0(
   "&c[partner]=AD,AE,AL,AM,AN,AR,AT,AU,AW,BA,BD,BE,BG,BH,BR,BY,BZ,CA,CH,CL,CN,CY,CZ,DE,DK,EE,EG,",
   "ES,FI,FR,GB,GI,GR,HK,HR,HU,ID,IE,IL,IN,IS,IT,JP,KR,KW,LA,LK,LT,LU,LV,MO,MT,MY,NL,NO,OM,PH,",
   "PK,PL,PT,QA,RO,RU,SA,SE,SG,SI,SK,SX,TH,TR,TW,UA,US,VN,XS,ZA",
-  "&c[product]=29012190,29012290,29053926,29053995,29103000,29171310,29171920,39121100,39121200",
+  "&c[product]=29012190,29012290,29053926,29053995,29171310,29171920,39121100,39121200",
   "&c[flow]=1,2",
   "&c[indicators]=QUANTITY_IN_100KG",
   "&c[TIME_PERIOD]=2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010",
@@ -73,6 +74,17 @@ bilateral_bp_eu %<>%
 
 SWE_raw <- read_excel("own_data/swe_data_2018_2022.xlsx", skip = 2, n_max = 8, na = "..")
 
+########### Trade data from own collection #########
+
+im_own <- read_excel("own_data/Compilation_data_sources.xlsx", sheet = "imports")
+ex_own <- read_excel("own_data/Compilation_data_sources.xlsx", sheet = "exports")
+
+########### Years / region vectors #########
+
+years        <- as.character(2010:2022)
+baci_regions <- unique(regions$baci)
+iso_regions  <- unique(regions$iso3c)
+
 
 
 ########### ComTrade for products missing in BACI #########
@@ -82,9 +94,8 @@ SWE_raw <- read_excel("own_data/swe_data_2018_2022.xlsx", skip = 2, n_max = 8, n
 set_primary_comtrade_key("ec6b584d5b364bc39580ac71f1cd438f")
 #######################################################
 
-years    <- 2010:2022
-hs_codes <- c("271020","291030","291811","382490","390770","391211","391212")
 
+hs_codes <- c("152000","271020","290531","291030","291811","382490","390770","391211","391212")
 safe_get <- possibly(
   \(yr) ct_get_data(
     type                     = "goods",
@@ -101,20 +112,64 @@ safe_get <- possibly(
   otherwise = NULL
 )
 
-raw_list <- map(years, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
+raw_list <- map(2010:2022, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
 
 bilateral_comtrade <- bind_rows(raw_list)
 
-########### Trade data from own collection #########
 
-im_own <- read_excel("own_data/Compilation_data_sources.xlsx", sheet = "imports")
-ex_own <- read_excel("own_data/Compilation_data_sources.xlsx", sheet = "exports")
+###########################################################
+########### BTD USA (Sebacic acid only) #########
+###########################################################
 
-########### Years / region vectors #########
+#######################################################
+### PERSONAL KEY TO DELETE WHEN CODE MADE PUBLIC ###
+Sys.setenv(CENSUS_KEY = "640fd224e6aae45d5147836df7cead135cf8f1ce")
+#######################################################
 
-years        <- as.character(2010:2022)
-baci_regions <- unique(regions$baci)
-iso_regions  <- unique(regions$iso3c)
+
+# Imports
+us_imports <- map_dfr(2012:2024, function(yr) {
+  getCensus(
+    name = "timeseries/intltrade/imports/hs",
+    vars = c("I_COMMODITY", "CTY_CODE", "CTY_NAME",
+             "GEN_VAL_YR", "GEN_QY1_YR", "UNIT_QY1"),
+    time = yr,
+    I_COMMODITY = "2917130030",
+    SUMMARY_LVL = "DET"
+  ) %>%
+    mutate(year = yr)
+})
+
+# Harmonise column names and combine
+us_imports_clean <- us_imports %>%
+  rename(commodity = I_COMMODITY, value = GEN_VAL_YR, qty = GEN_QY1_YR) %>%
+  mutate(qty   = as.numeric(qty)) %>%
+  select(-value, -time, -commodity, -CTY_CODE, -SUMMARY_LVL, -I_COMMODITY_1) %>%
+  filter(CTY_NAME != "TOTAL FOR ALL COUNTRIES")
+
+us_imports_clean <- us_imports_clean  %>%
+  group_by(year, CTY_NAME) %>%
+  summarise(value   = sum(qty/1000000, na.rm = TRUE),
+            unit = "kt",
+            .groups = "drop")
+
+cty_iso3c <- tibble(
+  CTY_NAME = c("CHINA", "INDIA", "BELGIUM", "CANADA", "ITALY",
+               "NETHERLANDS", "SWITZERLAND", "TAIWAN", "FRANCE",
+               "JAPAN", "UNITED KINGDOM", "GERMANY", "KOREA, SOUTH",
+               "OMAN", "SPAIN", "PAKISTAN"),
+  exporter_iso3    = c("CHN", "IND", "BEL", "CAN", "ITA",
+               "NLD", "CHE", "TWN", "FRA",
+               "JPN", "GBR", "DEU", "KOR",
+               "OMN", "ESP", "PAK")
+)
+
+us_imports_clean <- us_imports_clean %>%
+  left_join(cty_iso3c, by = "CTY_NAME")  %>%
+  mutate(importer_iso3 = "USA",
+         product = "Sebacic acid") %>%
+  select(-CTY_NAME)
+
 
 
 
@@ -236,7 +291,7 @@ bilateral_trade_eu %<>%
   mutate(
     value = case_when(
       product == 2207     ~ value,
-      product == 15180095 ~ value,
+    # product == 15180095 ~ value,
       product == 29091910 ~ 0.45 * value,
       product == 271020   ~ 0.05 * value,
       product == 38260010 ~ 0.99 * value,
@@ -246,7 +301,7 @@ bilateral_trade_eu %<>%
       product %in% c(271020,38260010,38260090) ~ "Biodiesel",
       product == 2207                          ~ "Bioethanol",
       product == 29091910                      ~ "ETBE",
-      product == 15180095                      ~ "Used cooking oil"
+   #  product == 15180095                      ~ "Used cooking oil"
     )
   ) %>%
   group_by(exporter_iso3, importer_iso3, product, FLOW, year) %>%
@@ -258,12 +313,11 @@ bilateral_trade_eu %<>%
 bilateral_bp_eu %<>%
   mutate(product = case_when(
     product == 29171310               ~ "Sebacic acid",
-    product == 29103000               ~ "Epichlorohydrin",
     product == 29171920               ~ "Succinic acid",
     product == 29053926               ~ "1,4-butanediol",
-    product == 29053995               ~ "1,3-propanediol and other and fossil-based",
-    product == 29012190               ~ "Ethylene and fossil-based",
-    product == 29012290               ~ "Propylene and fossil-based",
+    product == 29053995               ~ "1,3-propanediol",
+    product == 29012190               ~ "Ethylene",
+    product == 29012290               ~ "Propylene",
     product %in% c(39121100,39121200) ~ "Cellulose acetate"
   )) %>%
   group_by(exporter_iso3, importer_iso3, product, FLOW, year) %>%
@@ -411,8 +465,10 @@ baci_comtrade_named <- bind_rows(baci_hs12_clean, baci_hs07_clean,
     est_blend    = replace(est_blend, is.na(est_blend) & product == 382600L, 0),
     product_code = product,
     product = case_when(
+      product_code == 152000                      ~ "Glycerol, crude",
       product_code %in% c(271020, 382600, 382490) ~ "Biodiesel",
       product_code %in% c(220710, 220720)         ~ "Bioethanol",
+      product_code == 290531                      ~ "MEG",
       product_code == 290919                      ~ "ETBE",
       product_code == 291030                      ~ "Epichlorohydrin",
       product_code == 291811                      ~ "Lactic acid",
@@ -447,6 +503,8 @@ baci_comtrade_named <- bind_rows(baci_hs12_clean, baci_hs07_clean,
 trade_all <- bind_rows(
   bilateral_trade_eu %>%
     mutate(source_priority = case_when(FLOW == "IMPORT" ~ 2L, TRUE ~ 4L)),
+  bilateral_bp_eu %>%
+    mutate(source_priority = case_when(FLOW == "IMPORT" ~ 2L, TRUE ~ 4L)),
   bilateral_trade_own %>%
     mutate(source_priority = case_when(FLOW == "Imports" ~ 1L, TRUE ~ 3L)),
   baci_comtrade_named %>%
@@ -454,7 +512,9 @@ trade_all <- bind_rows(
       source == "ComTrade" & FLOW == "Import" ~ 5L,
       source == "BACI"                        ~ 6L,
       source == "ComTrade" & FLOW == "Export" ~ 7L,
-      TRUE                                    ~ 6L))
+      TRUE                                    ~ 6L)),
+  us_imports_clean %>%
+    mutate(source_priority = 0)
 ) %>%
   filter(year <= 2022) %>%
   mutate(across(c(exporter_iso3, importer_iso3), ~ ifelse(is.na(.x) | !(.x %in% regions$iso3c), "ROW", .x)))

@@ -1134,6 +1134,10 @@ btd_final_bf <- btd_intermediate_balanced1 %>%
   summarize(value=sum(value, na.rm=TRUE),
             unit = first(unit))
 
+btd_intermediate_other <- btd_intermediate_balanced1 %>%
+  filter(year >= 2012, 
+         !(product %in% c("Biodiesel", "Renewable diesel", "Bioethanol", "ETBE")),
+         !is.na(product))
 
 
 
@@ -1147,6 +1151,6 @@ dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
-
+saveRDS(btd_intermediate_other, "btd_intermediate_other.rds")
 
 

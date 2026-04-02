@@ -69,7 +69,9 @@ y_own %<>%
   )
 
 
-
+#Saving for later the rows for Biopropane and Bionaphtha consumption
+y_other_bf <- subset(y_own, product %in% c("Biopropane", "Bionaphtha")) %>%
+  mutate(value = ifelse(is.na(value), 0, value))
 
 ################################################################################################################
 ########### COLLECTING CONSUMPTION DATA FROM THE SAME SOURCES AS PRODUCTION DATA, WHENEVER POSSIBLE ###############################
@@ -443,7 +445,12 @@ y_table <- y_table %>%
 ########### SAVING CONSUMPTION TABLE ###############################
 ################################################################################################################
 
+setwd("/home/mmondolfo/")
+
 saveRDS(y_table,
         "y_table_initial.rds")
+
+saveRDS(y_other_bf,
+        "y_other_bf.rds")
 
 rm(prt_shares, prt_totals, years_fill, interp_shares, new_rows)
