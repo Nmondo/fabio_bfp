@@ -9,6 +9,7 @@ output/
 data/
 fabio_data_local/
 own_data/
+intermediate_data/
 R/exp/
 R/exp_pure/
 mess.R
