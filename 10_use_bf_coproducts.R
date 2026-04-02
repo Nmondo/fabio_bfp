@@ -12,7 +12,7 @@ library(stringr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
@@ -20,13 +20,13 @@ regions <- read.csv("inst/regions.csv")
 
   ############# Other ##################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
-y_other_bf <- readRDS("y_other_bf.rds")
+y_other_bf <- readRDS("intermediate_data/y_other_bf.rds")
+y_bf_coproducts <- readRDS("intermediate_data/y_bf_coproducts_initial.rds")
+btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other.rds")
+
 supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
-use_bf_coproducts <- readRDS("use_bf_coproducts_initial.rds")
-btd_intermediate_other <- readRDS("btd_intermediate_other.rds")
-
 
 
 
@@ -67,7 +67,7 @@ total_trade_ex <- btd_intermediate_other %>%
 compile_bf_coproducts <- supply_final_bf_sua %>%
   filter(product %in% c("Glycerol, crude", "Bionaphtha", "Biopropane")) %>%
   select(-proc) %>%
-  left_join(use_bf_coproducts %>% rename(bp_feedstock_use = domestic_use_as_input), by = c("product", "iso3c", "year")) %>%
+  left_join(y_bf_coproducts %>% rename(bp_feedstock_use = domestic_use_as_input), by = c("product", "iso3c", "year")) %>%
   left_join(total_trade_im %>% select(iso3c = importer_iso3, product, year, imports = value),
             by = c("product","iso3c","year")) %>%
   left_join(total_trade_ex %>% select(iso3c = exporter_iso3, product, year, exports = value),
@@ -176,6 +176,8 @@ compile_bf_coproducts <- compile_bf_coproducts %>%
 ###########################################################
 ########### SAVING TABLES #########
 ###########################################################
+
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(btd_final_other, "inputs_for_final_data/btd_final_bp_bf_coproducts.rds")
 saveRDS(compile_bf_coproducts,"inputs_for_final_data/y_final_bf_coproducts.rds")

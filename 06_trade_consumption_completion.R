@@ -24,9 +24,10 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
 
-setwd("/home/mmondolfo/")
 supply_fame_hvo <- readRDS("sup_fame_hvo_full.rds")
 supply_biogasoline <- readRDS("sup_biogasoline_full.rds")
 
@@ -51,6 +52,8 @@ neste_regional <- neste_clean$neste_regional
 ###########################################################
 #1. RD Trade balancing (Iterative proportional fitting with initial constraints) #########
 ###########################################################
+
+setwd("/home/mmondolfo/fabio_bfp/")
 
 rd_trade_balancing <- function(year) {
     df <- read_xlsx("own_data/rd_trade_balancing.xlsx", 
@@ -1145,12 +1148,13 @@ btd_intermediate_other <- btd_intermediate_balanced1 %>%
 ########### SAVING FINAL DATASETS ########### 
 ###########################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
+
 dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 
 saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
-saveRDS(btd_intermediate_other, "btd_intermediate_other.rds")
+saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other.rds")
 
 

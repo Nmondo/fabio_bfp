@@ -16,7 +16,7 @@ library(magrittr)
 
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 supply_biogasoline <- readRDS("sup_biogasoline_full.rds")
 supply_fame_hvo <- readRDS("sup_fame_hvo_full.rds")
@@ -24,16 +24,16 @@ supply_fame_hvo %<>% rename(total_supply=value)
 
 ########### Consumption data (to collect consumption from the same source) #########
 
+setwd("/home/mmondolfo/fabio_bfp/")
+
 y_own <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="y")
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+
 y_eia <- readRDS("y_eia.rds")
 y_iea <- readRDS("y_iea.rds")
 y_faostat <- readRDS("y_faostat.rds")
 y_oecd_fao <- readRDS("y_oecd_fao.rds")
-
-##### Neste regional sales data for disaggregation #####
-# neste_clean <- readRDS("neste_data_clean.rds")
-# neste_eu <- neste_clean$neste_eu
-# neste_regional <- neste_clean$neste_regional
 
 ###########################################################
 ########### MAKING VECTORS #########
@@ -445,7 +445,7 @@ y_table <- y_table %>%
 ########### SAVING CONSUMPTION TABLE ###############################
 ################################################################################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 saveRDS(y_table,
         "y_table_initial.rds")

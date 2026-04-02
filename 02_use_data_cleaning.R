@@ -6,7 +6,7 @@
 ###########################################################
 ########### Loading packages #########
 ###########################################################
-
+install.packages("rlang")
 library(readr)
 library(readxl)
 library(dplyr)

@@ -17,15 +17,14 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
-
+setwd("/home/mmondolfo/fabio_bfp/")
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 
 
 ########### Pre-cleaned supply & use data #########
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 supply_feedstock <- readRDS("supply_feedstock.rds")
 supply_fame_hvo <- readRDS("sup_fame_hvo_initial.rds")
@@ -257,6 +256,8 @@ setdiff(unique(subset(supply_fame_hvo, process == "HVO"  & value > 0)$iso3c),
 ###########################################################################################
 #1. Neste plants: Singapore, The Netherlands and Finland #########
 ###########################################################################################
+
+setwd("/home/mmondolfo/fabio_bfp/")
 
 Neste_specific_data <- read_excel("own_data/RD_specific_data.xlsx")
 Neste_total_use <- Neste_specific_data[1:6,2:16]
@@ -929,6 +930,8 @@ mutate(process = case_when(process == "FAME" ~ "Biodiesel production",
 #########################################################################
 ################## SAVING SUPPLY AND USE TABLE ####################
 #########################################################################
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 saveRDS(object = supply_fame_hvo,
         file = "sup_fame_hvo_full.rds")

@@ -28,7 +28,7 @@ EU27_countries <- EU27_countries$iso3c
 
 ########### Pre-cleaned supply & use data #########
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 supply_feedstock <- readRDS("supply_feedstock.rds")
 supply_biogasoline <- readRDS("sup_biogasoline_initial.rds")
@@ -817,6 +817,8 @@ supply_biogasoline <- bind_rows(supply_biogasoline, etbe_zeros) %>%
 #########################################################################
 ################## WRITING BIOGASOLINE SUPPLY AND USE TABLE ####################
 #########################################################################
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 saveRDS(object = supply_biogasoline,
         file = "sup_biogasoline_full.rds")

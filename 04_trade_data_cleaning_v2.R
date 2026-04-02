@@ -20,7 +20,7 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
@@ -35,7 +35,7 @@ baci_hs12 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs12.rds")
 
 ########### Trade data from Eurostat #########
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 bilateral_eu1      <- read.csv("own_data/eu27_exports.csv")
 bilateral_eu2      <- read.csv("own_data/eu27_imports.csv")
@@ -543,7 +543,7 @@ btd_excluded <- trade_all %>%
 ########### WRITING TRADE DATA TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 saveRDS(total_trade,   "btd_total.rds")
 saveRDS(btd,           "btd_intermediate.rds")

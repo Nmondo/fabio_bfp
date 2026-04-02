@@ -8,29 +8,27 @@ library(tidyr)
 ########### LOADING DATA #########
 ###########################################################
 
-########### FABIO regions #########
+########### FABIO regions & updated items list #########
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 regions <- read.csv("inst/regions.csv") 
+items_full_bpc <- read_csv("inst/items_full_bpc.csv")
+items_supply_bpc <- read_csv("inst/items_supply_bpc.csv")
 
 ############## Final tables for biofuels ############## 
 
-setwd("/home/mmondolfo/")
 
 btd_final_bf <- readRDS("inputs_for_final_data/btd_final_bf.rds")
 supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds")
 
 ############## Pre-cleaned SUA extension ############## 
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 sua_extension_clean <- readRDS("sua_extension_clean.rds")
 sua_extension_btd_clean <- readRDS("sua_extension_btd_clean.rds")
 cbs_full_after_extension <- readRDS("cbs_extension_full.rds")
-
-items_full_bpc <- read_csv("items_full_bpc.csv")
-items_supply_bpc <- read_csv("items_supply_bpc.csv")
 
 
 
@@ -104,7 +102,7 @@ use_sua_final <- use_sua_final %>%
 ########### SAVING TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(use_sua_final, "inputs_for_final_data/use_final_sua.rds")
 saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")

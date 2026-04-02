@@ -22,12 +22,14 @@ library(magrittr)
 
 ########### Final supply table #########
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds") %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline"))
 
 ########### Intermediate use table #########
+
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 use_fame_hvo_full <- readRDS("use_fame_hvo_full.rds")
 use_biogasoline_full <- readRDS("use_biogasoline_full.rds") %>% mutate(proc = "Biogasoline production")
@@ -321,7 +323,7 @@ use_table_final <- bind_rows(use_table_intermediate, last_missing_use) %>%
 ########### SAVING FINAL USE DATASET #########
 ###########################################################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(use_table_final, "inputs_for_final_data/use_final_bf.rds")
 

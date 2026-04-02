@@ -10,6 +10,7 @@ data/
 fabio_data_local/
 own_data/
 intermediate_data/
+inputs_for_final_data/
 R/exp/
 R/exp_pure/
 mess.R

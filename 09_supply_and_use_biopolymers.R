@@ -12,13 +12,16 @@ library(stringr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_data_local/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 
+items_supply_bpc <- read.csv("inst/items_supply_bpc.csv") 
 
 ########### FAO data (non-food use) #########
+
+setwd("/home/mmondolfo/fabio_bfp/fabio_data_local")
 
 cbs_full <- readRDS("data/cbs_full.rds")
 tcf_sua_final <- readRDS("data/sua/tcf_sua_final.rds")
@@ -28,18 +31,17 @@ tcf_sua_final <- readRDS("data/sua/tcf_sua_final.rds")
 
 #### Here unit is always kilotonnes unless specified. 
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 capacities_bb_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="filter")
 output_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="capacities_and_production")
-btd_intermediate_other <- readRDS("btd_intermediate_other.rds")
-items_supply_bpc <- read.csv("items_supply_bpc.csv") 
-
 supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
+
+btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other.rds")
 
 ########### Technical conversion factors #########
 
-tcf_table <- readRDS("tcf_table_clean.rds")  
+tcf_table <- readRDS("intermediate_data/tcf_table_clean.rds")  
 
 
 
@@ -1319,10 +1321,11 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 ########### SAVING TABLES  ##########
 ###########################################################
 
-setwd("/home/mmondolfo/")
+setwd("/home/mmondolfo/fabio_bfp/")
+
 saveRDS(complete_rows, "inputs_for_final_data/y_bp_complete_rows.rds")
 saveRDS(incomplete_rows, "inputs_for_final_data/y_bp_incomplete_rows.rds")
-saveRDS(btd_intermediate_other, "btd_intermediate_other.rds")
+saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other.rds")
 saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
-saveRDS(use_bf_coproducts, "y_bf_coproducts_initial.rds")
+saveRDS(use_bf_coproducts, "intermediate_data/y_bf_coproducts_initial.rds")
 saveRDS(use_bb_bp_intermediate, "inputs_for_final_data/use_final_bp.rds")
