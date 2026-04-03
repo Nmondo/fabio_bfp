@@ -453,4 +453,4 @@ saveRDS(y_table,
 saveRDS(y_other_bf,
         "y_other_bf.rds")
 
-rm(prt_shares, prt_totals, years_fill, interp_shares, new_rows)
+rm(list = ls())

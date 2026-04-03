@@ -23,12 +23,17 @@ sua_btd <- readRDS("data/tidy/btd_sua_tidy.rds") %>% filter(! from_code %in% are
                                                             ! to_code   %in% area_code_exclusion)
 cbs_full <- readRDS("data/cbs_full.rds") %>% filter(! area_code %in% area_code_exclusion)
 
+setwd("/home/bruckner2/fabio")
+cbs_btd <- readRDS("data/btd_final.rds")
 
 
 
 ###########################################################
 ########### SELECTING RELEVANT TRADE DATA #########
 ###########################################################
+
+cbs_btd_disaggregation <- cbs_btd %>% filter(item_code %in% c(2520, 2570,2543, 2586),
+                                             year %in% 2012:2022) #2520: Cereals; 2570: Oilcrops; 2543 : Sweeteners; 2586: Oilcrops Oil 
 
 sua_btd_disaggregation <- sua_btd %>%
   filter(
@@ -38,11 +43,58 @@ sua_btd_disaggregation <- sua_btd %>%
       item == "Castor oil seeds" |
       item == "Triticale"
   ) %>% 
-  filter(unit == "tonnes")
+  filter(unit == "tonnes") %>%
+  mutate(cbs_match = case_when(grepl("^Animal or vegetable fats and oils|Oil of castor beans", item) ~ 2586,
+                               item == "Castor oil seeds" ~ 2570,
+                               item == "Molasses" ~ 2543,
+                               item == "Triticale" ~ 2520))
 
-rm(sua_btd)
 
-unique(sua$item[grepl("Castor",sua$item)])
+
+
+###########################################################
+########### UPDATING TRADE DATA FOR CBS "Other" CATEGORIES #########
+###########################################################
+
+###########################################################
+#1. Updating bilateral trade for "Other" categories, lower bound at 0 #########
+###########################################################
+
+values_cbs_btd_update <- sua_btd_disaggregation %>%
+  group_by(cbs_match, from_code, to_code, year) %>%
+  summarise(to_subtract = sum(value, na.rm = TRUE),
+            .groups = "drop")
+
+cbs_btd_update <- cbs_btd_disaggregation %>%
+  left_join(values_cbs_btd_update, by = c("item_code" = "cbs_match", "from_code", "to_code", "year")) %>%
+  mutate(value = ifelse(is.na(to_subtract), value, pmax(value - to_subtract, 0))) %>%
+  select(-to_subtract)
+
+btd_final_cbs <- cbs_btd %>% 
+  rows_update(cbs_btd_update, by = c("item_code", "from_code", "to_code", "year"))
+
+rm(sua_btd,cbs_btd)
+
+###########################################################
+#2. Calculating totals for later join to cbs_extension #########
+###########################################################
+
+btd_imports <- cbs_btd_update %>%
+  summarise(
+    imports = sum(value, na.rm = TRUE),
+    .by = c(to_code, year, item_code)
+  ) %>%
+  rename(area_code = to_code)
+
+btd_exports <- cbs_btd_update %>%
+  summarise(
+    exports = sum(value, na.rm = TRUE),
+    .by = c(from_code, year, item_code)
+  ) %>%
+  rename(area_code = from_code)
+
+btd_update_wide <- btd_imports %>%
+  full_join(btd_exports, by = c("area_code", "year", "item_code"))
 
 
 ######################################################################################################################
@@ -78,7 +130,14 @@ cbs_extension <- cbs_extension %>%
             suffix = c("", "_sua")) %>%
   mutate(across(exports:use, 
                 ~ .x - coalesce(get(paste0(cur_column(), "_sua")), 0))) %>%
-  select(-ends_with("_sua"))
+  select(-ends_with("_sua")) %>% 
+  # Update total imports and exports from updated btd
+  rows_update(
+    btd_update_wide,
+    by = c("item_code", "year", "area_code"),
+    unmatched = "ignore"
+  )
+
 
 
 #################################################################################################
@@ -87,6 +146,22 @@ cbs_extension <- cbs_extension %>%
 
 cbs_full_after_extension <- cbs_full %>% rows_update(cbs_extension, by = c("area_code","year","item")) %>%
   filter(year %in% 2012:2022)
+
+
+#################################################################################################
+#4. Lower bound at 0 for values in CBS extension #########
+#################################################################################################
+
+cbs_full_after_extension <- cbs_full_after_extension %>%
+  mutate(across(supply:use, ~ ifelse(.x < 0, 0, .x)),
+         supply          = rowSums(cbind(production, stock_withdrawal), na.rm = TRUE),
+         domestic_supply = rowSums(cbind(production, stock_withdrawal ,imports), na.rm = TRUE),
+         use             = rowSums(cbind(food, feed, seed, processing, losses,
+                                         other, tourist, stock_addition), na.rm = TRUE),
+         domestic_use    = rowSums(cbind(food, feed, seed, processing, losses,
+                                         other, tourist, stock_addition,
+                                         exports), na.rm = TRUE)
+       )
 
 
 
@@ -110,6 +185,7 @@ sua_extension_clean <- sua_extension %>%
          )
 
 sua_extension_btd_clean <- sua_btd_disaggregation %>% 
+  select(-cbs_match) %>%
   mutate(item = case_when(grepl("Animal or vegetable", item) ~ "Used cooking oil",
                           grepl("Oil of castor beans", item) ~ "Castor oil",
                           TRUE ~ item))         
@@ -121,9 +197,11 @@ sua_extension_btd_clean <- sua_btd_disaggregation %>%
 ########### SAVING TABLES #########
 ######################################################################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
-saveRDS(sua_extension_clean, "sua_extension_clean.rds")
-saveRDS(sua_extension_btd_clean, "sua_extension_btd_clean.rds")
-saveRDS(cbs_full_after_extension, "cbs_extension_full.rds")
+saveRDS(sua_extension_clean, "intermediate_data/sua_extension_clean.rds")
+saveRDS(sua_extension_btd_clean, "intermediate_data/sua_extension_btd_clean.rds")
+saveRDS(cbs_full_after_extension, "intermediate_data/cbs_extension_full.rds")
+saveRDS(btd_final_cbs, "inputs_for_final_data/btd_final_cbs.rds")
 
+rm(list = ls())

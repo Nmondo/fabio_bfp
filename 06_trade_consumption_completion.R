@@ -1056,7 +1056,6 @@ full_compile_balanced %>%
 
 
 
-
 ###########################################################
 ########### MAKING FINAL SUPPLY TABLES WITH BY-PRODUCTS ########### 
 ###########################################################
@@ -1123,7 +1122,7 @@ supply_final_bf %<>%
 
 y_final_bf <- full_compile_balanced %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline")) %>%
-  select(iso3c,product,process,year,y_Fuel,y_Non_fuel,unit_y) %>%
+  select(iso3c,item = product,year,y_Fuel,y_Non_fuel,unit_y) %>%
   rename(fuel = y_Fuel,
          non_fuel = y_Non_fuel,
          unit = unit_y)
@@ -1155,6 +1154,6 @@ dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
-saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other.rds")
+saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step1.rds")
 
-
+rm(list = ls())

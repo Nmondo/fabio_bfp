@@ -655,5 +655,4 @@ saveRDS(oecd_fao_use,
 saveRDS(fao_nonfood,
         "fao_nonfood.rds")
 
-
-rm(triplets_tcf,triplets_supply,missing_triplets,duplicate_conversion_factors)
+rm(list = ls())

@@ -17,7 +17,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 
-items_supply_bpc <- read.csv("inst/items_supply_bpc.csv") 
+items_supply_bcp <- read.csv("inst/items_supply_bcp.csv") 
 
 ########### FAO data (non-food use) #########
 
@@ -37,7 +37,7 @@ capacities_bb_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="filter
 output_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="capacities_and_production")
 supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
 
-btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other.rds")
+btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other_step1.rds")
 
 ########### Technical conversion factors #########
 
@@ -945,7 +945,8 @@ full_compile_for_join <- subset(full_compile_bp %>% filter(input %in% c("Glycero
     required_imports = ifelse(required_remaining >= 0 & input %in% c("Biopropane", "Bionaphtha"), required_remaining, 0),
     output_balancing = ifelse(required_remaining >= 0 & input == "Glycerol, crude", required_remaining, 0)
   ) %>%
-  mutate(domestic_prod = domestic_prod + output_balancing) %>%
+  mutate(domestic_prod = domestic_prod + output_balancing,
+         unit = "kt") %>%
   select(-available_remaining, -required_remaining) %>%
   rename(product = input)
 
@@ -1242,7 +1243,8 @@ full_compile_supply <- full_compile_supply %>%
     )
   ) %>%
   select(-share_other_industry, -share_required_exports) %>%
-  rename(bp_feedstock_use = domestic_use_as_input)
+  rename(bp_feedstock_use = domestic_use_as_input) %>%
+  mutate(unit = "kt")
 
 
 
@@ -1251,11 +1253,15 @@ full_compile_supply <- full_compile_supply %>%
 ########### MAKING TWO SUBTABLES: ONE WHERE ESTIMATES ARE COMPLETE, ONE WHICH REQUIRES TRADE LINKAGE  #########
 ###########################################################
 
+###########################################################
+#1. Full subtables  #########
+###########################################################
+
 # Complete rows for which do not require Monetary MRIO allocation
 complete_rows <- full_compile_supply %>% filter(!is.na(other_industry_use)) %>% select(-available_remaining, -required_remaining, -output_balancing, -btd_balancing) %>%
   mutate(exports = coalesce(exports, required_exports),
          imports = coalesce(imports, required_imports)) %>%
-  select(-required_exports, -required_imports)
+  select(-required_exports, -required_imports) 
   
 
 # Incomplete rows for which we will use Monetary MRIO allocation
@@ -1265,13 +1271,27 @@ incomplete_rows <- full_compile_supply %>% filter(is.na(other_industry_use)) %>%
 use_bf_coproducts <- full_compile_for_join %>% select(product, iso3c, year, domestic_use_as_input, unknown_use, required_imports)
 
 
+###########################################################
+#2. Selecting only the variables required for the use in final demand  #########
+###########################################################
+
+y_bp_complete_rows <- complete_rows %>%
+  rename(item = product) %>%
+  select(-domestic_prod, -exports, -imports, -bp_feedstock_use) # This drops total exports of PE from BRA, which we haven't allocated yet. 
+
+
+
+
 
 ###########################################################
 ########### UPDATING SUPPLY TABLES FROM ADJUSTED TOTAL OUTPUT AFTER BALANCING  ##########
 ###########################################################
 
-supply_bb_bp <- supply_bb_bp %>% rows_update(complete_rows %>% select(iso3c, product, year, supply = domestic_prod), by = c("iso3c","product","year"), unmatched = "ignore")
-supply_final_bf_sua <- supply_final_bf_sua %>% rows_update(full_compile_for_join %>% select(iso3c, product, year, supply = domestic_prod), by = c("iso3c","product","year"), unmatched = "ignore")
+supply_final_bp <- supply_bb_bp %>% 
+  mutate(unit = "kt") %>%
+  rows_upsert(complete_rows %>% select(iso3c, product, year, supply = domestic_prod, unit), by = c("iso3c","product","year"))
+
+supply_final_bf_sua <- supply_final_bf_sua %>% rows_update(full_compile_for_join %>% select(iso3c, product, year, supply = domestic_prod, unit), by = c("iso3c","product","year"), unmatched = "ignore")
 
 
 
@@ -1306,7 +1326,7 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 ###########################################################
 
 use_bb_bp_intermediate <- use_bb_bp_intermediate %>%   
-  left_join(items_supply_bpc %>% select(proc, item), 
+  left_join(items_supply_bcp %>% select(proc, item), 
             by = c("product" = "item")) %>%
   rename(item = input) %>%
   select(-product)
@@ -1323,9 +1343,12 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-saveRDS(complete_rows, "inputs_for_final_data/y_bp_complete_rows.rds")
+saveRDS(y_bp_complete_rows, "inputs_for_final_data/y_bp_complete_rows.rds")
 saveRDS(incomplete_rows, "inputs_for_final_data/y_bp_incomplete_rows.rds")
-saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other.rds")
+saveRDS(supply_final_bp, "inputs_for_final_data/supply_final_bp.rds")
+saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step2.rds")
 saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
 saveRDS(use_bf_coproducts, "intermediate_data/y_bf_coproducts_initial.rds")
 saveRDS(use_bb_bp_intermediate, "inputs_for_final_data/use_final_bp.rds")
+
+rm(list = ls())

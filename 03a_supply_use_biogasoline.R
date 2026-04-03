@@ -829,7 +829,5 @@ saveRDS(object = use_biogasoline_complete,
 
 
 ## Removing temporary objects
-rm(use_biogasoline_est,use_biogasoline_noNA,use_biogasoline_with_share,
-   nonfood_use_eu,eu_use,estimated,to_estimate)  
-
+rm(list = ls())
 

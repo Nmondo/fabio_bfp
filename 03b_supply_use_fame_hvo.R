@@ -21,6 +21,8 @@ setwd("/home/mmondolfo/fabio_bfp/")
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions.csv") 
+EU27_countries <- subset(regions, EU27==TRUE)
+EU27_countries <- EU27_countries$iso3c
 
 ########### Pre-cleaned supply & use data #########
 
@@ -40,6 +42,11 @@ tcf_table <- readRDS("tcf_table_clean.rds")
 
 biodiesel_nonfood <- readRDS("fao_nonfood.rds") %>% filter(use=="Biodiesel & Renewable diesel")
 
+###########################################################
+########### MAKING VECTORS #########
+###########################################################
+
+years <- as.character(2012:2022)
 
 ###########################################################
 ########### FORMATTING SUPPLY TABLE FOR LATER JOIN #########
@@ -939,6 +946,4 @@ saveRDS(object = supply_fame_hvo,
 saveRDS(object = use_biodiesel_complete,
         file = "use_fame_hvo_full.rds")
 
-
-rm(use_biodiesel_est,use_biodiesel_noNA,use_biodiesel_with_share,
-   nonfood_use_eu,eu_use,estimated,to_estimate)  
+rm(list = ls())

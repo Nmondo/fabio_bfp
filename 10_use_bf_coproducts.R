@@ -24,7 +24,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 y_other_bf <- readRDS("intermediate_data/y_other_bf.rds")
 y_bf_coproducts <- readRDS("intermediate_data/y_bf_coproducts_initial.rds")
-btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other.rds")
+btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other_step2.rds")
 
 supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
 
@@ -174,10 +174,22 @@ compile_bf_coproducts <- compile_bf_coproducts %>%
 
 
 ###########################################################
+########### FORMATTING USE IN FINAL DEMAND TABLE #########
+###########################################################
+
+y_final_bf_coproducts <- compile_bf_coproducts %>%
+  rename(item = product,
+         fuel = Fuel_use) %>%
+  select(-supply, -bp_feedstock_use, -imports, -exports)
+
+
+###########################################################
 ########### SAVING TABLES #########
 ###########################################################
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(btd_final_other, "inputs_for_final_data/btd_final_bp_bf_coproducts.rds")
-saveRDS(compile_bf_coproducts,"inputs_for_final_data/y_final_bf_coproducts.rds")
+saveRDS(y_final_bf_coproducts,"inputs_for_final_data/y_final_bf_coproducts.rds")
+
+rm(list = ls())

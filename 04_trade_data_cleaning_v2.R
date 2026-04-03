@@ -552,7 +552,4 @@ saveRDS(btd_excluded,  "btd_excluded_flows.rds")
 
 # Removing temporary objects
 
-rm(baci_hs07,baci_hs12,baci_hs07_clean, baci_hs12_clean, baci_comtrade_named,
-   bilateral_trade_eu, bilateral_trade_own, bilateral_comtrade_clean,
-   total_trade, trade_all,bilateral_comtrade,bilateral_eu1,bilateral_eu2,bilateral_ex,
-   bilateral_im,SWE_raw,SWE_cleaned_df, btd, btd_excluded)
+rm(list = ls())

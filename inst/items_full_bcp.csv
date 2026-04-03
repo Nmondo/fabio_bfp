@@ -123,15 +123,15 @@ c122,2747,Silk,tonnes,Livestock products,0,animals,"Hides, skins, wool"
 c123,2960,"Fish, Seafood",tonnes,Fish,0.7,animals,Fish
 c141,97,Triticale,tonnes,NA,NA,NA,Cereals
 c142,165,Molasses,tonnes,NA,NA,NA,"Sugar, sweeteners"
-c143,265,Castor oil seeds,tonnes,NA,NA,NA,oil_crops
+c143,265,Castor oil seeds,tonnes,NA,NA,NA,Oil crops
 c144,266,Castor oil,tonnes,NA,NA,NA,Vegetable oils
 c145,1274,Used cooking oil,tonnes,NA,NA,NA,Waste
 c146,NA,Biogasoline,1000 liters,NA,NA,NA,Biofuels
 c147,NA,Biodiesel,1000 liters,NA,NA,NA,Biofuels
 c148,NA,"Glycerol, crude",tonnes,NA,NA,NA,Building blocks
 c149,NA,Renewable diesel,1000 liters,NA,NA,NA,Biofuels
-c150,NA,Biopropane,tonnes,NA,NA,NA,Biofuels
-c151,NA,Bionaphtha,tonnes,NA,NA,NA,Biofuels
+c150,NA,Biopropane,1000 liters,NA,NA,NA,Biofuels
+c151,NA,Bionaphtha,1000 liters,NA,NA,NA,Biofuels
 c152,NA,L-LA,tonnes,NA,NA,NA,Building blocks
 c153,NA,Sebacic acid,tonnes,NA,NA,NA,Building blocks
 c154,NA,Succinic acid,tonnes,NA,NA,NA,Building blocks

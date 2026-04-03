@@ -20,9 +20,14 @@ library(magrittr)
 ########### LOADING DATA #########
 ###########################################################
 
+setwd("/home/mmondolfo/fabio_bfp/")
+
+########### Regions #########
+
+regions <- read_csv("inst/regions.csv")
+
 ########### Final supply table #########
 
-setwd("/home/mmondolfo/fabio_bfp/")
 
 supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds") %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline"))
@@ -153,7 +158,7 @@ missing_use <- supply_final_bf %>%
 faostat_gapfill <- faostat_non_food %>%
   filter(item != "Sugar (Raw Equivalent)") %>%
   right_join(missing_use, by = c("iso3c", "year", "proc")) %>%
-  mutate(item = case_when(proc=="Biodiesel production" & item == "Oilcrops Oil, Other" ~ "Inedible animal or vegetable fats and oils",
+  mutate(item = case_when(proc %in% c("Biodiesel production", "Renewable diesel production") & item == "Oilcrops Oil, Other" ~ "Inedible animal or vegetable fats and oils",
                           TRUE ~ item)) %>%
   group_by(iso3c, year, proc) %>%
   mutate(other = other/sum(other)) %>%
@@ -166,7 +171,6 @@ faostat_gapfill <- faostat_non_food %>%
 
 faostat_gapfill <- faostat_gapfill %>%
   filter(!(iso3c %in% c("IRN", "SAU", "ARE","QAT") & proc == "Biogasoline production"))
-
 
 new_rows <- expand.grid(
   year  = unique(faostat_gapfill$year),
@@ -307,14 +311,17 @@ last_missing_use <- last_missing_use %>%
 ###########################################################################################
 
 use_table_final <- bind_rows(use_table_intermediate, last_missing_use) %>%
-  arrange(iso3c,year,proc) %>%
-  # Final renames
+  arrange(iso3c, year, proc) %>%
   mutate(item = case_when(item == "Sweeteners, Other" ~ "Molasses",
                           item == "Inedible animal or vegetable fats and oils" ~ "Used cooking oil",
+                          item == "Oilcrops Oil, Other" ~ "Used cooking oil",
                           item == "Cereals, Other" ~ "Triticale",
                           TRUE ~ item),
          unit = "kt") %>%
-  filter(!is.na(use))
+  ungroup() %>%
+  summarise(use = sum(use, na.rm = TRUE),
+            unit = first(unit), 
+            .by = c(item, iso3c, year, proc))
 
 
 
@@ -328,5 +335,4 @@ setwd("/home/mmondolfo/fabio_bfp/")
 saveRDS(use_table_final, "inputs_for_final_data/use_final_bf.rds")
 
 
-rm(missing_use, last_missing_use, rd_shares, rd_combos, new_rd_rows, faostat_gapfill, use_table_continent, use_table_intermediate, use_table_supply_adjust, use_table_nonzero)
-
+rm(list = ls())

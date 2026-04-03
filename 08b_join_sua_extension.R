@@ -13,8 +13,8 @@ library(tidyr)
 setwd("/home/mmondolfo/fabio_bfp/")
 
 regions <- read.csv("inst/regions.csv") 
-items_full_bpc <- read_csv("inst/items_full_bpc.csv")
-items_supply_bpc <- read_csv("inst/items_supply_bpc.csv")
+items_full_bcp <- read_csv("inst/items_full_bcp.csv")
+items_supply_bcp <- read_csv("inst/items_supply_bcp.csv")
 
 ############## Final tables for biofuels ############## 
 
@@ -48,13 +48,13 @@ sua_extension_supply <- sua_extension_clean %>%
          product = item) %>%
   mutate(unit = "tonnes") %>%
   #Joining process name
-  left_join(items_supply_bpc  %>% select(proc, item), by = c("product" = "item"))
+  left_join(items_supply_bcp  %>% select(proc, item), by = c("product" = "item"))
 
 #joining
 supply_final_bf_sua <- bind_rows(supply_final_bf,
                           sua_extension_supply)
 
-print(subset(sua_extension_supply, is.na(iso3c)))
+
 
 
 ###########################################################
@@ -98,6 +98,17 @@ use_sua_final <- use_sua_final %>%
 
 
 
+
+###########################################################
+########### CLEANING Y EXTENSION #########
+###########################################################
+
+sua_extension_clean <- sua_extension_clean %>% select(area_code, area, item_code, item, year, food, losses, other, stock_addition, stock_withdrawal, tourist) %>%
+  mutate(unit = "tonnes")
+
+
+
+
 ###########################################################
 ########### SAVING TABLES #########
 ###########################################################
@@ -109,3 +120,5 @@ saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
 saveRDS(btd_final_sua, "inputs_for_final_data/btd_final_sua.rds")
 saveRDS(sua_extension_clean, "inputs_for_final_data/y_final_sua.rds")
 saveRDS(cbs_full_after_extension, "inputs_for_final_data/y_final_cbs.rds")
+
+rm(list = ls())
