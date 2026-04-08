@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 source("R/00_system_variables.R")
@@ -71,7 +72,7 @@ sup[!is.na(share) & comm_code %in% shares$comm_code,
 cat("Applying oil extraction shares to",
   sup[item_code %in% c(2598), .N],
   "observations of Oilseed Cakes, Other with shares from Ricebran Oil, Maize Germ Oil and Oilcrops Oil, Other\n")
-shares_o <- sup[item_code %in% c(2581, 2582, 2586),
+shares_o <- sup[item_code %in% c(2581, 2582),
   list(proc, share_o = supply / sum(supply, na.rm = TRUE)),
   by = list(area_code, year)]
 
@@ -118,7 +119,7 @@ prices <- merge(prices, caps, by = c("item"), all.x = TRUE)
 
 cat("Capping ", prices[price > price_q90 | price < price_q10, .N],
   " prices at the specific item's 90th and 10th quantiles.\n", sep = "")
-prices[, price := ifelse(price > price_q10, price_q10,
+prices[, price := ifelse(price > price_q90, price_q90,
   ifelse(price < price_q10, price_q10, price))]
 
 
@@ -226,6 +227,9 @@ sup[item == "Milk - Excluding Butter", price := ifelse(!is.na(milk),
   milk, milk_avg)]
 sup[, `:=`(milk = NULL, milk_avg = NULL)]
 
+# Delete Ethanol from current CBS
+
+sup <- sup[! proc_code %in% c("p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
 
 
 # Store results -----------------------------------------------------------

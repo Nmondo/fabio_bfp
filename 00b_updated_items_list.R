@@ -33,7 +33,7 @@ items_extension <- data.frame(
                  NA, NA, NA, NA, NA, NA, NA, NA, NA, NA,
                  NA, NA, NA, NA, NA, NA, NA, NA, NA, NA,
                  NA, NA),
-  item       = c("Triticale","Molasses","Castor oil seeds","Castor oil","Used cooking oil","Biogasoline",
+  item       = c("Triticale","Molasses","Castor oil seeds","Oil of castor beans","Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Biogasoline",
                  "Biodiesel","Glycerol, crude","Renewable diesel","Biopropane","Bionaphtha",
                  "L-LA","Sebacic acid","Succinic acid","11-AA","Ethylene",
                  "Propylene","1,3-PDO","1,4-BDO","MEG","MPG",
@@ -59,7 +59,7 @@ items_supply_extension <- data.frame(
                 "c161","c162","c163","c164","c165","c166","c167","c168","c169","c170",
                 "c901","c999"),
   item_code = c(97, 165, 265, 266, 1274, rep(NA, 27)),
-  item      = c("Triticale","Molasses","Castor oil seeds","Castor oil","Used cooking oil","Biogasoline",
+  item      = c("Triticale","Molasses","Castor oil seeds","Oil of castor beans","Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Biogasoline",
                 "Biodiesel","Glycerol, crude","Renewable diesel","Biopropane","Bionaphtha",
                 "L-LA","Sebacic acid","Succinic acid","11-AA","Ethylene",
                 "Propylene","1,3-PDO","1,4-BDO","MEG","MPG",
@@ -71,7 +71,7 @@ items_supply_extension <- data.frame(
                 "p138","p139","p140","p141","p142","p143","p144","p145","p146",
                 "p901","p999"),
   proc      = c("Triticale production","Sugar production","Castor oil seeds production",
-                "Castor oil production","Used cooking oil collection","Biogasoline production",
+                "Castor oil production","Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection","Biogasoline production",
                 "Biodiesel production","Biodiesel production",
                 "Renewable diesel production","Renewable diesel production","Renewable diesel production",
                 "Lactic acid production","Sebacic acid production","Succinic acid production",
@@ -143,14 +143,14 @@ items_use_extension <- data.frame(
                 "Triticale","Molasses","Other, Waste","Other, Unknown",
                 "Soyabean Oil","Sunflowerseed Oil","Rape and Mustard Oil","Cottonseed Oil",
                 "Palmkernel Oil","Palm Oil","Coconut Oil","Maize Germ Oil","Fats, Animals, Raw",
-                "Used cooking oil","Other, Waste","Other, Unknown",
+                "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Other, Waste","Other, Unknown",
                 "Soyabean Oil","Rape and Mustard Oil","Palm Oil","Maize Germ Oil","Fats, Animals, Raw",
-                "Used cooking oil","Other, Waste","Other, Unknown",
+                "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Other, Waste","Other, Unknown",
                 "Rice and products","Wheat and products","Maize and products","Potatoes and products",
                 "Cassava and products","Sugar cane","Sugar beet","Glycerol, crude",
-                "Castor oil",
+                "Oil of castor beans",
                 "Wheat and products","Maize and products","Potatoes and products",
-                "Castor oil",
+                "Oil of castor beans",
                 "Biogasoline","Bionaphtha",
                 "Biopropane","Bionaphtha",
                 "Maize and products","Glycerol, crude",
@@ -163,24 +163,46 @@ items_use_extension <- data.frame(
 
 
 
-
 ###########################################################
 ########### JOINING #########
 ###########################################################
 
 items_full_bcp <- bind_rows(items, items_extension) %>%
-  filter(comm_code != "c095",
+  filter(comm_code != "c094",
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")) %>%
-  mutate(comm_group = ifelse(item == "Fats, Animals, Raw", "Waste", comm_group)) # change units for Biopropane and Bionaphtha
+  mutate(comm_group = ifelse(item == "Fats, Animals, Raw", "Waste", comm_group)) %>% # change units for Biopropane and Bionaphtha
+  mutate(moisture = case_when(item == "Triticale" ~ 0.140,
+                              item == "Molasses" ~ 0.200,
+                              item == "Castor oil seeds" ~ 0.080,
+                              TRUE ~ moisture),
+         feedtype = case_when(item %in% c("Triticale","Molasses","Castor oil seeds") ~ "crops",
+                             TRUE ~ feedtype))
 
 items_supply_bcp <- bind_rows(items_supply, items_supply_extension) %>%
-  filter(proc_code != "p084",
+  filter(! proc_code %in% c("p079","p084"),
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
 items_use_bcp <- bind_rows(items_use, items_use_extension) %>%
-  filter(proc_code != "c084",
+  filter(! proc_code %in% c("p066","p079","p084"),
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
+# Adding vegetable oil use in the Used cooking oil collection process
+
+proc_p124 <- items_supply_bcp %>%
+  filter(proc_code == "p124") %>%
+  pull(proc) %>%
+  unique()
+
+new_rows <- items_full_bcp %>%
+  filter(comm_group == "Vegetable oils",
+         item != "Oil of castor beans") %>%
+  distinct(item, item_code, comm_code) %>%
+  mutate(proc_code = "p124",
+         proc = proc_p124)
+
+items_use_bcp <- bind_rows(items_use_bcp, new_rows) %>%
+  select(-item_code.1) %>%
+  arrange(proc_code, item_code)
 
 ###########################################################
 ########### SAVING #########

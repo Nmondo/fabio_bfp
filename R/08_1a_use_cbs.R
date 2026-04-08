@@ -1,3 +1,5 @@
+setwd("/home/mmondolfo/fabio_bfp/")
+
 library("tidyverse")
 library("data.table")
 library("Matrix")
@@ -9,8 +11,10 @@ source("R/01_tidy_functions.R")
 
 cbs <- readRDS("data/cbs_full.rds")
 sup <- readRDS("data/sup.rds")
-items <- fread("inst/items_full_123.csv")
-use_items <- fread("inst/items_use.csv")
+items <- fread("inst/items_full_bcp.csv")
+use_items <- fread("inst/items_use_bcp.csv")
+sup_items <- fread("inst/items_supply_bcp.csv")
+
 
 
 # Use ---------------------------------------------------------------------
@@ -157,65 +161,65 @@ cbs[, use := NULL]
 
 
 
-# Ethanol production ------------------------------------------------------
-
-eth_tcf <- fread("inst/tcf_eth.csv")
-
-eth <- cbs[item_code %in% eth_tcf$item_code, ]
-eth <- merge(eth, unique(eth_tcf[, c("item_code", "tcf")]),
-  by = "item_code", all.x = TRUE)
-eth <- merge(eth, eth_tcf[, c("area_code", "item_code", "value")],
-  by = c("area_code", "item_code"), all = TRUE)
-
-eth[, `:=`(pot_oth = other * tcf, pot_proc = processing * tcf)]
-
-eth_total <- eth[,
-  list(pot_oth_t = na_sum(pot_oth),
-       pot_proc_t = na_sum(pot_proc)),
-  by = c("area_code", "year")]
-eth <- merge(eth, eth_total, by = c("area_code", "year"), all.x = TRUE)
-eth[, `:=`(share_oth = pot_oth / pot_oth_t,
-           share_proc = pot_proc / pot_proc_t)]
-rm(eth_total)
-
-cat("Country-specific TCFs available for:\n\t",
-  paste0(unique(eth_tcf[, area]), collapse = "; "), ".\n", sep = "")
-cat("Using only information for the US and Brazil.\n")
-eth[!area %in% c("United States of America", "Brazil"), value := NA]
-# Overwrite shares
-eth[!is.na(value), `:=`(share_oth = value, share_proc = value)]
-eth[, value := NULL]
-
-# Allocate according to ethanol production
-eth <- merge(eth[!is.na(area)],
-  cbs[item_code == 2659, .(area_code, year, eth_prod = production)],
-  by = c("area_code", "year"), all.x = TRUE)
-# First use up other, then processing for ethanol production
-eth[, `:=`(
-  eth_oth = eth_prod * share_oth / tcf,
-  eth_proc = ifelse(eth_prod > pot_oth_t,
-    (eth_prod - pot_oth_t) * share_proc / tcf, 0))]
-# Cap values at available other and processing
-eth[, `:=`(
-  eth_oth = ifelse(eth_oth > other, other, eth_oth),
-  eth_proc = ifelse(eth_proc > processing, processing, eth_proc))]
-eth[, `:=`(use = na_sum(eth_oth, eth_proc))]
-
-# Reduce other and processing in cbs allocate ethanol use
-cbs <- merge(cbs, eth[!is.na(use),
-  c("year", "area_code", "item_code", "eth_oth", "eth_proc")],
-  by = c("area_code", "year", "item_code"), all.x = TRUE)
-cbs[, `:=`(
-  processing = na_sum(processing, -eth_proc), other = na_sum(other, -eth_oth))]
-cbs[, `:=`(eth_proc = NULL, eth_oth = NULL)]
-
-eth <- eth[!is.na(use), .(area_code, item_code, year, proc_code = "p084",
-  use_eth = use)]
-use <- merge(use, eth,
-  by = c("area_code", "item_code", "year", "proc_code"), all.x = TRUE)
-use[!is.na(use_eth), `:=`(use = use_eth)]
-use[, `:=`(use_eth = NULL)]
-rm(eth, eth_tcf)
+# # Ethanol production ------------------------------------------------------
+# 
+# eth_tcf <- fread("inst/tcf_eth.csv")
+# 
+# eth <- cbs[item_code %in% eth_tcf$item_code, ]
+# eth <- merge(eth, unique(eth_tcf[, c("item_code", "tcf")]),
+#   by = "item_code", all.x = TRUE)
+# eth <- merge(eth, eth_tcf[, c("area_code", "item_code", "value")],
+#   by = c("area_code", "item_code"), all = TRUE)
+# 
+# eth[, `:=`(pot_oth = other * tcf, pot_proc = processing * tcf)]
+# 
+# eth_total <- eth[,
+#   list(pot_oth_t = na_sum(pot_oth),
+#        pot_proc_t = na_sum(pot_proc)),
+#   by = c("area_code", "year")]
+# eth <- merge(eth, eth_total, by = c("area_code", "year"), all.x = TRUE)
+# eth[, `:=`(share_oth = pot_oth / pot_oth_t,
+#            share_proc = pot_proc / pot_proc_t)]
+# rm(eth_total)
+# 
+# cat("Country-specific TCFs available for:\n\t",
+#   paste0(unique(eth_tcf[, area]), collapse = "; "), ".\n", sep = "")
+# cat("Using only information for the US and Brazil.\n")
+# eth[!area %in% c("United States of America", "Brazil"), value := NA]
+# # Overwrite shares
+# eth[!is.na(value), `:=`(share_oth = value, share_proc = value)]
+# eth[, value := NULL]
+# 
+# # Allocate according to ethanol production
+# eth <- merge(eth[!is.na(area)],
+#   cbs[item_code == 2659, .(area_code, year, eth_prod = production)],
+#   by = c("area_code", "year"), all.x = TRUE)
+# # First use up other, then processing for ethanol production
+# eth[, `:=`(
+#   eth_oth = eth_prod * share_oth / tcf,
+#   eth_proc = ifelse(eth_prod > pot_oth_t,
+#     (eth_prod - pot_oth_t) * share_proc / tcf, 0))]
+# # Cap values at available other and processing
+# eth[, `:=`(
+#   eth_oth = ifelse(eth_oth > other, other, eth_oth),
+#   eth_proc = ifelse(eth_proc > processing, processing, eth_proc))]
+# eth[, `:=`(use = na_sum(eth_oth, eth_proc))]
+# 
+# # Reduce other and processing in cbs allocate ethanol use
+# cbs <- merge(cbs, eth[!is.na(use),
+#   c("year", "area_code", "item_code", "eth_oth", "eth_proc")],
+#   by = c("area_code", "year", "item_code"), all.x = TRUE)
+# cbs[, `:=`(
+#   processing = na_sum(processing, -eth_proc), other = na_sum(other, -eth_oth))]
+# cbs[, `:=`(eth_proc = NULL, eth_oth = NULL)]
+# 
+# eth <- eth[!is.na(use), .(area_code, item_code, year, proc_code = "p084",
+#   use_eth = use)]
+# use <- merge(use, eth,
+#   by = c("area_code", "item_code", "year", "proc_code"), all.x = TRUE)
+# use[!is.na(use_eth), `:=`(use = use_eth)]
+# use[, `:=`(use_eth = NULL)]
+# rm(eth, eth_tcf)
 
 
 
@@ -402,6 +406,54 @@ use[(item %like% "Cake" | item_code <= 2029) & !is.na(diff / use_io),
 
 use[, `:=`(diff = NULL, use_io = NULL)]
 
+
+# Delete ethanol use (NAs because the inputs have been deleted upstream) ----
+
+use <- use[! proc_code %in% c("p066","p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
+
+
+
+########################################" HERE WE WANT TO JOIN USE FOR UCO 
+
+# Compute Vegetable oils' food share by year-country (2012-2022)
+food_share_veg_oil <- subset(use_fd, comm_code %in% unique(use_items$comm_code[use_items$proc_code=="p124"]) & year %in% 2012:2022)
+food_share_veg_oil <- food_share_veg_oil %>%
+  mutate(tot_uco_avail = ifelse(area == "China, mainland", food + other, food)) %>% # Total UCO availability= food + other for China, = food for all other countries.
+  group_by(year, area) %>%
+  mutate(share_uco = ifelse(tot_uco_avail > 0, tot_uco_avail / sum(tot_uco_avail, na.rm = TRUE), 0)) %>%
+  select(comm_code, area_code, area, item_code, item, year, share_uco)
+
+# Joining yearly UCO supply
+food_share_veg_oil <- food_share_veg_oil %>%
+  left_join(
+    sup %>% 
+      filter(item_code == 1274) %>% 
+      select(area_code, year, uco_supply = supply),
+    by = c("area_code", "year")
+  )
+
+
+# Imputing yearly world averages when NA 
+world_avg_uco <- food_share_veg_oil %>%
+  group_by(item_code, year) %>%
+  summarise(share_uco = mean(share_uco, na.rm = TRUE), .groups = "drop")
+
+food_share_veg_oil <- food_share_veg_oil %>%
+  rows_patch(
+    world_avg_uco,
+    by = c("item_code", "year"),
+    unmatched = "ignore"
+  )
+
+uco_supply <- food_share_veg_oil %>%
+  mutate(use = uco_supply * share_uco,
+         proc_code = "p124",
+         proc = sup_items$proc[sup_items$proc_code=="p124"]) %>%
+  select(-share_uco)
+
+### HERE THERE ARE STILL NAs BECAUSE OF THE INCOMPLETENESS OF THE SUA (FEW COUNTRIES)
+
+### THEN BIND ROWS TO THE USE TABLE, AND ONCE THE GAPS ARE FILLED THIS IS COMPLETE. 
 
 
 # Save -----

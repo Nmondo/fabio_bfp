@@ -88,7 +88,7 @@ c090,2655,Wine,tonnes,Crop products,0.85,crops,Alcohol
 c091,2656,Beer,tonnes,Crop products,0.95,crops,Alcohol
 c092,2657,"Beverages, Fermented",tonnes,Crop products,0.9,crops,Alcohol
 c093,2658,"Beverages, Alcoholic",tonnes,Crop products,0.8,crops,Alcohol
-c094,2659,"Alcohol, Non-Food",tonnes,Crop products,0.2,crops,Ethanol
+c095,2661,Cotton lint,tonnes,Crop products,0.1,crops,Fibre crops
 c096,866,Cattle,animals,Livestock,0,,Live animals
 c097,946,Buffaloes,animals,Livestock,0,,Live animals
 c098,976,Sheep,animals,Livestock,0,,Live animals
@@ -117,11 +117,11 @@ c120,2748,Hides and skins,tonnes,Livestock products,0,animals,"Hides, skins, woo
 c121,2745,Honey,tonnes,Livestock products,0.17,animals,Honey
 c122,2747,Silk,tonnes,Livestock products,0,animals,"Hides, skins, wool"
 c123,2960,"Fish, Seafood",tonnes,Fish,0.7,animals,Fish
-c141,97,Triticale,tonnes,NA,NA,NA,Cereals
-c142,165,Molasses,tonnes,NA,NA,NA,"Sugar, sweeteners"
-c143,265,Castor oil seeds,tonnes,NA,NA,NA,Oil crops
-c144,266,Castor oil,tonnes,NA,NA,NA,Vegetable oils
-c145,1274,Used cooking oil,tonnes,NA,NA,NA,Waste
+c141,97,Triticale,tonnes,NA,0.14,crops,Cereals
+c142,165,Molasses,tonnes,NA,0.2,crops,"Sugar, sweeteners"
+c143,265,Castor oil seeds,tonnes,NA,0.08,crops,Oil crops
+c144,266,Oil of castor beans,tonnes,NA,NA,NA,Vegetable oils
+c145,1274,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",tonnes,NA,NA,NA,Waste
 c146,NA,Biogasoline,1000 liters,NA,NA,NA,Biofuels
 c147,NA,Biodiesel,1000 liters,NA,NA,NA,Biofuels
 c148,NA,"Glycerol, crude",tonnes,NA,NA,NA,Building blocks

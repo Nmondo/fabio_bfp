@@ -477,6 +477,9 @@ cbs[, `:=`(domestic_use = na_sum(food, feed, other, tourist, seed, losses, proce
 cbs[, `:=`(use = na_sum(domestic_use, exports))]
 
 
+# Deleting ethanol
+
+cbs <- cbs[! item == "Alcohol, Non-Food"]
 
 # Save --------------------------------------------------------------------
 
