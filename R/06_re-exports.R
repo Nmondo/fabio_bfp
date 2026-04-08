@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 library("Matrix")
@@ -12,7 +13,7 @@ btd <- readRDS("data/btd_bal.rds")
 cbs <- readRDS("data/cbs_full.rds")
 
 areas <- fread("inst/regions_full.csv")[current==TRUE, code]
-items <- fread("inst/items_full_123.csv")[,item_code]
+items <- fread("inst/items_full_bcp.csv")[,item_code]
 n <- length(areas)
 
 

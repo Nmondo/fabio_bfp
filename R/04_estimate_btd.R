@@ -1,3 +1,5 @@
+setwd("/home/mmondolfo/fabio_bfp/")
+
 
 library("data.table")
 library("Matrix")
@@ -85,3 +87,4 @@ btd_est[, `:=`(value = (imp_spread + exp_spread) / 2,
 
 # Store result ------------------------------------------------------------
 saveRDS(btd_est, "data/btd_est.rds")
+

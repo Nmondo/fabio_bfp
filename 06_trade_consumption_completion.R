@@ -1095,7 +1095,7 @@ supply_final_bf %<>%
     supply_final_bf %>%
       dplyr::filter(product == "Renewable diesel") %>%
       dplyr::mutate(product = "Bionaphtha",
-                    supply  = 0.08 * (supply/1.282),
+                    supply  = 0.09 * (supply/1.282),
                     unit = "kt")
   )
 
@@ -1109,7 +1109,7 @@ supply_final_bf %<>%
     supply_final_bf %>%
       dplyr::filter(product == "Renewable diesel") %>%
       dplyr::mutate(product = "Biopropane",
-                    supply  = 0.1 * (supply/1.282),
+                    supply  = 0.08 * (supply/1.282),
                     unit = "kt")
   )
 

@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 library("Matrix")
@@ -6,7 +7,7 @@ source("R/01_tidy_functions.R")
 source("R/00_system_variables.R")
 
 regions <- fread("inst/regions_full.csv")
-items <- fread("inst/items_full_123.csv")
+items <- fread("inst/items_full_bcp.csv")
 
 
 # CBS ---------------------------------------------------------------------
@@ -71,7 +72,8 @@ cbs <- rbind(cbs, sua[!codes_sua %in% codes_cbs & item_code %in% items$item_code
 
 # we use some data from sua to replace cbs data due to mistakes in the fbs/cbs database 
 # e.g., palm kernels is mistaken for oil palm fruit in fbs, beer is wrong for later years, palmkernel oil has gaps for some countries
-sua_items <- c("Palm kernels", "Palmkernel Oil", "Palm Oil", "Oil, palm fruit", "Beer")
+sua_items <- c("Palm kernels", "Palmkernel Oil", "Palm Oil", "Oil, palm fruit", "Beer", "Molasses", "Triticale", "Oil of castor beans", "Castor oil seeds", 
+               "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils")
 cbs <- rbind(cbs[!item %in% sua_items,], sua[item %in% sua_items,])
 
 
@@ -511,36 +513,36 @@ cbs <- dplyr::bind_rows(cbs, live)
 
 
 
-# Fill Ethanol -----------------------------
-
-cat("\nAdding ethanol production data to CBS.\n")
-
-eth <- readRDS("data/tidy/eth_tidy.rds")[year %in% years]
-
-# Keep one unit and recode for merging
-eth <- eth[, `:=`(unit = NULL,
-  item = "Alcohol, Non-Food", item_code = 2659)]
-
-eth_cbs <- merge(cbs[item == "Alcohol, Non-Food", ], eth, all = TRUE,
-  by = c("area_code", "area", "year", "item", "item_code"))
-
-cat("Using EIA/IEA ethanol production values where FAO's",
-  "CBS are not (or under-) reported.\n")
-eth_cbs[production < value | is.na(production), production := value]
-eth_cbs[, value := NULL]
-
-# compute total supply
-eth_cbs[, supply := na_sum(production, imports)]
-# reduce exports where they exceed total supply (per definition not the case any more!)
-eth_cbs[(exports + other) > (supply + stock_withdrawal), exports := supply + stock_withdrawal - other]
-eth_cbs[exports < 0, exports := 0]
-# all supply is assumed to go to other uses
-eth_cbs[, other := na_sum(production, imports, -exports, -stock_addition)]
-# rebalance
-eth_cbs[, balancing := na_sum(production, imports, -exports, -stock_addition, -other)]
-
-cbs <- rbindlist(list(cbs[item_code != 2659, ], eth_cbs[year %in% years]), use.names = TRUE)
-rm(eth, eth_cbs)
+# # Fill Ethanol -----------------------------
+# 
+# cat("\nAdding ethanol production data to CBS.\n")
+# 
+# eth <- readRDS("data/tidy/eth_tidy.rds")[year %in% years]
+# 
+# # Keep one unit and recode for merging
+# eth <- eth[, `:=`(unit = NULL,
+#   item = "Alcohol, Non-Food", item_code = 2659)]
+# 
+# eth_cbs <- merge(cbs[item == "Alcohol, Non-Food", ], eth, all = TRUE,
+#   by = c("area_code", "area", "year", "item", "item_code"))
+# 
+# cat("Using EIA/IEA ethanol production values where FAO's",
+#   "CBS are not (or under-) reported.\n")
+# eth_cbs[production < value | is.na(production), production := value]
+# eth_cbs[, value := NULL]
+# 
+# # compute total supply
+# eth_cbs[, supply := na_sum(production, imports)]
+# # reduce exports where they exceed total supply (per definition not the case any more!)
+# eth_cbs[(exports + other) > (supply + stock_withdrawal), exports := supply + stock_withdrawal - other]
+# eth_cbs[exports < 0, exports := 0]
+# # all supply is assumed to go to other uses
+# eth_cbs[, other := na_sum(production, imports, -exports, -stock_addition)]
+# # rebalance
+# eth_cbs[, balancing := na_sum(production, imports, -exports, -stock_addition, -other)]
+# 
+# cbs <- rbindlist(list(cbs[item_code != 2659, ], eth_cbs[year %in% years]), use.names = TRUE)
+# rm(eth, eth_cbs)
 
 
 # Create RoW --------------------------------------------------------------
@@ -617,6 +619,9 @@ cbs[, `:=`(domestic_supply = na_sum(production, stock_withdrawal))]
 cbs[, `:=`(supply = na_sum(domestic_supply, imports))]
 cbs[, `:=`(domestic_use = na_sum(food, feed, other, tourist, seed, losses, processing, stock_addition))]
 cbs[, `:=`(use = na_sum(domestic_use, exports))]
+
+# Removing "Other" for the products corresponding to the disaggregated SUA
+cbs <- cbs[!item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
 
 
 # Save --------------------------------------------------------------------

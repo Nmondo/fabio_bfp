@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 source("R/01_tidy_functions.R")
@@ -5,7 +6,6 @@ source("R/00_system_variables.R")
 
 regions <- fread("inst/regions_full.csv")
 items <- fread("inst/items_full_123.csv")
-
 
 # Colnames ----------------------------------------------------------------
 
@@ -307,6 +307,13 @@ saveRDS(sua, "data/tidy/sua_tidy.rds")
 
 # Match SUA items to corresponding (aggregate) FABIO item
 conc <- fread("inst/conc_btd-cbs.csv")
+conc <- conc %>%
+  mutate(cbs_item = case_when(btd_item_code %in% c(97,165,265,266,1274) ~ btd_item, 
+                              TRUE ~ cbs_item),
+         cbs_item_code = case_when(btd_item_code %in% c(97,165,265,266,1274) ~ btd_item_code, 
+                                 TRUE ~ cbs_item_code),
+         tcf =  case_when(btd_item_code %in% c(97,165,265,266,1274) ~ 1, 
+                          TRUE ~ tcf))
 sua <- merge(sua, conc[,.(item_code = btd_item_code, item = btd_item, cbs_item_code, cbs_item, tcf)], 
              by = c("item_code", "item"), all.x = TRUE)
 sua <- sua[item_code != 1276]  # remove fatty acids to avoid double-counting
@@ -389,6 +396,13 @@ btd <- tcf_apply(btd, na.rm = FALSE, filler = 1, fun = `/`)
 
 # Aggregate to CBS items
 btd_conc <- fread("inst/conc_btd-cbs.csv")
+btd_conc <- btd_conc %>%
+  mutate(cbs_item = case_when(btd_item_code %in% c(97,165,265,266,1274) ~ btd_item, 
+                              TRUE ~ cbs_item),
+         cbs_item_code = case_when(btd_item_code %in% c(97,165,265,266,1274) ~ btd_item_code, 
+                                   TRUE ~ cbs_item_code),
+         tcf =  case_when(btd_item_code %in% c(97,165,265,266,1274) ~ 1, 
+                          TRUE ~ tcf))
 
 cat("Aggregating BTD items to the level of CBS.\n")
 item_match <- match(btd[["item_code"]], btd_conc[["btd_item_code"]])

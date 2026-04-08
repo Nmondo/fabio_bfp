@@ -1,9 +1,10 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 source("R/00_system_variables.R")
 
 regions <- fread("inst/regions_full.csv")
-items <- fread("inst/items_full_123.csv")
+items <- fread("inst/items_full_bcp.csv")
 
 
 # read data ------------------------------------------------------------------

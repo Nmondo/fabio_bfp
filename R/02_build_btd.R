@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 library("tidyverse")
@@ -5,7 +6,7 @@ source("R/01_tidy_functions.R")
 source("R/00_system_variables.R")
 
 regions <- fread("inst/regions_full.csv")
-items <- fread("inst/items_full.csv")
+items <- fread("inst/items_full_bcp.csv")
 
 # BACI is used for ethanol and fishery trade
 baci <- readRDS("data/tidy/baci_tidy.rds")
@@ -49,8 +50,8 @@ btd <- readRDS("data/tidy/btd_tidy.rds")
 # #
 # # fore <- rbind(rbindlist(fore_fill), fore)
 # # rm(fore_fill)
-
-
+# 
+# 
 # Ethanol -----------------------------------------------------------------
 
 cat("\nAdding ethanol trade data.\n")
@@ -87,7 +88,7 @@ eth <- dt_rename(eth, drop = FALSE,
 # Merge --------------------------------------------------------------------
 
 # btd <- rbindlist(list(btd, eth, fish), use.names = TRUE)
-btd <- rbindlist(list(btd, eth), use.names = TRUE)
+# btd <- rbindlist(list(btd, eth), use.names = TRUE)
 
 # Replace negatives with 0 (except for regions "Unspecified" and "Others (adjustments)")
 # (Not needed, because there are only negatives for these two regions.)
@@ -119,7 +120,7 @@ btd <- btd[!(comm_code %in% items[comm_group == "Live animals", comm_code] & uni
 
 setorder(btd, by = year)
 
-
+unique(btd$item_code[btd$item_code %in% items$item_code])
 
 # Store -------------------------------------------------------------------
 

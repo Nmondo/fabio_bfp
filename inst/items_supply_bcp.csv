@@ -7,7 +7,6 @@ p005,Rye production,c005,2515,Rye and products
 p006,Oat production,c006,2516,Oats
 p007,Millet production,c007,2517,Millet and products
 p008,Sorghum production,c008,2518,Sorghum and products
-p009,"Cereals production, Other",c009,2520,"Cereals, Other"
 p010,Potatoes  production,c010,2531,Potatoes and products
 p011,Cassava production,c011,2532,Cassava and products
 p012,Sweet potatoes production,c012,2533,Sweet potatoes
@@ -28,7 +27,6 @@ p026,Coconuts production,c026,2560,Coconuts - Incl Copra
 p027,Sesame seed production,c027,2561,Sesame seed
 p028,Oil palm fruit production,c028,254,"Oil, palm fruit"
 p029,Olives production,c029,2563,Olives (including preserved)
-p030,"Oilcrops production, Other",c030,2570,"Oilcrops, Other"
 p031,Tomatoes production,c031,2601,Tomatoes and products
 p032,Onions production,c032,2602,Onions
 p033,"Vegetables production, Other",c033,2605,"Vegetables, Other"
@@ -65,7 +63,6 @@ p063,Cotton production,c063,2559,Cottonseed
 p063,Cotton production,c096,2661,Cotton lint
 p064,"Sugar production, non-centrifugal",c065,2541,Sugar non-centrifugal
 p065,Sugar production,c067,2542,Sugar (Raw Equivalent)
-p066,"Sweeteners production, Other",c068,2543,"Sweeteners, Other"
 p067,Soyabean Oil extraction,c069,2571,Soyabean Oil
 p068,Groundnut Oil extraction,c070,2572,Groundnut Oil
 p069,Sunflowerseed Oil extraction,c071,2573,Sunflowerseed Oil
@@ -79,7 +76,6 @@ p075,Sesameseed Oil extraction,c077,2579,Sesameseed Oil
 p076,Olive Oil extraction,c078,2580,Olive Oil
 p077,Ricebran Oil extraction,c079,2581,Ricebran Oil
 p078,Maize Germ Oil extraction,c080,2582,Maize Germ Oil
-p079,"Oilcrops Oil extraction, Other",c081,2586,"Oilcrops Oil, Other"
 p067,Soyabean Oil extraction,c082,2590,Soyabean Cake
 p068,Groundnut Oil extraction,c083,2591,Groundnut Cake
 p069,Sunflowerseed Oil extraction,c084,2592,Sunflowerseed Cake

@@ -1,3 +1,5 @@
+setwd("/home/mmondolfo/fabio_bfp/")
+
 # Feed use ----------------------------------------------------------------
 
 # Use animal stocks

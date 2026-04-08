@@ -1,3 +1,4 @@
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 library("Matrix")
@@ -7,7 +8,6 @@ library("future.apply")
 source("R/01_tidy_functions.R")
 source("R/00_system_variables.R")
 
-
 # BTD ---------------------------------------------------------------------
 
 btd <- readRDS("data/btd_full.rds")
@@ -15,8 +15,7 @@ btd_est <- readRDS("data/btd_est.rds")
 cbs <- readRDS("data/cbs_full.rds")
 
 areas <- fread("inst/regions_current.csv")$area_code
-items <- fread("inst/items_full_123.csv")$item_code
-
+items <- fread("inst/items_full_bcp.csv")[!is.na(item_code), item_code]
 
 # Prepare for creating balanced BTD sheets --------------------------------
 
@@ -117,7 +116,7 @@ for(i in seq_along(years)) {
   # Run iterative proportional fitting per item
   results <- future_lapply(as.character(items), function(j) {
     Ipfp(
-      mapping_ras[[j]],
+      seed        = mapping_ras[[j]],
       target.list = list(1, 2),
       iter        = 50,
       tol.margins = 1e4,

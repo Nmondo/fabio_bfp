@@ -1337,6 +1337,17 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 
 
 
+
+###########################################################
+########### SELECTING BTD ROWS  ##########
+###########################################################
+
+btd_intermediate_other <- btd_intermediate_other %>% 
+  filter(product %in% c("L-LA","Glycerol, crude", "PLA", "1,4-BDO", "Sebacic acid", "Succinic acid", "ECH", "11-AA", "MEG"))
+
+
+
+
 ###########################################################
 ########### SAVING TABLES  ##########
 ###########################################################

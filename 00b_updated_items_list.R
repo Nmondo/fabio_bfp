@@ -169,14 +169,17 @@ items_use_extension <- data.frame(
 ###########################################################
 
 items_full_bcp <- bind_rows(items, items_extension) %>%
-  filter(comm_code != "c095") %>%
+  filter(comm_code != "c095",
+         ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")) %>%
   mutate(comm_group = ifelse(item == "Fats, Animals, Raw", "Waste", comm_group)) # change units for Biopropane and Bionaphtha
 
 items_supply_bcp <- bind_rows(items_supply, items_supply_extension) %>%
-  filter(proc_code != "p084")
+  filter(proc_code != "p084",
+         ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
 items_use_bcp <- bind_rows(items_use, items_use_extension) %>%
-  filter(proc_code != "c084")
+  filter(proc_code != "c084",
+         ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
 
 ###########################################################

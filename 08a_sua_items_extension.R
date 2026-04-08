@@ -24,8 +24,7 @@ sua_btd <- readRDS("data/tidy/btd_sua_tidy.rds") %>% filter(! from_code %in% are
 cbs_full <- readRDS("data/cbs_full.rds") %>% filter(! area_code %in% area_code_exclusion)
 
 setwd("/home/bruckner2/fabio")
-cbs_btd <- readRDS("data/btd_final.rds")
-
+cbs_btd <- readRDS("data/btd_final.rds") ### !!!!
 
 
 ###########################################################
@@ -48,8 +47,6 @@ sua_btd_disaggregation <- sua_btd %>%
                                item == "Castor oil seeds" ~ 2570,
                                item == "Molasses" ~ 2543,
                                item == "Triticale" ~ 2520))
-
-
 
 
 ###########################################################
@@ -78,23 +75,25 @@ rm(sua_btd,cbs_btd)
 ###########################################################
 #2. Calculating totals for later join to cbs_extension #########
 ###########################################################
-
-btd_imports <- cbs_btd_update %>%
-  summarise(
-    imports = sum(value, na.rm = TRUE),
-    .by = c(to_code, year, item_code)
-  ) %>%
-  rename(area_code = to_code)
-
-btd_exports <- cbs_btd_update %>%
-  summarise(
-    exports = sum(value, na.rm = TRUE),
-    .by = c(from_code, year, item_code)
-  ) %>%
-  rename(area_code = from_code)
-
-btd_update_wide <- btd_imports %>%
-  full_join(btd_exports, by = c("area_code", "year", "item_code"))
+# 
+# btd_imports <- cbs_btd_update %>%
+#   summarise(
+#     imports = sum(value, na.rm = TRUE),
+#     .by = c(to_code, year, item_code)
+#   ) %>%
+#   rename(area_code = to_code)
+# 
+# btd_exports <- cbs_btd_update %>%
+#   summarise(
+#     exports = sum(value, na.rm = TRUE),
+#     .by = c(from_code, year, item_code)
+#   ) %>%
+#   rename(area_code = from_code)
+# 
+# btd_update_wide <- btd_imports %>%
+#   full_join(btd_exports, by = c("area_code", "year", "item_code"))
+# 
+# 
 
 
 ######################################################################################################################
@@ -154,17 +153,18 @@ cbs_full_after_extension <- cbs_full %>% rows_update(cbs_extension, by = c("area
 
 cbs_full_after_extension <- cbs_full_after_extension %>%
   mutate(across(supply:use, ~ ifelse(.x < 0, 0, .x)),
-         supply          = rowSums(cbind(production, stock_withdrawal), na.rm = TRUE),
-         domestic_supply = rowSums(cbind(production, stock_withdrawal ,imports), na.rm = TRUE),
-         use             = rowSums(cbind(food, feed, seed, processing, losses,
-                                         other, tourist, stock_addition), na.rm = TRUE),
+         domestic_supply = rowSums(cbind(production, stock_withdrawal), na.rm = TRUE),
+         supply          = rowSums(cbind(production, stock_withdrawal ,imports), na.rm = TRUE),
          domestic_use    = rowSums(cbind(food, feed, seed, processing, losses,
+                                         other, tourist, stock_addition), na.rm = TRUE),
+         use             = rowSums(cbind(food, feed, seed, processing, losses,
                                          other, tourist, stock_addition,
-                                         exports), na.rm = TRUE)
-       )
+                                         exports), na.rm = TRUE),
+         imbalance = supply-use
+       ) # Here we have some imbalances 
 
 
-
+View(subset(cbs_full_after_extension, item %in% c("Oilcrops, Other", "Cereals, Other", "Oilcrops Oil, Other", "Sweeteners, Other")))
 
 ######################################################################################################################
 ########### CLEANING THE EXTENSION #########
@@ -205,3 +205,7 @@ saveRDS(cbs_full_after_extension, "intermediate_data/cbs_extension_full.rds")
 saveRDS(btd_final_cbs, "inputs_for_final_data/btd_final_cbs.rds")
 
 rm(list = ls())
+
+
+
+

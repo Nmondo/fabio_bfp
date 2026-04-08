@@ -3,14 +3,14 @@ library("data.table")
 source("R/00_system_variables.R")
 
 regions <- fread("inst/regions_full.csv")
-items <- fread("inst/items_full_123.csv")
+items <- fread("inst/items_full_bcp.csv")
 
 
 # Supply ------------------------------------------------------------------
 
 btd <- readRDS("data/btd_full.rds")
 cbs <- readRDS("data/cbs_full.rds")
-sup <- fread("inst/items_supply.csv")
+sup <- fread("inst/items_supply_bcp.csv")
 
 
 cat("Allocate domestic supply quantities to supplying processes.\n")
