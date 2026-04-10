@@ -135,6 +135,17 @@ us_imports <- map_dfr(2012:2024, function(yr) {
     mutate(year = yr)
 })
 
+cty_iso3c <- tibble(
+  CTY_NAME = c("CHINA", "INDIA", "BELGIUM", "CANADA", "ITALY",
+               "NETHERLANDS", "SWITZERLAND", "TAIWAN", "FRANCE",
+               "JAPAN", "UNITED KINGDOM", "GERMANY", "KOREA, SOUTH",
+               "OMAN", "SPAIN", "PAKISTAN"),
+  exporter_iso3 = c("CHN", "IND", "BEL", "CAN", "ITA",
+                    "NLD", "CHE", "TWN", "FRA",
+                    "JPN", "GBR", "DEU", "KOR",
+                    "OMN", "ESP", "PAK")
+)
+
 # --- Shared pre-cleaning ---
 us_imports_base <- us_imports %>%
   rename(commodity = I_COMMODITY, monetary_value = GEN_VAL_YR, qty = GEN_QY1_YR) %>%
@@ -404,6 +415,8 @@ bilateral_comtrade_clean <- bilateral_comtrade_base %>%
   select(-partner_code, -reporter_code, -reporter_iso, -partner_iso, -flow_desc)
 
 
+
+
 ###########################################################
 #5. BACI trade data #########
 ###########################################################
@@ -543,7 +556,6 @@ trade_all <- bind_rows(
   filter(year <= 2022) %>%
   mutate(across(c(exporter_iso3, importer_iso3),
                 ~ ifelse(is.na(.x) | !(.x %in% regions$iso3c), "ROW", .x)))
-
 
 ###########################################################
 #3. Slicing of duplicates following the hierarchy of sources  #########

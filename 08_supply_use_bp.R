@@ -35,7 +35,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 capacities_bb_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="filter")
 output_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="capacities_and_production")
-supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
+supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds")
 
 btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other_step1.rds")
 
@@ -588,7 +588,7 @@ supplychain_bb_bp <- supplychain_bb_bp %>%
     by = c("chain", "year")
   ) %>%
   mutate(exporter_iso3 = ifelse(input %in% c("Bionaphtha", "Biopropane"), "NLD", exporter_iso3)) %>%
-  rows_update(supply_final_bf_sua %>% 
+  rows_update(supply_final_bf %>% 
                 select(iso3c, year, supply, product) %>%
                 rename(input = product,
                        qty_available = supply, 
@@ -825,7 +825,6 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 
 
 
-
 ###########################################################
 ########### BTD FOR BIOPOLYMERS #########
 ###########################################################
@@ -879,7 +878,7 @@ total_trade_ex <- btd_intermediate_other %>%
 
 full_compile_bp <-
   use_bb_bp_intermediate %>% filter(!grepl("Sugar|products|Biogasoline|Castor", input),
-                                    year %in% 2012:2022) %>% #excluding crops as this is straightforward and requires FAOSTAT's trade data. Same for Biogasoline.
+                                    year %in% 2012:2022) %>% # excluding crops as this is straightforward and requires FAOSTAT's trade data. Same for Biogasoline.
   # joining "self use" (from qualitative supply chain info)
   # left_join(self_flows_bb_bp %>% select(product, input, iso3c, year, self = value), 
   #           by = c("product", "input", "iso3c", "year")) %>%
@@ -892,7 +891,7 @@ full_compile_bp <-
   # joining production of feedstock by year-country (domestic availability before imports/exports)
   left_join(supply_bb_bp %>% select(iso3c, input = product, year, output = supply),
             by = c("input","iso3c","year")) %>%
-  rows_patch(supply_final_bf_sua %>% select(iso3c, input = product, year, output = supply),
+  rows_patch(supply_final_bf %>% select(iso3c, input = product, year, output = supply),
              by = c("input","iso3c","year"),
              unmatched = "ignore") 
 
@@ -1291,7 +1290,7 @@ supply_final_bp <- supply_bb_bp %>%
   mutate(unit = "kt") %>%
   rows_upsert(complete_rows %>% select(iso3c, product, year, supply = domestic_prod, unit), by = c("iso3c","product","year"))
 
-supply_final_bf_sua <- supply_final_bf_sua %>% rows_update(full_compile_for_join %>% select(iso3c, product, year, supply = domestic_prod, unit), by = c("iso3c","product","year"), unmatched = "ignore")
+supply_final_bf <- supply_final_bf %>% rows_update(full_compile_for_join %>% select(iso3c, product, year, supply = domestic_prod, unit), by = c("iso3c","product","year"), unmatched = "ignore")
 
 
 
@@ -1358,7 +1357,7 @@ saveRDS(y_bp_complete_rows, "inputs_for_final_data/y_bp_complete_rows.rds")
 saveRDS(incomplete_rows, "inputs_for_final_data/y_bp_incomplete_rows.rds")
 saveRDS(supply_final_bp, "inputs_for_final_data/supply_final_bp.rds")
 saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step2.rds")
-saveRDS(supply_final_bf_sua, "inputs_for_final_data/supply_final_bf_sua.rds")
+saveRDS(supply_final_bf, "intermediate_data/supply_intermediate_bf.rds")
 saveRDS(use_bf_coproducts, "intermediate_data/y_bf_coproducts_initial.rds")
 saveRDS(use_bb_bp_intermediate, "inputs_for_final_data/use_final_bp.rds")
 

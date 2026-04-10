@@ -14,6 +14,17 @@ library(magrittr)
 ########### LOADING DATA #########
 ###########################################################
 
+
+setwd("/home/mmondolfo/fabio_bfp/")
+
+########### FABIO regions #########
+
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
+
+########### Consumption data (to collect consumption from the same source) #########
+
+y_own <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="y")
+
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
 
 setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
@@ -23,12 +34,6 @@ supply_fame_hvo <- readRDS("sup_fame_hvo_full.rds")
 supply_fame_hvo %<>% rename(total_supply=value)
 
 ########### Consumption data (to collect consumption from the same source) #########
-
-setwd("/home/mmondolfo/fabio_bfp/")
-
-y_own <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="y")
-
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 y_eia <- readRDS("y_eia.rds")
 y_iea <- readRDS("y_iea.rds")

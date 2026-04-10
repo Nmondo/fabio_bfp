@@ -24,12 +24,11 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### Regions #########
 
-regions <- read_csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 
-########### Final supply table #########
+########### Biofuels supply table #########
 
-
-supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds") %>%
+supply_final_bf <- readRDS("intermediate_data/supply_intermediate_bf.rds") %>%
   filter(product %in% c("Biodiesel","Renewable diesel","Biogasoline"))
 
 ########### Intermediate use table #########

@@ -26,7 +26,7 @@ y_other_bf <- readRDS("intermediate_data/y_other_bf.rds")
 y_bf_coproducts <- readRDS("intermediate_data/y_bf_coproducts_initial.rds")
 btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other_step2.rds")
 
-supply_final_bf_sua <- readRDS("inputs_for_final_data/supply_final_bf_sua.rds")
+supply_final_bf <- readRDS("inputs_for_final_data/supply_final_bf.rds")
 
 
 
@@ -64,7 +64,7 @@ total_trade_ex <- btd_intermediate_other %>%
 ########### COMPILING SUPPLY AND USE OF COPRODUCTS TO ESTIMATE NECESSARY TRADE FLOWS #########
 ###########################################################
 
-compile_bf_coproducts <- supply_final_bf_sua %>%
+compile_bf_coproducts <- supply_final_bf %>%
   filter(product %in% c("Glycerol, crude", "Bionaphtha", "Biopropane")) %>%
   select(-proc) %>%
   left_join(y_bf_coproducts %>% rename(bp_feedstock_use = domestic_use_as_input), by = c("product", "iso3c", "year")) %>%

@@ -24,6 +24,14 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
+
+setwd("/home/mmondolfo/fabio_bfp/")
+
+########### FABIO regions #########
+
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
+
+
 setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
@@ -556,7 +564,8 @@ y_total <- y_table_intermediate1 %>%
 ###############################################################################################
 
 y_wide <- y_table_intermediate1 %>%
-  filter(use %in% c("Fuel", "Non-fuel", "Total")) %>%
+  filter(use %in% c("Fuel", "Non-fuel", "Total"),
+         !is.na(value)) %>%
   mutate(y_val = case_when(
     unit == "kt" & product == "Biodiesel"                       ~ 1.136 * value,
     unit == "kt" & product %in% c("Bioethanol", "Biogasoline")  ~ 1.267 * value,
@@ -1056,6 +1065,27 @@ full_compile_balanced %>%
 
 
 
+
+###########################################################
+########### ADJUST EGYPT'S BIOGASOLINE SUPPLY BASED ON REQUIREMENTS ########### 
+###########################################################
+
+adjust_egy_biogasoline <- tibble(
+  year       = 2014:2022,
+  iso3c      = "EGY",
+  item       = "Biogasoline",
+  sup_to_add = c(25363, 41912, 22343, 51953, 53601, 52034, 68779, 68480, 60494)
+)
+
+full_compile_balanced <- full_compile_balanced %>%
+  left_join(adjust_egy_biogasoline, by = c("year", "iso3c", "product" = "item")) %>%
+  mutate(total_supply = total_supply + coalesce(sup_to_add, 0),
+         y_Non_fuel = y_Non_fuel + coalesce(sup_to_add, 0)) %>%
+  select(-sup_to_add)
+
+
+
+
 ###########################################################
 ########### MAKING FINAL SUPPLY TABLES WITH BY-PRODUCTS ########### 
 ###########################################################
@@ -1151,9 +1181,9 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 
-saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
+saveRDS(supply_final_bf, "intermediate_data/supply_intermediate_bf.rds")
 saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step1.rds")
 
 rm(list = ls())
