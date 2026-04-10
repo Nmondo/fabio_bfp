@@ -21,7 +21,7 @@ library(purrr)
 setwd("/home/mmondolfo/fabio_bfp/")
 ########### FABIO regions #########
 
-regions <- read.csv("inst/regions.csv") 
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
 EU27_countries <- subset(regions, EU27==TRUE)
 EU27_countries <- EU27_countries$iso3c
 

@@ -19,18 +19,14 @@ setwd("/home/mmondolfo/fabio_bfp/inputs_for_final_data")
 files <- c(
   "btd_final_bf.rds",
   "btd_final_bp_bf_coproducts.rds",
-  "btd_final_sua.rds",
   "supply_final_bf_sua.rds",
   "supply_final_bp.rds",
   "use_final_bf.rds",
   "use_final_bp.rds",
-  "use_final_sua.rds",
   "y_bp_complete_rows.rds",
   "y_bp_incomplete_rows.rds",
   "y_final_bf.rds",
   "y_final_bf_coproducts.rds",
-  "y_final_cbs.rds",
-  "y_final_sua.rds"
 )
 
 invisible(lapply(files, function(f) {
@@ -40,7 +36,7 @@ invisible(lapply(files, function(f) {
 ############# Loading lists of items, processes, regions ##################
 
 setwd("/home/mmondolfo/fabio_bfp/inst")
-regions <- read_csv("regions.csv")
+regions <- read_csv("regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 items_supply_bcp <- read_csv("items_supply_bcp.csv")
 items_full_bcp <- read_csv("items_full_bcp.csv")
 items_use_bcp <- read_csv("items_use_bcp.csv")
@@ -61,7 +57,7 @@ items_use_bcp <- read_csv("items_use_bcp.csv")
 ########### FORMATTING USE TABLES #########
 ###########################################################
 
-use_final_bcp <- bind_rows(use_final_bf, use_final_bp, use_final_sua) %>%
+use_final_bcp <- bind_rows(use_final_bf, use_final_bp) %>%
   # converting all liquid fuels to liters
   mutate(use = case_when(item == "Bionaphtha" ~ (1/0.71)*use,
                          item == "Biopropane" ~ (1/0.51)*use,
@@ -115,7 +111,7 @@ unique(supply_final_bcp$area[!( supply_final_bcp$area %in% regions$name)]) # che
 ########### FORMATTING FINAL DEMAND TABLES #########
 ###########################################################
 
-use_fd_final_bcp <- bind_rows(y_final_bf, y_final_bf_coproducts, y_final_sua, y_bp_complete_rows) %>%
+use_fd_final_bcp <- bind_rows(y_final_bf, y_final_bf_coproducts, y_bp_complete_rows) %>%
   mutate(across(c(fuel, non_fuel, unknown_use, food, losses, other, stock_addition, stock_withdrawal, tourist, other_industry_use), ~ case_when(item == "Bionaphtha" ~ (1/0.71)*.x,
                                                                                                                                                 item == "Biopropane" ~ (1/0.51)*.x,
                                                                                                                                                 TRUE ~ .x)),
@@ -154,7 +150,7 @@ View(use_fd_final_bcp %>% filter(item=="Biogasoline")) ## HERE WE GET NEGATIVE V
 ########### FORMATTING BTD TABLES #########
 ###########################################################
 
-btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts, btd_final_sua) %>%
+btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts) %>%
   rename(item = product) %>%
   mutate(value = case_when(item == "Bionaphtha" ~ (1/0.71)*value,
                            item == "Biopropane" ~ (1/0.51)*value,

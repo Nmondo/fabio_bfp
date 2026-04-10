@@ -6,7 +6,7 @@
 ###########################################################
 ########### Loading packages #########
 ###########################################################
-install.packages("rlang")
+
 library(readr)
 library(readxl)
 library(dplyr)
@@ -25,7 +25,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
-regions <- read.csv("inst/regions.csv") 
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
 
 ########### FAO data (non-food use) #########
 

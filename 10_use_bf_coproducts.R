@@ -16,7 +16,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
-regions <- read.csv("inst/regions.csv") 
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
 
   ############# Other ##################
 

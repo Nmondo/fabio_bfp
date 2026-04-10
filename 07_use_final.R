@@ -24,7 +24,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### Regions #########
 
-regions <- read_csv("inst/regions.csv")
+regions <- read_csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 
 ########### Final supply table #########
 

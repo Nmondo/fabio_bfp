@@ -50,13 +50,13 @@ use$comm_code <- items$comm_code[match(use$item_code, items$item_code)]
 
 # Slaughtering
 cat("Allocating live animals to slaughtering use. Applies to items:\n\t",
-  paste0(unique(use[type == "slaughtering", item]), collapse = "; "),
-  ".\n", sep = "")
+    paste0(unique(use[type == "slaughtering", item]), collapse = "; "),
+    ".\n", sep = "")
 use[type == "slaughtering", `:=`(use = processing, processing = 0)]
 # Reduce processing
 cbs <- merge(cbs, use[type == "slaughtering" & !is.na(use) & use > 0,
-  .(area_code, year, item_code, use)],
-  by = c("area_code", "year", "item_code"), all.x = TRUE)
+                      .(area_code, year, item_code, use)],
+             by = c("area_code", "year", "item_code"), all.x = TRUE)
 cbs[!is.na(use), processing := na_sum(processing, -use)]
 cbs[, use := NULL]
 
@@ -64,16 +64,16 @@ cbs[, use := NULL]
 # Crop TCF ---
 
 cat("Allocating part of the TCF crops to TCF use. Applies to items:\n\t",
-  paste0(unique(use[type == "TCF", item]), collapse = "; "),
-  ".\n", sep = "")
+    paste0(unique(use[type == "TCF", item]), collapse = "; "),
+    ".\n", sep = "")
 
 tcf_cbs <- fread("inst/tcf_cbs.csv")
 
 tcf_codes <- list(sort(unique(cbs$area_code[cbs$area_code %in% tcf_cbs$area_code])), sort(unique(tcf_cbs$item_code)),
-  sort(unique(tcf_cbs$source_code)))
+                  sort(unique(tcf_cbs$source_code)))
 Cs <- lapply(tcf_codes[[1]], function(x) {
   out <- data.table::dcast(tcf_cbs[area_code == x], item_code ~ source_code, fill = 0,
-    fun.aggregate = na_sum, value.var = "tcf")
+                           fun.aggregate = na_sum, value.var = "tcf")
   setkey(out, item_code)
   out <- as(out[, -1], "Matrix")
 })
@@ -81,8 +81,8 @@ Cs <- lapply(Cs, `dimnames<-`, list(tcf_codes[[2]], tcf_codes[[3]]))
 names(Cs) <- tcf_codes[[1]]
 
 tcf_data <- use[area_code %in% tcf_codes[[1]] &
-  (item_code %in% c(tcf_codes[[2]]) | item_code %in% tcf_codes[[3]]),
-  .(year, area_code, item_code, production, processing)]
+                  (item_code %in% c(tcf_codes[[2]]) | item_code %in% tcf_codes[[3]]),
+                .(year, area_code, item_code, production, processing)]
 tcf_data <- tcf_data[!duplicated(tcf_data), ] # Duplicates from proc_code
 setkey(tcf_data, year, area_code, item_code)
 yrs <- sort(unique(tcf_data$year))
@@ -90,21 +90,21 @@ areas <- tcf_codes[[1]]
 
 # Production in processes
 output <- tcf_data[data.table(expand.grid(year = yrs,
-  area_code = areas, item_code = tcf_codes[[2]]))]
+                                          area_code = areas, item_code = tcf_codes[[2]]))]
 output[, `:=`(value = production, production = NULL, processing = NULL)]
 dt_replace(output, is.na, 0, cols = "value")
 # output <- output[!duplicated(output), ] # Kick duplicates (from item_code)
 
 # Processing of source items
 input <- tcf_data[data.table(expand.grid(year = yrs,
-  area_code = areas, item_code = tcf_codes[[3]]))]
+                                         area_code = areas, item_code = tcf_codes[[3]]))]
 input[, `:=`(value = processing, production = NULL, processing = NULL)]
 dt_replace(input, is.na, 0, cols = "value")
 # input <- input[!duplicated(input), ] # Kick duplicates (from proc_code)
 
 # Processing per process - to fill
 results <- tcf_data[data.table(expand.grid(year = yrs, area_code = areas,
-  item_code = tcf_codes[[3]], item_code_proc = tcf_codes[[2]]))]
+                                           item_code = tcf_codes[[3]], item_code_proc = tcf_codes[[2]]))]
 setkey(results, item_code, item_code_proc)
 results[, `:=`(value = 0, production = NULL, processing = NULL)]
 
@@ -117,33 +117,33 @@ for(x in yrs) {
     # Skip if no data is available
     if(all(output_y == 0) || all(input_y == 0)) {next}
     out <- split_tcf(y = output_y, z = input_y,
-      C = Cs[[as.character(y)]], cap = TRUE)
+                     C = Cs[[as.character(y)]], cap = TRUE)
     if(length(out) == 1 && is.na(out)) {next}
     results[year == x & area_code == y &
-      item_code_proc %in% out$item_code_proc, # item_code is always ordered
-      value := out$value]
+              item_code_proc %in% out$item_code_proc, # item_code is always ordered
+            value := out$value]
   }
 }
 results[, `:=`(proc_code =
-  tcf_cbs[match(results$item_code_proc, tcf_cbs$item_code), proc_code],
-  item_code_proc = NULL)]
+                 tcf_cbs[match(results$item_code_proc, tcf_cbs$item_code), proc_code],
+               item_code_proc = NULL)]
 
 # Add to use (per item and process)
 use <- merge(use, results,
-  by = c("year", "area_code", "proc_code", "item_code"), all.x = TRUE)
+             by = c("year", "area_code", "proc_code", "item_code"), all.x = TRUE)
 use[!is.na(value), `:=`(use = value)]
 use[, value := NULL]
 
 # Subtract from cbs processing (per item)
 cbs <- merge(cbs, results[, list(value = na_sum(value)),
-  by = c("year", "area_code", "item_code")],
-  by = c("area_code", "year", "item_code"), all.x = TRUE)
+                          by = c("year", "area_code", "item_code")],
+             by = c("area_code", "year", "item_code"), all.x = TRUE)
 cbs[!is.na(value), processing := round(na_sum(processing, -value))]
 cbs[, value := NULL]
 
 
 rm(tcf_cbs, tcf_codes, tcf_data, yrs, areas, out,
-  results, Cs, input, output, input_x, output_x, input_y, output_y)
+   results, Cs, input, output, input_x, output_x, input_y, output_y)
 
 
 
@@ -299,20 +299,20 @@ underused_inputs <- rbindlist(lapply(results_list, `[[`, "underused"),  fill = T
 
 # Add process information
 flow_results[, proc_code := ifelse(out_code == 2658, "p083",
-  ifelse(out_code == 2657, "p082", ifelse(out_code == 2656, "p081", "p066")))]
+                                   ifelse(out_code == 2657, "p082", ifelse(out_code == 2656, "p081", "p066")))]
 
 # Add optimisation results to use (full detail) and cbs (item detail)
 use <- merge(use,
-  flow_results[, .(area_code, year, item_code = inp_code, type = "optim",
-    proc_code, flow = round(flow))],
-  by = c("area_code", "year", "item_code", "proc_code", "type"), all.x = TRUE)
+             flow_results[, .(area_code, year, item_code = inp_code, type = "optim",
+                              proc_code, flow = round(flow))],
+             by = c("area_code", "year", "item_code", "proc_code", "type"), all.x = TRUE)
 use[!is.na(flow) & type == "optim", use := flow]
 use[, flow := NULL]
 
 cbs <- merge(cbs,
-  flow_results[, list(flow = na_sum(flow)),
-    by = .(area_code, year, item_code = inp_code)],
-  by = c("area_code", "year", "item_code"), all.x = TRUE)
+             flow_results[, list(flow = na_sum(flow)),
+                          by = .(area_code, year, item_code = inp_code)],
+             by = c("area_code", "year", "item_code"), all.x = TRUE)
 cbs[!is.na(flow), processing := round(na_sum(processing, -flow))]
 cbs[, flow := NULL]
 
@@ -331,8 +331,8 @@ cbs[, comm_code := items$comm_code[match(cbs$item_code, items$item_code)]]
 
 # Allocation of seed -----
 use <- merge(use,
-  cbs[, .(area_code, year, item_code, type = "seedwaste", seed_use = seed)],
-  by = c("area_code", "year", "item_code", "type"), all.x = TRUE)
+             cbs[, .(area_code, year, item_code, type = "seedwaste", seed_use = seed)],
+             by = c("area_code", "year", "item_code", "type"), all.x = TRUE)
 use[!is.na(seed_use) & type == "seedwaste", use := seed_use]
 use[, seed_use := NULL]
 
@@ -349,8 +349,8 @@ source("R/08_1b_use_cbs_feed.R")
 
 # The remainder of processing use (flows into supply chains that are not further tracked in FABIO) is interpreted as a new final demand category
 use_fd <- cbs[, .(year, area_code, area, item_code, item, comm_code, 
-  food = food + processing, losses, other, 
-  stock_addition, stock_withdrawal, tourist)]
+                  food = food + processing, losses, other, 
+                  stock_addition, stock_withdrawal, tourist)]
 
 # replace Cyprus' tourist consumption data with more detailed data from SUAs
 tourist <- fread("input/Tourist_Cyprus.csv")
@@ -407,13 +407,32 @@ use[(item %like% "Cake" | item_code <= 2029) & !is.na(diff / use_io),
 use[, `:=`(diff = NULL, use_io = NULL)]
 
 
-# Delete ethanol use (NAs because the inputs have been deleted upstream) ----
+# Delete products and processes that were discarded (ethanol, "Other"...)
 
 use <- use[! proc_code %in% c("p066","p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
 
 
 
-########################################" HERE WE WANT TO JOIN USE FOR UCO 
+########################################################################################################################
+######################################## NEED TO JOIN MY USE TABLES HERE ########################################
+########################################################################################################################
+
+
+
+
+
+########################################################################################################################
+######################################## FILLING GAPS FOR THE SUA PRODUCTS WHERE RELEVANT ########################################
+########################################################################################################################
+
+use[item_code == 1274 & area == "Singapore",]
+View(use[proc == "Renewable diesel production" & area == "Singapore"])
+
+
+
+########################################################################################################################
+######################################## ESTIMATING VEGETABLE OILS USE IN UCO PRODUCTION ########################################
+########################################################################################################################
 
 # Compute Vegetable oils' food share by year-country (2012-2022)
 food_share_veg_oil <- subset(use_fd, comm_code %in% unique(use_items$comm_code[use_items$proc_code=="p124"]) & year %in% 2012:2022)
@@ -445,15 +464,38 @@ food_share_veg_oil <- food_share_veg_oil %>%
     unmatched = "ignore"
   )
 
+### HERE THERE ARE STILL NAs BECAUSE OF THE INCOMPLETENESS OF THE SUA (FEW COUNTRIES)
+
 uco_supply <- food_share_veg_oil %>%
   mutate(use = uco_supply * share_uco,
          proc_code = "p124",
          proc = sup_items$proc[sup_items$proc_code=="p124"]) %>%
-  select(-share_uco)
+  ungroup() %>%
+  select(-share_uco, -uco_supply)
 
-### HERE THERE ARE STILL NAs BECAUSE OF THE INCOMPLETENESS OF THE SUA (FEW COUNTRIES)
+use <- bind_rows(use, uco_supply)
 
-### THEN BIND ROWS TO THE USE TABLE, AND ONCE THE GAPS ARE FILLED THIS IS COMPLETE. 
+
+### Then remove these quantities from "Food" or from "Food and Other" (China, proportionally)
+
+use_fd <- use_fd %>%
+  left_join(
+    uco_supply %>% select(item_code, year, area_code, use),
+    by = c("item_code", "year", "area_code")
+  ) %>%
+  mutate(
+    other = if_else(area == "China, mainland", other - use * other / (food + other), other),
+    food  = if_else(area == "China, mainland", food  - use * food  / (food + other), max(0,food - use)) # lower bound at 0 to correct small negative values that arise in the case of Malta 2021. 
+  ) %>%
+  select(-use)
+
+
+
+
+
+
+
+
 
 
 # Save -----

@@ -24,7 +24,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ########### FABIO regions #########
 
-regions <- read.csv("inst/regions.csv")
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 
 ########### BACI trade data #########
 
@@ -37,11 +37,8 @@ baci_hs12 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs12.rds")
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-bilateral_eu1      <- read.csv("own_data/eu27_exports.csv")
-bilateral_eu2      <- read.csv("own_data/eu27_imports.csv")
-bilateral_trade_eu <- bind_rows(bilateral_eu1, bilateral_eu2)
+### Combined Eurostat API request: biofuels + biopolymers ###
 
-### API request for biopolymers ###
 url_data <- paste0(
   "https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/3.0/",
   "data/dataflow/ESTAT/ds-045409/1.0/*.*.*.*.*.*",
@@ -50,21 +47,20 @@ url_data <- paste0(
   "&c[partner]=AD,AE,AL,AM,AN,AR,AT,AU,AW,BA,BD,BE,BG,BH,BR,BY,BZ,CA,CH,CL,CN,CY,CZ,DE,DK,EE,EG,",
   "ES,FI,FR,GB,GI,GR,HK,HR,HU,ID,IE,IL,IN,IS,IT,JP,KR,KW,LA,LK,LT,LU,LV,MO,MT,MY,NL,NO,OM,PH,",
   "PK,PL,PT,QA,RO,RU,SA,SE,SG,SI,SK,SX,TH,TR,TW,UA,US,VN,XS,ZA",
-  "&c[product]=29012190,29012290,29053926,29053995,29171310,29171920,39121100,39121200",
+  "&c[product]=2207,271020,29012190,29012290,29053926,29053995,29091910,29171310,29171920,38260010,38260090,39121100,39121200",
   "&c[flow]=1,2",
-  "&c[indicators]=QUANTITY_IN_100KG",
+  "&c[indicators]=QUANTITY_IN_100KG,VALUE_IN_EUROS",
   "&c[TIME_PERIOD]=2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010",
-  "&compress=false&format=csvdata&formatVersion=1.0&lang=en&labels=both"
-)
+  "&compress=false&format=csvdata&formatVersion=1.0&lang=en&labels=both")
 
-bilateral_bp_eu <- request(url_data) |>
-  req_timeout(120) |>
-  req_retry(max_tries = 3) |>
-  req_perform() |>
-  resp_body_string() |>
+bilateral_bf_bp_eu <- request(url_data) %>%
+  req_timeout(120) %>%
+  req_retry(max_tries = 20) %>%
+  req_perform() %>%
+  resp_body_string() %>%
   read_csv(show_col_types = FALSE)
 
-bilateral_bp_eu %<>%
+bilateral_bf_bp_eu %<>%
   mutate(across(c(reporter, partner, product, indicators), ~ sub(":.*", "", .x)),
          across(c(freq, flow),                             ~ sub(".*:", "", .x))) %>%
   rename(FLOW = flow)
@@ -126,7 +122,6 @@ bilateral_comtrade <- bind_rows(raw_list)
 Sys.setenv(CENSUS_KEY = "640fd224e6aae45d5147836df7cead135cf8f1ce")
 #######################################################
 
-
 # Imports
 us_imports <- map_dfr(2012:2024, function(yr) {
   getCensus(
@@ -140,37 +135,36 @@ us_imports <- map_dfr(2012:2024, function(yr) {
     mutate(year = yr)
 })
 
-# Harmonise column names and combine
-us_imports_clean <- us_imports %>%
-  rename(commodity = I_COMMODITY, value = GEN_VAL_YR, qty = GEN_QY1_YR) %>%
-  mutate(qty   = as.numeric(qty)) %>%
-  select(-value, -time, -commodity, -CTY_CODE, -SUMMARY_LVL, -I_COMMODITY_1) %>%
+# --- Shared pre-cleaning ---
+us_imports_base <- us_imports %>%
+  rename(commodity = I_COMMODITY, monetary_value = GEN_VAL_YR, qty = GEN_QY1_YR) %>%
+  mutate(qty             = as.numeric(qty),
+         monetary_value  = as.numeric(monetary_value)) %>%
+  select(-time, -commodity, -CTY_CODE, -SUMMARY_LVL, -I_COMMODITY_1) %>%
   filter(CTY_NAME != "TOTAL FOR ALL COUNTRIES")
 
-us_imports_clean <- us_imports_clean  %>%
+# --- Quantity-only subset (existing pipeline) ---
+us_imports_clean <- us_imports_base %>%
   group_by(year, CTY_NAME) %>%
-  summarise(value   = sum(qty/1000000, na.rm = TRUE),
-            unit = "kt",
-            .groups = "drop")
-
-cty_iso3c <- tibble(
-  CTY_NAME = c("CHINA", "INDIA", "BELGIUM", "CANADA", "ITALY",
-               "NETHERLANDS", "SWITZERLAND", "TAIWAN", "FRANCE",
-               "JAPAN", "UNITED KINGDOM", "GERMANY", "KOREA, SOUTH",
-               "OMAN", "SPAIN", "PAKISTAN"),
-  exporter_iso3    = c("CHN", "IND", "BEL", "CAN", "ITA",
-               "NLD", "CHE", "TWN", "FRA",
-               "JPN", "GBR", "DEU", "KOR",
-               "OMN", "ESP", "PAK")
-)
-
-us_imports_clean <- us_imports_clean %>%
-  left_join(cty_iso3c, by = "CTY_NAME")  %>%
+  summarise(value   = sum(qty / 1000000, na.rm = TRUE),
+            unit    = "kt",
+            .groups = "drop") %>%
+  left_join(cty_iso3c, by = "CTY_NAME") %>%
   mutate(importer_iso3 = "USA",
-         product = "Sebacic acid") %>%
+         product       = "Sebacic acid") %>%
   select(-CTY_NAME)
 
-
+# --- Value subset (keeps monetary values) ---
+prices_sebacic_us <- us_imports_base %>%
+  group_by(year, CTY_NAME) %>%
+  summarise(value          = sum(qty / 1000000, na.rm = TRUE),
+            monetary_value = sum(monetary_value, na.rm = TRUE),
+            unit           = "kt",
+            .groups        = "drop") %>%
+  left_join(cty_iso3c, by = "CTY_NAME") %>%
+  mutate(importer_iso3 = "USA",
+         product       = "Sebacic acid") %>%
+  select(-CTY_NAME)
 
 
 ###########################################################
@@ -232,45 +226,52 @@ SWE_cleaned_df <- bind_rows(
 
 
 ###########################################################
-#2. Eurostat trade data #########
+#2. Eurostat trade data (biofuels + biopolymers) ##########
 ###########################################################
 
-clean_trade <- function(df) {
-  df %<>%
-    rename(year = TIME_PERIOD, value = OBS_VALUE, unit = indicators,
-           exporter_iso2 = reporter, importer_iso2 = partner) %>%
-    mutate(
-      value             = value / 10000,
-      unit              = "kt",
-      exporter_iso2_new = if_else(FLOW == "IMPORT", importer_iso2, exporter_iso2),
-      importer_iso2_new = if_else(FLOW == "IMPORT", exporter_iso2, importer_iso2),
-      across(c(exporter_iso2_new, importer_iso2_new), ~ case_when(
-        .x %in% c("AD","GI","GQ","LI","MH","VG","XK") ~ "ROW",
-        .x %in% c("AW","CW","BQ","SX")                ~ "AN",
-        .x == "UK"                                     ~ "GB",
-        .x == "EL"                                     ~ "GR",
-        TRUE                                           ~ .x
-      ))
-    ) %>%
-    select(-c(exporter_iso2, importer_iso2),
-           exporter_iso2 = exporter_iso2_new,
-           importer_iso2 = importer_iso2_new) %>%
-    filter(exporter_iso2 != "EU27_2020", importer_iso2 != "EU27_2020") %>%
-    left_join(regions %>% select(iso3c, iso2c), by = c("exporter_iso2" = "iso2c")) %>%
-    rename(exporter_iso3 = iso3c) %>%
-    left_join(regions %>% select(iso3c, iso2c), by = c("importer_iso2" = "iso2c")) %>%
-    rename(importer_iso3 = iso3c) %>%
-    filter(!is.na(exporter_iso3), !is.na(importer_iso3)) %>%
-    select(-any_of(c("STRUCTURE","STRUCTURE_ID","STRUCTURE_NAME","freq","Frequency",
-                     "PRODUCT","flow","INDICATORS","TIME_PERIOD.1","Observation.Value")))
-  df
-}
+# --- Shared cleaning (both indicators pass through) ---
+bf_bp_eu_base <- bilateral_bf_bp_eu %>%
+  rename(year = TIME_PERIOD,
+         exporter_iso2 = reporter, importer_iso2 = partner) %>%
+  mutate(
+    exporter_iso2_new = if_else(FLOW == "IMPORT", importer_iso2, exporter_iso2),
+    importer_iso2_new = if_else(FLOW == "IMPORT", exporter_iso2, importer_iso2),
+    across(c(exporter_iso2_new, importer_iso2_new), ~ case_when(
+      .x %in% c("AD","GI","GQ","LI","MH","VG","XK") ~ "ROW",
+      .x %in% c("AW","CW","BQ","SX")                ~ "AN",
+      .x == "UK"                                     ~ "GB",
+      .x == "EL"                                     ~ "GR",
+      TRUE                                           ~ .x
+    ))
+  ) %>%
+  select(-c(exporter_iso2, importer_iso2),
+         exporter_iso2 = exporter_iso2_new,
+         importer_iso2 = importer_iso2_new) %>%
+  filter(exporter_iso2 != "EU27_2020", importer_iso2 != "EU27_2020") %>%
+  left_join(regions %>% select(iso3c, iso2c), by = c("exporter_iso2" = "iso2c")) %>%
+  rename(exporter_iso3 = iso3c) %>%
+  left_join(regions %>% select(iso3c, iso2c), by = c("importer_iso2" = "iso2c")) %>%
+  rename(importer_iso3 = iso3c) %>%
+  filter(!is.na(exporter_iso3), !is.na(importer_iso3)) %>%
+  select(-any_of(c("STRUCTURE","STRUCTURE_ID","STRUCTURE_NAME","freq","Frequency",
+                   "PRODUCT","flow","INDICATORS","TIME_PERIOD.1","Observation.Value")))
 
-bilateral_trade_eu <- clean_trade(bilateral_trade_eu)
-bilateral_bp_eu    <- clean_trade(bilateral_bp_eu)
+# --- Price subset: pivot so qty and monetary value sit side by side ---
+bf_bp_eu_prices <- bf_bp_eu_base %>%
+  pivot_wider(names_from = indicators, values_from = OBS_VALUE) %>%
+  rename(qty_100kg = QUANTITY_IN_100KG, value_eur = VALUE_IN_EUROS) %>%
+  select(-DATAFLOW, -`LAST UPDATE`, -exporter_iso2, -importer_iso2)
+
+# --- Quantity-only subset (existing pipeline) ---
+bilateral_bf_bp_eu <- bf_bp_eu_base %>%
+  filter(indicators == "QUANTITY_IN_100KG") %>%
+  mutate(value = OBS_VALUE / 10000, unit = "kt") %>%
+  select(-OBS_VALUE, -indicators)
+
+
 
 ##### Blend share estimation #####
-estimated_blend_by_exporter <- bilateral_trade_eu %>%
+estimated_blend_by_exporter <- bilateral_bf_bp_eu %>%
   filter(product %in% c(38260010, 38260090)) %>%
   group_by(year, exporter_iso3) %>%
   summarise(
@@ -286,44 +287,36 @@ est_blend_avg <- estimated_blend_by_exporter %>%
   group_by(year) %>%
   summarize(avg = sum(tot_3826 * est_blend) / sum(tot_3826), .groups = "drop")
 
-#### Aggregate Eurostat biofuels by named product (keeping both IMPORT and EXPORT) ####
-bilateral_trade_eu %<>%
+#### Aggregate by named product (biofuels + biopolymers together) ####
+bilateral_bf_bp_eu %<>%
   mutate(
     value = case_when(
-      product == 2207     ~ value,
-    # product == 15180095 ~ value,
+      product == 2207                            ~ value,
+      product == 271020                          ~ 0.05 * value,
       product == 29091910 ~ 0.45 * value,
-      product == 271020   ~ 0.05 * value,
-      product == 38260010 ~ 0.99 * value,
-      product == 38260090 ~ 0.95 * value
+      product == 38260010                        ~ 0.99 * value,
+      product == 38260090                        ~ 0.95 * value,
+      TRUE                                       ~ value
     ),
     product = case_when(
-      product %in% c(271020,38260010,38260090) ~ "Biodiesel",
-      product == 2207                          ~ "Bioethanol",
+      product %in% c(271020, 38260010, 38260090) ~ "Biodiesel",
+      product == 2207                            ~ "Bioethanol",
+      product == 29171310                        ~ "Sebacic acid",
+      product == 29171920                        ~ "Succinic acid",
+      product == 29053926                        ~ "1,4-butanediol",
+      product == 29053995                        ~ "1,3-propanediol",
+      product == 29012190                        ~ "Ethylene",
+      product == 29012290                        ~ "Propylene",
       product == 29091910                      ~ "ETBE",
-   #  product == 15180095                      ~ "Used cooking oil"
+      product %in% c(39121100, 39121200)         ~ "Cellulose acetate"
     )
   ) %>%
   group_by(exporter_iso3, importer_iso3, product, FLOW, year) %>%
   summarize(value = sum(value, na.rm = TRUE), unit = first(unit), source = "Eurostat",
             .groups = "drop") %>%
-  filter(!is.na(value))
+  filter(!is.na(value), !is.na(product))
 
-#### Aggregate Eurostat biopolymers (keeping both IMPORT and EXPORT) ####
-bilateral_bp_eu %<>%
-  mutate(product = case_when(
-    product == 29171310               ~ "Sebacic acid",
-    product == 29171920               ~ "Succinic acid",
-    product == 29053926               ~ "1,4-butanediol",
-    product == 29053995               ~ "1,3-propanediol",
-    product == 29012190               ~ "Ethylene",
-    product == 29012290               ~ "Propylene",
-    product %in% c(39121100,39121200) ~ "Cellulose acetate"
-  )) %>%
-  group_by(exporter_iso3, importer_iso3, product, FLOW, year) %>%
-  summarize(value = sum(value, na.rm = TRUE), unit = first(unit), source = "Eurostat",
-            .groups = "drop") %>%
-  filter(!is.na(value))
+
 
 
 ###########################################################
@@ -369,10 +362,12 @@ total_trade <- bind_rows(total_im, total_ex) %>% bind_rows(SWE_cleaned_df)
 #4. ComTrade data #########
 ###########################################################
 
-bilateral_comtrade_clean <- bilateral_comtrade %>%
+# --- Step 1: shared cleaning (ISO mapping, ROW recoding, filtering) ---
+bilateral_comtrade_base <- bilateral_comtrade %>%
   select(-c(type_code:ref_month, reporter_desc, flow_code, partner_desc,
             partner2code:is_original_classification, cmd_desc:qty_unit_code,
-            is_qty_estimated:is_aggregate)) %>%
+            is_qty_estimated:gross_wgt, is_gross_wgt_estimated,
+            cifvalue, fobvalue, legacy_estimation_flag:is_aggregate)) %>%
   mutate(
     importer_iso3 = case_when(
       flow_desc == "Export" ~ partner_iso, flow_desc == "Import" ~ reporter_iso, TRUE ~ reporter_iso),
@@ -385,16 +380,26 @@ bilateral_comtrade_clean <- bilateral_comtrade %>%
       exporter_iso3 %in% c("AND","BMU","BTN","GRL","COM","PLW","TON","PSE","SYC","CYM","MSR") ~ "ROW",
       exporter_iso3 == "ABW" ~ "ANT", TRUE ~ exporter_iso3)
   ) %>%
-  rename(year = period, value = qty, unit = qty_unit_abbr, product = cmd_code) %>%
-  filter(if_all(c(importer_iso3, exporter_iso3), ~ .x %in% c(iso_regions, "ROW")), year <= 2022) %>%
+  rename(year = period, product = cmd_code) %>%
+  mutate(product = as.integer(product), year = as.integer(year)) %>%
+  filter(if_all(c(importer_iso3, exporter_iso3), ~ .x %in% c(iso_regions, "ROW")), year <= 2022)
+
+# --- Step 2a: prices subset (both monetary and physical, no rescaling) ---
+prices_comtrade <- bilateral_comtrade_base %>%
+  rename(qty = qty, value_usd = primary_value, unit = qty_unit_abbr, FLOW = flow_desc) %>%
+  mutate(source = "ComTrade") %>%
+  select(-partner_code, -reporter_code, -reporter_iso, -partner_iso)
+
+# --- Step 2b: quantity-only pipeline (existing behaviour) ---
+bilateral_comtrade_clean <- bilateral_comtrade_base %>%
+  select(-primary_value) %>%
+  rename(value = qty, unit = qty_unit_abbr) %>%
   mutate(
     value     = value / 1000000,
-    product   = as.integer(product),
-    year      = as.integer(year),
     unit      = "kt",
     est_blend = ifelse(product == 271020, 0.05, NA),
     source    = "ComTrade",
-    FLOW      = flow_desc   # preserve Import/Export label for prioritization
+    FLOW      = flow_desc
   ) %>%
   select(-partner_code, -reporter_code, -reporter_iso, -partner_iso, -flow_desc)
 
@@ -405,8 +410,10 @@ bilateral_comtrade_clean <- bilateral_comtrade %>%
 
 regions_temp <- regions %>%
   mutate(baci = case_when(
-    code == 999    ~ 999, iso3c == "TWN" ~ 490,
-    iso3c == "PRI" ~ 630, iso3c == "SWZ" ~ 748, TRUE ~ baci))
+    code == 999    ~ 999, 
+    baci == 380 ~ 381, # correcting Italy
+    baci == 710 ~ 711, # correcting South Africa
+    TRUE ~ baci))
 
 clean_baci <- function(df) {
   df %>%
@@ -416,25 +423,44 @@ clean_baci <- function(df) {
       .x %in% c(531,533,534,535) ~ 530,
       !(.x %in% baci_regions) ~ 999, TRUE ~ .x))) %>%
     group_by(t, i, j, k) %>%
-    summarize(q = sum(q) / 1000, unit = "kt", .groups = "drop") %>%
-    rename(year = t, product = k, exporter = i, importer = j, value = q)
+    summarize(q = sum(q) / 1000, v = sum(v) / 1000, unit = "kt", .groups = "drop")
 }
 
-baci_hs07_clean <- clean_baci(baci_hs07) %>%
-  filter(product %in% c(220710,220720,290919,382490) & year %in% 2010:2011)
-baci_hs12_clean <- clean_baci(baci_hs12) %>%
-  filter(product %in% c(220710,220720,271019,271020,290919,382600) & year %in% 2012:2022)
+# --- Biofuels: HS07 ---
+baci_hs07_base <- clean_baci(baci_hs07) %>%
+  filter(k %in% c(220710,220720,290919,382490) & t %in% 2010:2011)
 
-baci_hs07_clean %<>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("exporter" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("importer" = "baci")) %>% rename(importer_iso3 = iso3c) %>%
+baci_hs07_base %<>%
+  left_join(regions_temp %>% select(iso3c, baci), by = c("i" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
+  left_join(regions_temp %>% select(iso3c, baci), by = c("j" = "baci")) %>% rename(importer_iso3 = iso3c)
+
+prices_baci_hs07 <- baci_hs07_base %>%
+  rename(year = t, product = k, exporter = i, importer = j, qty = q, value_kusd = v)
+
+baci_hs07_clean <- baci_hs07_base %>%
+  select(-v) %>%
+  rename(year = t, product = k, exporter = i, importer = j, value = q)
+
+baci_hs07_clean <- baci_hs07_clean %>% 
   mutate(est_blend = case_when(product == 382490 ~ est_blend_avg$avg[est_blend_avg$year==2012],
-                               TRUE ~ NA),
-         source = "BACI")
+                                                                    TRUE ~ NA),
+                                              source = "BACI")
 
-baci_hs12_clean %<>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("exporter" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("importer" = "baci")) %>% rename(importer_iso3 = iso3c)
+# --- Biofuels: HS12 ---
+
+baci_hs12_base <- clean_baci(baci_hs12) %>%
+  filter(k %in% c(220710,220720,271019,271020,290919,382600) & t %in% 2012:2022)
+
+baci_hs12_base %<>%
+  left_join(regions_temp %>% select(iso3c, baci), by = c("i" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
+  left_join(regions_temp %>% select(iso3c, baci), by = c("j" = "baci")) %>% rename(importer_iso3 = iso3c)
+
+prices_baci_hs12 <- baci_hs12_base %>%
+  rename(year = t, product = k, exporter = i, importer = j, qty = q, value_kusd = v)
+
+baci_hs12_clean <- baci_hs12_base %>%
+  select(-v) %>%
+  rename(year = t, product = k, exporter = i, importer = j, value = q)
 
 baci_hs12_clean %<>%
   left_join(estimated_blend_by_exporter %>% select(year, exporter_iso3, est_blend), by = c("exporter_iso3","year")) %>%
@@ -501,9 +527,7 @@ baci_comtrade_named <- bind_rows(baci_hs12_clean, baci_hs07_clean,
 #   7 = ComTrade Export
 
 trade_all <- bind_rows(
-  bilateral_trade_eu %>%
-    mutate(source_priority = case_when(FLOW == "IMPORT" ~ 2L, TRUE ~ 4L)),
-  bilateral_bp_eu %>%
+  bilateral_bf_bp_eu %>%
     mutate(source_priority = case_when(FLOW == "IMPORT" ~ 2L, TRUE ~ 4L)),
   bilateral_trade_own %>%
     mutate(source_priority = case_when(FLOW == "Imports" ~ 1L, TRUE ~ 3L)),
@@ -517,7 +541,8 @@ trade_all <- bind_rows(
     mutate(source_priority = 0)
 ) %>%
   filter(year <= 2022) %>%
-  mutate(across(c(exporter_iso3, importer_iso3), ~ ifelse(is.na(.x) | !(.x %in% regions$iso3c), "ROW", .x)))
+  mutate(across(c(exporter_iso3, importer_iso3),
+                ~ ifelse(is.na(.x) | !(.x %in% regions$iso3c), "ROW", .x)))
 
 
 ###########################################################
@@ -539,16 +564,167 @@ btd_excluded <- trade_all %>%
 
 
 
+
 ###########################################################
-########### WRITING TRADE DATA TABLES #########
+########### DERIVING PRICES #########
+###########################################################
+
+###########################################################
+#1. Collecting yearly exchange rate EUR-USD to convert Eurostat prices to USD #########
+###########################################################
+
+eur_usd <- request("https://data-api.ecb.europa.eu/service/data/EXR/A.USD.EUR.SP00.A?format=csvdata") %>%
+  req_perform() %>%
+  resp_body_string() %>%
+  read_csv(show_col_types = FALSE) %>%
+  transmute(year = as.integer(TIME_PERIOD), eur_usd = OBS_VALUE) %>%
+  filter(year %in% 2010:2022)
+
+
+###########################################################
+#2. Cleaning #########
+###########################################################
+
+bf_bp_eu_prices$product <- as.integer(bf_bp_eu_prices$product)
+bf_bp_eu_prices <- bf_bp_eu_prices %>%
+  mutate(product = case_when(
+  product %in% c(271020, 38260010, 38260090) ~ "Biodiesel",
+  product == 2207                            ~ "Bioethanol",
+  product == 29171310                        ~ "Sebacic acid",
+  product == 29171920                        ~ "Succinic acid",
+  product == 29053926                        ~ "1,4-butanediol",
+  product == 29053995                        ~ "1,3-propanediol",
+  product == 29012190                        ~ "Ethylene",
+  product == 29012290                        ~ "Propylene",
+  product == 29091910                      ~ "ETBE",
+  product %in% c(39121100, 39121200)         ~ "Cellulose acetate"
+))
+
+str(prices_comtrade)
+prices_comtrade <- prices_comtrade %>% 
+  mutate(product = case_when(
+    product == 152000                      ~ "Glycerol, crude",
+    product %in% c(271020, 382600, 382490) ~ "Biodiesel",
+    product %in% c(220710, 220720)         ~ "Bioethanol",
+    product == 290531                      ~ "MEG",
+    product == 290919                      ~ "ETBE",
+    product == 291030                      ~ "Epichlorohydrin",
+    product == 291811                      ~ "Lactic acid",
+    product == 390770                      ~ "Polylactic acid",
+    product %in% c(391211, 391212)         ~ "Cellulose acetate"
+  ))
+
+prices_baci_hs12 <- prices_baci_hs12 %>% 
+  mutate(product = case_when(
+    product %in% c(271020, 382600, 382490) ~ "Biodiesel",
+    product %in% c(220710, 220720)         ~ "Bioethanol",
+    product == 290919                      ~ "ETBE",
+  ))
+
+str(bf_bp_eu_prices)
+str(prices_comtrade)
+str(prices_baci_hs12)
+str(prices_sebacic_us)
+
+###########################################################
+#3. Harmonizing datasets for bind #########
+###########################################################
+
+# --- Eurostat ---
+bf_bp_eu_prices <- bf_bp_eu_prices %>%
+  rename(qty = qty_100kg, value = value_eur) %>%
+  mutate(qty = qty / 10, unit_qty = "t", source = "Eurostat") %>%
+  left_join(eur_usd, by = "year") %>%
+  mutate(value = value * eur_usd, unit_value = "USD") %>%
+  select(year, product, unit_qty, unit_value, qty, value,
+         importer_iso3, exporter_iso3, source)
+
+# --- BACI HS12 ---
+prices_baci_hs12 <- prices_baci_hs12 %>%
+  rename(value = value_kusd) %>%
+  mutate(qty        = qty,
+         value      = value * 1000,
+         unit_qty   = "t",
+         unit_value = "USD",
+         source     = "BACI") %>%
+  select(year, product, unit_qty, unit_value, qty, value,
+         importer_iso3, exporter_iso3, source)
+
+# --- ComTrade ---
+prices_comtrade <- prices_comtrade %>%
+  rename(value = value_usd, unit_qty = unit) %>%
+  mutate(qty        = qty / 1000,
+         unit_qty   = "t",
+         unit_value = "USD") %>%
+  select(year, product, unit_qty, unit_value, qty, value,
+         importer_iso3, exporter_iso3, source)
+
+# --- US Census (Sebacic acid) ---
+prices_sebacic_us <- prices_sebacic_us %>%
+  rename(qty = value, value = monetary_value, unit_qty = unit) %>%
+  mutate(qty        = qty * 1000,
+         unit_qty   = "t",
+         unit_value = "USD",
+         source     = "US Census") %>%
+  select(year, product, unit_qty, unit_value, qty, value,
+         importer_iso3, exporter_iso3, source)
+
+###########################################################
+#4. Binding and calculating average exporter prices by product-year #########
+###########################################################
+
+prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_sebacic_us) %>%
+  filter(! product %in% c("MEG", "1,3-propanediol"),
+         ! is.na(value),
+         ! is.na(qty),
+         qty > 10,
+         value > 100,
+         year %in% 2012:2022) %>%
+mutate(unit_price = value / qty) %>%
+  group_by(year, product) %>%
+  mutate(mean_price = mean(unit_price, na.rm = TRUE),
+         sd_price   = sd(unit_price, na.rm = TRUE)) %>%
+  filter(unit_price >= mean_price - sd_price,
+         unit_price <= mean_price + sd_price) %>%
+  ungroup() %>%
+  mutate(product = ifelse(product %in% c("Bioethanol", "ETBE"), "Biogasoline", product)) %>%
+  group_by(year, product, exporter_iso3) %>%
+  summarise(qty   = sum(qty),
+            value = sum(value),
+            .groups = "drop") %>%
+  mutate(price = value / qty)
+
+caps <- prices %>%
+  group_by(product) %>%
+  summarise(
+    price_max = max(price, na.rm = TRUE),
+    price_q95 = quantile(price, .95, na.rm = TRUE),
+    price_q90 = quantile(price, .90, na.rm = TRUE),
+    price_q80 = quantile(price, .80, na.rm = TRUE),
+    price_q50 = quantile(price, .50, na.rm = TRUE),
+    price_q20 = quantile(price, .20, na.rm = TRUE),
+    price_q10 = quantile(price, .10, na.rm = TRUE),
+    price_q05 = quantile(price, .05, na.rm = TRUE),
+    price_min = min(price, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+prices <- left_join(prices, caps, by = "product")
+
+
+###########################################################
+########### WRITING DATA TABLES #########
 ###########################################################
 
 setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
 
+# Trade 
 saveRDS(total_trade,   "btd_total.rds")
 saveRDS(btd,           "btd_intermediate.rds")
 saveRDS(btd_excluded,  "btd_excluded_flows.rds")
 
+# Prices
+saveRDS(prices, "prices.rds")
 
 # Removing temporary objects
 
