@@ -161,3 +161,18 @@ btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts) %>%
 
 # rm(list = ls())
 
+
+dir_path <- "/home/mmondolfo/fabio_bfp/"
+
+# List all files in the directory
+files <- list.files(dir_path, full.names = FALSE)
+
+# Identify files whose name starts with 01–10
+to_rename <- files[grepl("^(0[1-9]|10)", files)]
+
+# Build old and new full paths
+old_paths <- file.path(dir_path, to_rename)
+new_paths <- file.path(paste0(dir_path,"R/"), paste0("07_", to_rename))
+
+# Rename
+mapply(file.rename, old_paths, new_paths)
