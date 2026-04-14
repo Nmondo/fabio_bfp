@@ -1038,6 +1038,23 @@ biogasoline_agg_p2 <- full_compile_balanced %>%
   ) %>%
   select(-.apparent, -.total_y)
 
+biogasoline_agg_p2 <- biogasoline_agg_p2 %>%
+  mutate(
+    .supply_neg  = pmin(total_supply, 0),          # the negative portion (≤ 0)
+    total_supply = pmax(total_supply, 0),           # clamp to 0
+    
+    # Apparent supply increases by |supply_neg|, so use must too
+    .y_total     = y_Fuel + y_Non_fuel,
+    y_Fuel       = y_Fuel     - ifelse(.y_total != 0,
+                                       .supply_neg * y_Fuel     / .y_total,
+                                       0),
+    y_Non_fuel   = y_Non_fuel - ifelse(.y_total != 0,
+                                       .supply_neg * y_Non_fuel / .y_total,
+                                       .supply_neg),  # fallback: absorb into y_Non_fuel
+    y            = y_Fuel + y_Non_fuel
+  ) %>%
+  select(-.supply_neg, -.y_total)
+
 full_compile_balanced <- full_compile_balanced %>%
   filter(!product %in% c("Bioethanol", "ETBE")) %>%
   bind_rows(biogasoline_agg_p2) %>%
@@ -1074,7 +1091,7 @@ adjust_egy_biogasoline <- tibble(
   year       = 2014:2022,
   iso3c      = "EGY",
   item       = "Biogasoline",
-  sup_to_add = c(25363, 41912, 22343, 51953, 53601, 52034, 68779, 68480, 60494)
+  sup_to_add = c(25.363, 41.912, 22.343, 51.953, 53.601, 52.034, 68.779, 68.480, 60.494)
 )
 
 full_compile_balanced <- full_compile_balanced %>%
@@ -1183,7 +1200,7 @@ dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 
 saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
-saveRDS(supply_final_bf, "intermediate_data/supply_intermediate_bf.rds")
+saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step1.rds")
 
 rm(list = ls())

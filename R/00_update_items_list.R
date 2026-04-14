@@ -167,6 +167,7 @@ items_use_extension <- data.frame(
 ########### JOINING #########
 ###########################################################
 
+# List of items
 items_full_bcp <- bind_rows(items, items_extension) %>%
   filter(comm_code != "c094",
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")) %>%
@@ -178,16 +179,54 @@ items_full_bcp <- bind_rows(items, items_extension) %>%
          feedtype = case_when(item %in% c("Triticale","Molasses","Castor oil seeds") ~ "crops",
                              TRUE ~ feedtype))
 
+# List of items supplied by process
 items_supply_bcp <- bind_rows(items_supply, items_supply_extension) %>%
   filter(! proc_code %in% c("p079","p084"),
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
+# List of items used by process
+triticale_codes <- bind_rows(items_use, items_use_extension) %>%
+  filter(item == "Triticale") %>%
+  distinct(item, item_code, comm_code)
+
+molasses_codes <- bind_rows(items_use, items_use_extension) %>%
+  filter(item == "Molasses") %>%
+  distinct(item, item_code, comm_code)
+
+castor_oil_codes <- bind_rows(items_use, items_use_extension) %>%
+  filter(item == "Oil of castor beans") %>%
+  distinct(item, item_code, comm_code)
+
+chemmod_oil_codes <- bind_rows(items_use, items_use_extension) %>%
+  filter(item == "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils") %>%
+  distinct(item, item_code, comm_code)
+
+castor_seed_codes <- bind_rows(items_use, items_use_extension) %>%
+  filter(item == "Castor oil seeds") %>%
+  distinct(item, item_code, comm_code)
+
 items_use_bcp <- bind_rows(items_use, items_use_extension) %>%
+  bind_rows(
+    filter(., item == "Cereals, Other") %>%
+      select(-item, -item_code, -comm_code) %>%
+      bind_cols(triticale_codes),
+    filter(., item == "Sweeteners, Other") %>%
+      select(-item, -item_code, -comm_code) %>%
+      bind_cols(molasses_codes),
+    filter(., item == "Oilcrops Oil, Other") %>%
+      select(-item, -item_code, -comm_code) %>%
+      bind_cols(castor_oil_codes),
+    filter(., item == "Oilcrops Oil, Other") %>%
+      select(-item, -item_code, -comm_code) %>%
+      bind_cols(chemmod_oil_codes),
+    filter(., item == "Oilcrops, Other") %>%
+      select(-item, -item_code, -comm_code) %>%
+      bind_cols(castor_seed_codes)
+  ) %>%
   filter(! proc_code %in% c("p066","p079","p084"),
          ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other"))
 
 # Adding vegetable oil use in the Used cooking oil collection process
-
 proc_p124 <- items_supply_bcp %>%
   filter(proc_code == "p124") %>%
   pull(proc) %>%

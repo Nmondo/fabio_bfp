@@ -724,6 +724,11 @@ caps <- prices %>%
 prices <- left_join(prices, caps, by = "product")
 
 
+setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+
+btd_intermediate <- readRDS("btd_intermediate.rds")
+
+
 ###########################################################
 ########### WRITING DATA TABLES #########
 ###########################################################
@@ -741,3 +746,4 @@ saveRDS(prices, "prices.rds")
 # Removing temporary objects
 
 rm(list = ls())
+

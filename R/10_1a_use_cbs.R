@@ -9,7 +9,7 @@ library("quadprog")
 source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 
-cbs <- readRDS("data/cbs_full.rds")
+cbs <- readRDS("data/cbs_sua_full.rds")
 sup <- readRDS("data/sup.rds")
 items <- fread("inst/items_full_bcp.csv")
 use_items <- fread("inst/items_use_bcp.csv")
@@ -269,7 +269,7 @@ scenarios <- CJ(area_code = regions$area_code, year = years)
 scenarios <- merge(scenarios, regions[, .(iso3c, area, area_code)], by = "area_code")
 
 # Load solver function
-source("R/08_solver_functions.R")
+source("R/10_solver_functions.R")
 
 # Run optimization -----
 results_list <- mclapply(1:nrow(scenarios), function(i) {
@@ -340,7 +340,7 @@ use[, seed_use := NULL]
 
 
 # Feed use ----------------------------------------------------------------
-source("R/08_1b_use_cbs_feed.R")
+source("R/10_1b_use_cbs_feed.R")
 
 
 
@@ -413,22 +413,6 @@ use <- use[! proc_code %in% c("p066","p079","p084") & ! item %in% c("Oilcrops, O
 
 
 
-########################################################################################################################
-######################################## NEED TO JOIN MY USE TABLES HERE ########################################
-########################################################################################################################
-
-
-
-
-
-########################################################################################################################
-######################################## FILLING GAPS FOR THE SUA PRODUCTS WHERE RELEVANT ########################################
-########################################################################################################################
-
-use[item_code == 1274 & area == "Singapore",]
-View(use[proc == "Renewable diesel production" & area == "Singapore"])
-
-
 
 ########################################################################################################################
 ######################################## ESTIMATING VEGETABLE OILS USE IN UCO PRODUCTION ########################################
@@ -484,23 +468,19 @@ use_fd <- use_fd %>%
     by = c("item_code", "year", "area_code")
   ) %>%
   mutate(
-    other = if_else(area == "China, mainland", other - use * other / (food + other), other),
-    food  = if_else(area == "China, mainland", food  - use * food  / (food + other), max(0,food - use)) # lower bound at 0 to correct small negative values that arise in the case of Malta 2021. 
+    use   = replace_na(use, 0),
+    div   = if_else(food + other == 0, NA_real_, food + other),
+    other = if_else(area == "China, mainland", other - use * other / div, other),
+    food  = if_else(area == "China, mainland", food  - use * food  / div, pmax(0, food - use))
   ) %>%
-  select(-use)
-
-
-
-
-
-
-
-
-
+  select(-use, -div)
 
 # Save -----
+
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(cbs, "data/cbs_final.rds")
 saveRDS(use, "data/use_final.rds")
 saveRDS(use_fd, "data/use_fd_final.rds")
 saveRDS(sup, "data/sup_final.rds")
+

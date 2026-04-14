@@ -2,6 +2,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 library("Matrix")
+library(dplyr)
 library("tidyverse")
 source("R/01_tidy_functions.R")
 source("R/00_system_variables.R")
@@ -10,12 +11,12 @@ source("R/00_system_variables.R")
 # Read data ---------------------------------------------------------------------
 
 btd <- readRDS("data/btd_bal.rds")
+btd_full <- readRDS("data/btd_full.rds") # exception for direct integration of btd for SUA items in missing SUA countries.
 cbs <- readRDS("data/cbs_full.rds")
 
 areas <- fread("inst/regions_full.csv")[current==TRUE, code]
 items <- fread("inst/items_full_bcp.csv")[!is.na(item_code), item_code]
 n <- length(areas)
-
 
 # Prepare reallocation of re-exports --------------------------------------
 # Create a structure to map importers to exporters per item (+ targets)
@@ -161,12 +162,25 @@ sup_shares <- lapply(names(sup_shares), function(y) {
 btd_final[, value := pmax(0, value)]
 sup_shares[, value := pmax(0, value)]
 # Add commodity codes
-items <- fread("inst/items_full_123.csv")
+items <- fread("inst/items_full_bcp.csv")
 btd_final[, comm_code := items$comm_code[match(btd_final$item_code, items$item_code)]]
 sup_shares[, comm_code := items$comm_code[match(sup_shares$item_code, items$item_code)]]
 
+
+
+# Missing SUA extension countries -----------------------------------------------
+missing_sua_area_code <- c(26, 29, 37, 39, 53, 55, 110, 133, 151, 177, 178, 200, 201, 217, 276, 277)
+btd_join <- subset(btd_full, item_code %in% c(97, 165, 265, 266, 1274) & 
+                     (from_code %in% missing_sua_area_code | to_code %in% missing_sua_area_code)) %>%
+  filter(unit == "tonnes") %>%
+  select(from_code, to_code, value, year, item_code, comm_code)
+
+btd_final <- bind_rows(btd_final, btd_join)
+ 
 
 # Store the balanced sheets -----------------------------------------------
 saveRDS(btd_final, "data/btd_final.rds")
 saveRDS(sup_shares, "data/sup_shares.rds")
 
+rm(list = ls())
+gc()

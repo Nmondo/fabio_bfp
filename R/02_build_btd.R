@@ -1,4 +1,5 @@
 setwd("/home/mmondolfo/fabio_bfp/")
+btd_full_tidy <- readRDS("data/tidy/btd_full_tidy.rds")
 
 library("data.table")
 library("tidyverse")
@@ -125,3 +126,4 @@ unique(btd$item_code[btd$item_code %in% items$item_code])
 # Store -------------------------------------------------------------------
 
 saveRDS(btd, "data/tidy/btd_full_tidy.rds")
+

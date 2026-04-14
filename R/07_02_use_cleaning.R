@@ -29,8 +29,6 @@ regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter
 
 ########### FAO data (non-food use) #########
 
-setwd("/home/mmondolfo/fabio_bfp/fabio_data_local")
-
 cbs_full <- readRDS("data/cbs_full.rds")
 
 ############# Supply data from own collection ##################

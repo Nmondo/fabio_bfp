@@ -21,8 +21,6 @@ items_supply_bcp <- read.csv("inst/items_supply_bcp.csv")
 
 ########### FAO data (non-food use) #########
 
-setwd("/home/mmondolfo/fabio_bfp/fabio_data_local")
-
 cbs_full <- readRDS("data/cbs_full.rds")
 tcf_sua_final <- readRDS("data/sua/tcf_sua_final.rds")
 
@@ -30,8 +28,6 @@ tcf_sua_final <- readRDS("data/sua/tcf_sua_final.rds")
 ############# Supply data from own collection ##################
 
 #### Here unit is always kilotonnes unless specified. 
-
-setwd("/home/mmondolfo/fabio_bfp/")
 
 capacities_bb_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="filter")
 output_bp <- read_excel("own_data/Supply_BB_BP_report.xlsx",sheet="capacities_and_production")

@@ -10,8 +10,14 @@ items <- fread("inst/items_full_bcp.csv")
 # Supply ------------------------------------------------------------------
 
 btd <- readRDS("data/btd_full.rds")
-cbs <- readRDS("data/cbs_full.rds")
+cbs <- readRDS("data/cbs_sua_full.rds")
 sup <- fread("inst/items_supply_bcp.csv")
+
+
+# BCP supply and btd ------------------------------------------------------------------
+
+btd_bcp <- readRDS("data/btd_final_bcp.rds")
+sup_bcp <- readRDS("data/sup_final_bcp.rds")
 
 
 cat("Allocate domestic supply quantities to supplying processes.\n")
@@ -227,9 +233,10 @@ sup[item == "Milk - Excluding Butter", price := ifelse(!is.na(milk),
   milk, milk_avg)]
 sup[, `:=`(milk = NULL, milk_avg = NULL)]
 
-# Delete Ethanol from current CBS
+# Delete Ethanol from current CBS ---------------------------------------------
 
 sup <- sup[! proc_code %in% c("p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
+
 
 
 # Store results -----------------------------------------------------------

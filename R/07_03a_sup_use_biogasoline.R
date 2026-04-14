@@ -24,7 +24,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
 EU27_countries <- subset(regions, EU27==TRUE)
 EU27_countries <- EU27_countries$iso3c
-
+years <- as.character(2012:2022)
 
 ########### Pre-cleaned supply & use data #########
 

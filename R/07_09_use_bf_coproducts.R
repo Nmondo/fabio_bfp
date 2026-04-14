@@ -20,8 +20,6 @@ regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter
 
   ############# Other ##################
 
-setwd("/home/mmondolfo/fabio_bfp/")
-
 y_other_bf <- readRDS("intermediate_data/y_other_bf.rds")
 y_bf_coproducts <- readRDS("intermediate_data/y_bf_coproducts_initial.rds")
 btd_intermediate_other <- readRDS("intermediate_data/btd_intermediate_other_step2.rds")

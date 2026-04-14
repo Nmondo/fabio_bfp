@@ -7,6 +7,7 @@ p005,Rye production,2515,c005,Rye and products,seedwaste
 p006,Oat production,2516,c006,Oats,seedwaste
 p007,Millet production,2517,c007,Millet and products,seedwaste
 p008,Sorghum production,2518,c008,Sorghum and products,seedwaste
+p009,"Cereals production, Other",97,c141,Triticale,seedwaste
 p010,Potatoes  production,2531,c010,Potatoes and products,seedwaste
 p011,Cassava production,2532,c011,Cassava and products,seedwaste
 p012,Sweet potatoes production,2533,c012,Sweet potatoes,seedwaste
@@ -28,6 +29,7 @@ p026,Coconuts production,2560,c026,Coconuts - Incl Copra,seedwaste
 p027,Sesame seed production,2561,c027,Sesame seed,seedwaste
 p028,Oil palm fruit production,254,c028,"Oil, palm fruit",seedwaste
 p029,Olives production,2563,c029,Olives (including preserved),seedwaste
+p030,"Oilcrops production, Other",265,c143,Castor oil seeds,seedwaste
 p031,Tomatoes production,2601,c031,Tomatoes and products,seedwaste
 p032,Onions production,2602,c032,Onions,seedwaste
 p033,"Vegetables production, Other",2605,c033,"Vegetables, Other",seedwaste
@@ -67,13 +69,6 @@ p064,"Sugar production, non-centrifugal",2541,c065,Sugar non-centrifugal,seedwas
 p065,Sugar production,2536,c015,Sugar cane,TCF
 p065,Sugar production,2537,c016,Sugar beet,TCF
 p065,Sugar production,2542,c066,Sugar (Raw Equivalent),seedwaste
-p066,"Sweeteners production, Other",2807,c001,Rice and products,optim
-p066,"Sweeteners production, Other",2511,c002,Wheat and products,optim
-p066,"Sweeteners production, Other",2513,c003,Barley and products,optim
-p066,"Sweeteners production, Other",2514,c004,Maize and products,optim
-p066,"Sweeteners production, Other",2531,c010,Potatoes and products,optim
-p066,"Sweeteners production, Other",2532,c011,Cassava and products,optim
-p066,"Sweeteners production, Other",2533,c012,Sweet potatoes,optim
 p067,Soyabean Oil extraction,2555,c021,Soyabeans,100%
 p067,Soyabean Oil extraction,2571,c068,Soyabean Oil,seedwaste
 p067,Soyabean Oil extraction,2590,c081,Soyabean Cake,seedwaste
@@ -103,25 +98,25 @@ p075,Sesameseed Oil extraction,2579,c076,Sesameseed Oil,seedwaste
 p075,Sesameseed Oil extraction,2597,c088,Sesameseed Cake,seedwaste
 p076,Olive Oil extraction,2563,c029,Olives (including preserved),100%
 p076,Olive Oil extraction,2580,c077,Olive Oil,seedwaste
-p077,Ricebran Oil extraction,2807,c001,Rice and products,TCF
 p077,Ricebran Oil extraction,2581,c078,Ricebran Oil,seedwaste
 p077,Ricebran Oil extraction,2598,c089,"Oilseed Cakes, Other",seedwaste
+p077,Ricebran Oil extraction,2807,c001,Rice and products,TCF
 p078,Maize Germ Oil extraction,2514,c004,Maize and products,TCF
 p078,Maize Germ Oil extraction,2582,c079,Maize Germ Oil,seedwaste
 p078,Maize Germ Oil extraction,2598,c089,"Oilseed Cakes, Other",seedwaste
-p079,"Oilcrops Oil extraction, Other",2598,c089,"Oilseed Cakes, Other",seedwaste
 p080,Wine production,2620,c043,Grapes and products (excl wine),TCF
 p080,Wine production,2655,c090,Wine,seedwaste
-p081,Beer production,2807,c001,Rice and products,optim
+p081,Beer production,97,c141,Triticale,optim
+p081,Beer production,677,c048,Hops,100%
 p081,Beer production,2511,c002,Wheat and products,optim
 p081,Beer production,2513,c003,Barley and products,optim
 p081,Beer production,2514,c004,Maize and products,optim
 p081,Beer production,2515,c005,Rye and products,optim
 p081,Beer production,2517,c007,Millet and products,optim
 p081,Beer production,2518,c008,Sorghum and products,optim
-p081,Beer production,677,c048,Hops,100%
 p081,Beer production,2656,c091,Beer,seedwaste
-p082,"Beverages production, Fermented",2807,c001,Rice and products,optim
+p081,Beer production,2807,c001,Rice and products,optim
+p082,"Beverages production, Fermented",97,c141,Triticale,optim
 p082,"Beverages production, Fermented",2511,c002,Wheat and products,optim
 p082,"Beverages production, Fermented",2514,c004,Maize and products,optim
 p082,"Beverages production, Fermented",2515,c005,Rye and products,optim
@@ -133,7 +128,9 @@ p082,"Beverages production, Fermented",2617,c040,Apples and products,optim
 p082,"Beverages production, Fermented",2620,c043,Grapes and products (excl wine),optim
 p082,"Beverages production, Fermented",2625,c044,"Fruits, Other",optim
 p082,"Beverages production, Fermented",2657,c092,"Beverages, Fermented",seedwaste
-p083,"Beverages production, Alcoholic",2807,c001,Rice and products,optim
+p082,"Beverages production, Fermented",2807,c001,Rice and products,optim
+p083,"Beverages production, Alcoholic",97,c141,Triticale,optim
+p083,"Beverages production, Alcoholic",165,c142,Molasses,optim
 p083,"Beverages production, Alcoholic",2511,c002,Wheat and products,optim
 p083,"Beverages production, Alcoholic",2513,c003,Barley and products,optim
 p083,"Beverages production, Alcoholic",2514,c004,Maize and products,optim
@@ -144,32 +141,25 @@ p083,"Beverages production, Alcoholic",2531,c010,Potatoes and products,optim
 p083,"Beverages production, Alcoholic",2533,c012,Sweet potatoes,optim
 p083,"Beverages production, Alcoholic",2536,c015,Sugar cane,optim
 p083,"Beverages production, Alcoholic",2537,c016,Sugar beet,optim
+p083,"Beverages production, Alcoholic",2541,c065,Sugar non-centrifugal,optim
+p083,"Beverages production, Alcoholic",2542,c066,Sugar (Raw Equivalent),optim
 p083,"Beverages production, Alcoholic",2615,c038,Bananas,optim
 p083,"Beverages production, Alcoholic",2616,c039,Plantains,optim
 p083,"Beverages production, Alcoholic",2617,c040,Apples and products,optim
 p083,"Beverages production, Alcoholic",2619,c042,Dates,optim
 p083,"Beverages production, Alcoholic",2620,c043,Grapes and products (excl wine),optim
 p083,"Beverages production, Alcoholic",2625,c044,"Fruits, Other",optim
-p083,"Beverages production, Alcoholic",2541,c065,Sugar non-centrifugal,optim
-p083,"Beverages production, Alcoholic",2542,c066,Sugar (Raw Equivalent),optim
 p083,"Beverages production, Alcoholic",2655,c090,Wine,optim
 p083,"Beverages production, Alcoholic",2658,c093,"Beverages, Alcoholic",seedwaste
-p084,"Alcohol production, Non-Food",2807,c001,Rice and products,ethanol
-p084,"Alcohol production, Non-Food",2511,c002,Wheat and products,ethanol
-p084,"Alcohol production, Non-Food",2513,c003,Barley and products,ethanol
-p084,"Alcohol production, Non-Food",2514,c004,Maize and products,ethanol
-p084,"Alcohol production, Non-Food",2515,c005,Rye and products,ethanol
-p084,"Alcohol production, Non-Food",2518,c008,Sorghum and products,ethanol
-p084,"Alcohol production, Non-Food",2531,c010,Potatoes and products,ethanol
-p084,"Alcohol production, Non-Food",2532,c011,Cassava and products,ethanol
-p084,"Alcohol production, Non-Food",2536,c015,Sugar cane,ethanol
-p084,"Alcohol production, Non-Food",2537,c016,Sugar beet,ethanol
-p084,"Alcohol production, Non-Food",2617,c040,Apples and products,ethanol
-p084,"Alcohol production, Non-Food",2620,c043,Grapes and products (excl wine),ethanol
-p084,"Alcohol production, Non-Food",2625,c044,"Fruits, Other",ethanol
-p084,"Alcohol production, Non-Food",2655,c090,Wine,ethanol
-p084,"Alcohol production, Non-Food",2659,c094,"Alcohol, Non-Food",seedwaste
-p085,Cattle husbandry,2807,c001,Rice and products,feed
+p083,"Beverages production, Alcoholic",2807,c001,Rice and products,optim
+p085,Cattle husbandry,97,c141,Triticale,feed
+p085,Cattle husbandry,165,c142,Molasses,feed
+p085,Cattle husbandry,265,c143,Castor oil seeds,feed
+p085,Cattle husbandry,266,c144,Oil of castor beans,feed
+p085,Cattle husbandry,866,c096,Cattle,seedwaste
+p085,Cattle husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p085,Cattle husbandry,2000,c061,Fodder crops,feed
+p085,Cattle husbandry,2001,c062,Grazing,feed
 p085,Cattle husbandry,2511,c002,Wheat and products,feed
 p085,Cattle husbandry,2513,c003,Barley and products,feed
 p085,Cattle husbandry,2514,c004,Maize and products,feed
@@ -184,31 +174,18 @@ p085,Cattle husbandry,2534,c013,"Roots, Other",feed
 p085,Cattle husbandry,2535,c014,Yams,feed
 p085,Cattle husbandry,2536,c015,Sugar cane,feed
 p085,Cattle husbandry,2537,c016,Sugar beet,feed
+p085,Cattle husbandry,2541,c065,Sugar non-centrifugal,feed
+p085,Cattle husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p085,Cattle husbandry,2546,c017,Beans,feed
 p085,Cattle husbandry,2547,c018,Peas,feed
 p085,Cattle husbandry,2549,c019,"Pulses, Other and products",feed
-p085,Cattle husbandry,2555,c021,Soyabeans,feed
 p085,Cattle husbandry,2552,c022,Groundnuts,feed
+p085,Cattle husbandry,2555,c021,Soyabeans,feed
 p085,Cattle husbandry,2557,c023,Sunflower seed,feed
 p085,Cattle husbandry,2558,c024,Rape and Mustardseed,feed
+p085,Cattle husbandry,2559,c063,Cottonseed,feed
 p085,Cattle husbandry,2560,c026,Coconuts - Incl Copra,feed
 p085,Cattle husbandry,2561,c027,Sesame seed,feed
-p085,Cattle husbandry,2601,c031,Tomatoes and products,feed
-p085,Cattle husbandry,2602,c032,Onions,feed
-p085,Cattle husbandry,2605,c033,"Vegetables, Other",feed
-p085,Cattle husbandry,2611,c034,"Oranges, Mandarines",feed
-p085,Cattle husbandry,2615,c038,Bananas,feed
-p085,Cattle husbandry,2616,c039,Plantains,feed
-p085,Cattle husbandry,2617,c040,Apples and products,feed
-p085,Cattle husbandry,2619,c042,Dates,feed
-p085,Cattle husbandry,2625,c044,"Fruits, Other",feed
-p085,Cattle husbandry,2633,c046,Cocoa Beans and products,feed
-p085,Cattle husbandry,2642,c051,Cloves,feed
-p085,Cattle husbandry,2000,c061,Fodder crops,feed
-p085,Cattle husbandry,2001,c062,Grazing,feed
-p085,Cattle husbandry,2559,c063,Cottonseed,feed
-p085,Cattle husbandry,2541,c065,Sugar non-centrifugal,feed
-p085,Cattle husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p085,Cattle husbandry,2571,c068,Soyabean Oil,feed
 p085,Cattle husbandry,2574,c071,Rape and Mustard Oil,feed
 p085,Cattle husbandry,2577,c074,Palm Oil,feed
@@ -223,17 +200,35 @@ p085,Cattle husbandry,2595,c086,Palmkernel Cake,feed
 p085,Cattle husbandry,2596,c087,Copra Cake,feed
 p085,Cattle husbandry,2597,c088,Sesameseed Cake,feed
 p085,Cattle husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p085,Cattle husbandry,866,c096,Cattle,seedwaste
-p085,Cattle husbandry,2848,c109,Milk - Excluding Butter,feed
-p085,Cattle husbandry,2740,c110,"Butter, Ghee",feed
-p085,Cattle husbandry,2744,c111,Eggs,feed
+p085,Cattle husbandry,2601,c031,Tomatoes and products,feed
+p085,Cattle husbandry,2602,c032,Onions,feed
+p085,Cattle husbandry,2605,c033,"Vegetables, Other",feed
+p085,Cattle husbandry,2611,c034,"Oranges, Mandarines",feed
+p085,Cattle husbandry,2615,c038,Bananas,feed
+p085,Cattle husbandry,2616,c039,Plantains,feed
+p085,Cattle husbandry,2617,c040,Apples and products,feed
+p085,Cattle husbandry,2619,c042,Dates,feed
+p085,Cattle husbandry,2625,c044,"Fruits, Other",feed
+p085,Cattle husbandry,2633,c046,Cocoa Beans and products,feed
+p085,Cattle husbandry,2642,c051,Cloves,feed
 p085,Cattle husbandry,2731,c113,Bovine Meat,feed
 p085,Cattle husbandry,2732,c114,Mutton & Goat Meat,feed
 p085,Cattle husbandry,2735,c117,"Meat, Other",feed
 p085,Cattle husbandry,2736,c118,"Offals, Edible",feed
 p085,Cattle husbandry,2737,c119,"Fats, Animals, Raw",feed
+p085,Cattle husbandry,2740,c110,"Butter, Ghee",feed
+p085,Cattle husbandry,2744,c111,Eggs,feed
 p085,Cattle husbandry,2745,c121,Honey,feed
-p086,Buffaloes husbandry,2807,c001,Rice and products,feed
+p085,Cattle husbandry,2807,c001,Rice and products,feed
+p085,Cattle husbandry,2848,c109,Milk - Excluding Butter,feed
+p086,Buffaloes husbandry,97,c141,Triticale,feed
+p086,Buffaloes husbandry,165,c142,Molasses,feed
+p086,Buffaloes husbandry,265,c143,Castor oil seeds,feed
+p086,Buffaloes husbandry,266,c144,Oil of castor beans,feed
+p086,Buffaloes husbandry,946,c097,Buffaloes,seedwaste
+p086,Buffaloes husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p086,Buffaloes husbandry,2000,c061,Fodder crops,feed
+p086,Buffaloes husbandry,2001,c062,Grazing,feed
 p086,Buffaloes husbandry,2511,c002,Wheat and products,feed
 p086,Buffaloes husbandry,2513,c003,Barley and products,feed
 p086,Buffaloes husbandry,2514,c004,Maize and products,feed
@@ -248,31 +243,18 @@ p086,Buffaloes husbandry,2534,c013,"Roots, Other",feed
 p086,Buffaloes husbandry,2535,c014,Yams,feed
 p086,Buffaloes husbandry,2536,c015,Sugar cane,feed
 p086,Buffaloes husbandry,2537,c016,Sugar beet,feed
+p086,Buffaloes husbandry,2541,c065,Sugar non-centrifugal,feed
+p086,Buffaloes husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p086,Buffaloes husbandry,2546,c017,Beans,feed
 p086,Buffaloes husbandry,2547,c018,Peas,feed
 p086,Buffaloes husbandry,2549,c019,"Pulses, Other and products",feed
-p086,Buffaloes husbandry,2555,c021,Soyabeans,feed
 p086,Buffaloes husbandry,2552,c022,Groundnuts,feed
+p086,Buffaloes husbandry,2555,c021,Soyabeans,feed
 p086,Buffaloes husbandry,2557,c023,Sunflower seed,feed
 p086,Buffaloes husbandry,2558,c024,Rape and Mustardseed,feed
+p086,Buffaloes husbandry,2559,c063,Cottonseed,feed
 p086,Buffaloes husbandry,2560,c026,Coconuts - Incl Copra,feed
 p086,Buffaloes husbandry,2561,c027,Sesame seed,feed
-p086,Buffaloes husbandry,2601,c031,Tomatoes and products,feed
-p086,Buffaloes husbandry,2602,c032,Onions,feed
-p086,Buffaloes husbandry,2605,c033,"Vegetables, Other",feed
-p086,Buffaloes husbandry,2611,c034,"Oranges, Mandarines",feed
-p086,Buffaloes husbandry,2615,c038,Bananas,feed
-p086,Buffaloes husbandry,2616,c039,Plantains,feed
-p086,Buffaloes husbandry,2617,c040,Apples and products,feed
-p086,Buffaloes husbandry,2619,c042,Dates,feed
-p086,Buffaloes husbandry,2625,c044,"Fruits, Other",feed
-p086,Buffaloes husbandry,2633,c046,Cocoa Beans and products,feed
-p086,Buffaloes husbandry,2642,c051,Cloves,feed
-p086,Buffaloes husbandry,2000,c061,Fodder crops,feed
-p086,Buffaloes husbandry,2001,c062,Grazing,feed
-p086,Buffaloes husbandry,2559,c063,Cottonseed,feed
-p086,Buffaloes husbandry,2541,c065,Sugar non-centrifugal,feed
-p086,Buffaloes husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p086,Buffaloes husbandry,2571,c068,Soyabean Oil,feed
 p086,Buffaloes husbandry,2574,c071,Rape and Mustard Oil,feed
 p086,Buffaloes husbandry,2577,c074,Palm Oil,feed
@@ -287,17 +269,35 @@ p086,Buffaloes husbandry,2595,c086,Palmkernel Cake,feed
 p086,Buffaloes husbandry,2596,c087,Copra Cake,feed
 p086,Buffaloes husbandry,2597,c088,Sesameseed Cake,feed
 p086,Buffaloes husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p086,Buffaloes husbandry,946,c097,Buffaloes,seedwaste
-p086,Buffaloes husbandry,2848,c109,Milk - Excluding Butter,feed
-p086,Buffaloes husbandry,2740,c110,"Butter, Ghee",feed
-p086,Buffaloes husbandry,2744,c111,Eggs,feed
+p086,Buffaloes husbandry,2601,c031,Tomatoes and products,feed
+p086,Buffaloes husbandry,2602,c032,Onions,feed
+p086,Buffaloes husbandry,2605,c033,"Vegetables, Other",feed
+p086,Buffaloes husbandry,2611,c034,"Oranges, Mandarines",feed
+p086,Buffaloes husbandry,2615,c038,Bananas,feed
+p086,Buffaloes husbandry,2616,c039,Plantains,feed
+p086,Buffaloes husbandry,2617,c040,Apples and products,feed
+p086,Buffaloes husbandry,2619,c042,Dates,feed
+p086,Buffaloes husbandry,2625,c044,"Fruits, Other",feed
+p086,Buffaloes husbandry,2633,c046,Cocoa Beans and products,feed
+p086,Buffaloes husbandry,2642,c051,Cloves,feed
 p086,Buffaloes husbandry,2731,c113,Bovine Meat,feed
 p086,Buffaloes husbandry,2732,c114,Mutton & Goat Meat,feed
 p086,Buffaloes husbandry,2735,c117,"Meat, Other",feed
 p086,Buffaloes husbandry,2736,c118,"Offals, Edible",feed
 p086,Buffaloes husbandry,2737,c119,"Fats, Animals, Raw",feed
+p086,Buffaloes husbandry,2740,c110,"Butter, Ghee",feed
+p086,Buffaloes husbandry,2744,c111,Eggs,feed
 p086,Buffaloes husbandry,2745,c121,Honey,feed
-p087,Sheep husbandry,2807,c001,Rice and products,feed
+p086,Buffaloes husbandry,2807,c001,Rice and products,feed
+p086,Buffaloes husbandry,2848,c109,Milk - Excluding Butter,feed
+p087,Sheep husbandry,97,c141,Triticale,feed
+p087,Sheep husbandry,165,c142,Molasses,feed
+p087,Sheep husbandry,265,c143,Castor oil seeds,feed
+p087,Sheep husbandry,266,c144,Oil of castor beans,feed
+p087,Sheep husbandry,976,c098,Sheep,seedwaste
+p087,Sheep husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p087,Sheep husbandry,2000,c061,Fodder crops,feed
+p087,Sheep husbandry,2001,c062,Grazing,feed
 p087,Sheep husbandry,2511,c002,Wheat and products,feed
 p087,Sheep husbandry,2513,c003,Barley and products,feed
 p087,Sheep husbandry,2514,c004,Maize and products,feed
@@ -312,31 +312,18 @@ p087,Sheep husbandry,2534,c013,"Roots, Other",feed
 p087,Sheep husbandry,2535,c014,Yams,feed
 p087,Sheep husbandry,2536,c015,Sugar cane,feed
 p087,Sheep husbandry,2537,c016,Sugar beet,feed
+p087,Sheep husbandry,2541,c065,Sugar non-centrifugal,feed
+p087,Sheep husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p087,Sheep husbandry,2546,c017,Beans,feed
 p087,Sheep husbandry,2547,c018,Peas,feed
 p087,Sheep husbandry,2549,c019,"Pulses, Other and products",feed
-p087,Sheep husbandry,2555,c021,Soyabeans,feed
 p087,Sheep husbandry,2552,c022,Groundnuts,feed
+p087,Sheep husbandry,2555,c021,Soyabeans,feed
 p087,Sheep husbandry,2557,c023,Sunflower seed,feed
 p087,Sheep husbandry,2558,c024,Rape and Mustardseed,feed
+p087,Sheep husbandry,2559,c063,Cottonseed,feed
 p087,Sheep husbandry,2560,c026,Coconuts - Incl Copra,feed
 p087,Sheep husbandry,2561,c027,Sesame seed,feed
-p087,Sheep husbandry,2601,c031,Tomatoes and products,feed
-p087,Sheep husbandry,2602,c032,Onions,feed
-p087,Sheep husbandry,2605,c033,"Vegetables, Other",feed
-p087,Sheep husbandry,2611,c034,"Oranges, Mandarines",feed
-p087,Sheep husbandry,2615,c038,Bananas,feed
-p087,Sheep husbandry,2616,c039,Plantains,feed
-p087,Sheep husbandry,2617,c040,Apples and products,feed
-p087,Sheep husbandry,2619,c042,Dates,feed
-p087,Sheep husbandry,2625,c044,"Fruits, Other",feed
-p087,Sheep husbandry,2633,c046,Cocoa Beans and products,feed
-p087,Sheep husbandry,2642,c051,Cloves,feed
-p087,Sheep husbandry,2000,c061,Fodder crops,feed
-p087,Sheep husbandry,2001,c062,Grazing,feed
-p087,Sheep husbandry,2559,c063,Cottonseed,feed
-p087,Sheep husbandry,2541,c065,Sugar non-centrifugal,feed
-p087,Sheep husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p087,Sheep husbandry,2571,c068,Soyabean Oil,feed
 p087,Sheep husbandry,2574,c071,Rape and Mustard Oil,feed
 p087,Sheep husbandry,2577,c074,Palm Oil,feed
@@ -351,18 +338,36 @@ p087,Sheep husbandry,2595,c086,Palmkernel Cake,feed
 p087,Sheep husbandry,2596,c087,Copra Cake,feed
 p087,Sheep husbandry,2597,c088,Sesameseed Cake,feed
 p087,Sheep husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p087,Sheep husbandry,976,c098,Sheep,seedwaste
-p087,Sheep husbandry,2848,c109,Milk - Excluding Butter,feed
-p087,Sheep husbandry,2740,c110,"Butter, Ghee",feed
-p087,Sheep husbandry,2744,c111,Eggs,feed
-p087,Sheep husbandry,2746,c112,Wool (Clean Eq.),seedwaste
+p087,Sheep husbandry,2601,c031,Tomatoes and products,feed
+p087,Sheep husbandry,2602,c032,Onions,feed
+p087,Sheep husbandry,2605,c033,"Vegetables, Other",feed
+p087,Sheep husbandry,2611,c034,"Oranges, Mandarines",feed
+p087,Sheep husbandry,2615,c038,Bananas,feed
+p087,Sheep husbandry,2616,c039,Plantains,feed
+p087,Sheep husbandry,2617,c040,Apples and products,feed
+p087,Sheep husbandry,2619,c042,Dates,feed
+p087,Sheep husbandry,2625,c044,"Fruits, Other",feed
+p087,Sheep husbandry,2633,c046,Cocoa Beans and products,feed
+p087,Sheep husbandry,2642,c051,Cloves,feed
 p087,Sheep husbandry,2731,c113,Bovine Meat,feed
 p087,Sheep husbandry,2732,c114,Mutton & Goat Meat,feed
 p087,Sheep husbandry,2735,c117,"Meat, Other",feed
 p087,Sheep husbandry,2736,c118,"Offals, Edible",feed
 p087,Sheep husbandry,2737,c119,"Fats, Animals, Raw",feed
+p087,Sheep husbandry,2740,c110,"Butter, Ghee",feed
+p087,Sheep husbandry,2744,c111,Eggs,feed
 p087,Sheep husbandry,2745,c121,Honey,feed
-p088,Goats husbandry,2807,c001,Rice and products,feed
+p087,Sheep husbandry,2746,c112,Wool (Clean Eq.),seedwaste
+p087,Sheep husbandry,2807,c001,Rice and products,feed
+p087,Sheep husbandry,2848,c109,Milk - Excluding Butter,feed
+p088,Goats husbandry,97,c141,Triticale,feed
+p088,Goats husbandry,165,c142,Molasses,feed
+p088,Goats husbandry,265,c143,Castor oil seeds,feed
+p088,Goats husbandry,266,c144,Oil of castor beans,feed
+p088,Goats husbandry,1016,c099,Goats,seedwaste
+p088,Goats husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p088,Goats husbandry,2000,c061,Fodder crops,feed
+p088,Goats husbandry,2001,c062,Grazing,feed
 p088,Goats husbandry,2511,c002,Wheat and products,feed
 p088,Goats husbandry,2513,c003,Barley and products,feed
 p088,Goats husbandry,2514,c004,Maize and products,feed
@@ -377,31 +382,18 @@ p088,Goats husbandry,2534,c013,"Roots, Other",feed
 p088,Goats husbandry,2535,c014,Yams,feed
 p088,Goats husbandry,2536,c015,Sugar cane,feed
 p088,Goats husbandry,2537,c016,Sugar beet,feed
+p088,Goats husbandry,2541,c065,Sugar non-centrifugal,feed
+p088,Goats husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p088,Goats husbandry,2546,c017,Beans,feed
 p088,Goats husbandry,2547,c018,Peas,feed
 p088,Goats husbandry,2549,c019,"Pulses, Other and products",feed
-p088,Goats husbandry,2555,c021,Soyabeans,feed
 p088,Goats husbandry,2552,c022,Groundnuts,feed
+p088,Goats husbandry,2555,c021,Soyabeans,feed
 p088,Goats husbandry,2557,c023,Sunflower seed,feed
 p088,Goats husbandry,2558,c024,Rape and Mustardseed,feed
+p088,Goats husbandry,2559,c063,Cottonseed,feed
 p088,Goats husbandry,2560,c026,Coconuts - Incl Copra,feed
 p088,Goats husbandry,2561,c027,Sesame seed,feed
-p088,Goats husbandry,2601,c031,Tomatoes and products,feed
-p088,Goats husbandry,2602,c032,Onions,feed
-p088,Goats husbandry,2605,c033,"Vegetables, Other",feed
-p088,Goats husbandry,2611,c034,"Oranges, Mandarines",feed
-p088,Goats husbandry,2615,c038,Bananas,feed
-p088,Goats husbandry,2616,c039,Plantains,feed
-p088,Goats husbandry,2617,c040,Apples and products,feed
-p088,Goats husbandry,2619,c042,Dates,feed
-p088,Goats husbandry,2625,c044,"Fruits, Other",feed
-p088,Goats husbandry,2633,c046,Cocoa Beans and products,feed
-p088,Goats husbandry,2642,c051,Cloves,feed
-p088,Goats husbandry,2000,c061,Fodder crops,feed
-p088,Goats husbandry,2001,c062,Grazing,feed
-p088,Goats husbandry,2559,c063,Cottonseed,feed
-p088,Goats husbandry,2541,c065,Sugar non-centrifugal,feed
-p088,Goats husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p088,Goats husbandry,2571,c068,Soyabean Oil,feed
 p088,Goats husbandry,2574,c071,Rape and Mustard Oil,feed
 p088,Goats husbandry,2577,c074,Palm Oil,feed
@@ -416,17 +408,34 @@ p088,Goats husbandry,2595,c086,Palmkernel Cake,feed
 p088,Goats husbandry,2596,c087,Copra Cake,feed
 p088,Goats husbandry,2597,c088,Sesameseed Cake,feed
 p088,Goats husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p088,Goats husbandry,1016,c099,Goats,seedwaste
-p088,Goats husbandry,2848,c109,Milk - Excluding Butter,feed
-p088,Goats husbandry,2740,c110,"Butter, Ghee",feed
-p088,Goats husbandry,2744,c111,Eggs,feed
+p088,Goats husbandry,2601,c031,Tomatoes and products,feed
+p088,Goats husbandry,2602,c032,Onions,feed
+p088,Goats husbandry,2605,c033,"Vegetables, Other",feed
+p088,Goats husbandry,2611,c034,"Oranges, Mandarines",feed
+p088,Goats husbandry,2615,c038,Bananas,feed
+p088,Goats husbandry,2616,c039,Plantains,feed
+p088,Goats husbandry,2617,c040,Apples and products,feed
+p088,Goats husbandry,2619,c042,Dates,feed
+p088,Goats husbandry,2625,c044,"Fruits, Other",feed
+p088,Goats husbandry,2633,c046,Cocoa Beans and products,feed
+p088,Goats husbandry,2642,c051,Cloves,feed
 p088,Goats husbandry,2731,c113,Bovine Meat,feed
 p088,Goats husbandry,2732,c114,Mutton & Goat Meat,feed
 p088,Goats husbandry,2735,c117,"Meat, Other",feed
 p088,Goats husbandry,2736,c118,"Offals, Edible",feed
 p088,Goats husbandry,2737,c119,"Fats, Animals, Raw",feed
+p088,Goats husbandry,2740,c110,"Butter, Ghee",feed
+p088,Goats husbandry,2744,c111,Eggs,feed
 p088,Goats husbandry,2745,c121,Honey,feed
-p089,Pigs farming,2807,c001,Rice and products,feed
+p088,Goats husbandry,2807,c001,Rice and products,feed
+p088,Goats husbandry,2848,c109,Milk - Excluding Butter,feed
+p089,Pigs farming,97,c141,Triticale,feed
+p089,Pigs farming,165,c142,Molasses,feed
+p089,Pigs farming,265,c143,Castor oil seeds,feed
+p089,Pigs farming,266,c144,Oil of castor beans,feed
+p089,Pigs farming,1034,c100,Pigs,seedwaste
+p089,Pigs farming,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p089,Pigs farming,2000,c061,Fodder crops,feed
 p089,Pigs farming,2511,c002,Wheat and products,feed
 p089,Pigs farming,2513,c003,Barley and products,feed
 p089,Pigs farming,2514,c004,Maize and products,feed
@@ -441,30 +450,18 @@ p089,Pigs farming,2534,c013,"Roots, Other",feed
 p089,Pigs farming,2535,c014,Yams,feed
 p089,Pigs farming,2536,c015,Sugar cane,feed
 p089,Pigs farming,2537,c016,Sugar beet,feed
+p089,Pigs farming,2541,c065,Sugar non-centrifugal,feed
+p089,Pigs farming,2542,c066,Sugar (Raw Equivalent),feed
 p089,Pigs farming,2546,c017,Beans,feed
 p089,Pigs farming,2547,c018,Peas,feed
 p089,Pigs farming,2549,c019,"Pulses, Other and products",feed
-p089,Pigs farming,2555,c021,Soyabeans,feed
 p089,Pigs farming,2552,c022,Groundnuts,feed
+p089,Pigs farming,2555,c021,Soyabeans,feed
 p089,Pigs farming,2557,c023,Sunflower seed,feed
 p089,Pigs farming,2558,c024,Rape and Mustardseed,feed
+p089,Pigs farming,2559,c063,Cottonseed,feed
 p089,Pigs farming,2560,c026,Coconuts - Incl Copra,feed
 p089,Pigs farming,2561,c027,Sesame seed,feed
-p089,Pigs farming,2601,c031,Tomatoes and products,feed
-p089,Pigs farming,2602,c032,Onions,feed
-p089,Pigs farming,2605,c033,"Vegetables, Other",feed
-p089,Pigs farming,2611,c034,"Oranges, Mandarines",feed
-p089,Pigs farming,2615,c038,Bananas,feed
-p089,Pigs farming,2616,c039,Plantains,feed
-p089,Pigs farming,2617,c040,Apples and products,feed
-p089,Pigs farming,2619,c042,Dates,feed
-p089,Pigs farming,2625,c044,"Fruits, Other",feed
-p089,Pigs farming,2633,c046,Cocoa Beans and products,feed
-p089,Pigs farming,2642,c051,Cloves,feed
-p089,Pigs farming,2000,c061,Fodder crops,feed
-p089,Pigs farming,2559,c063,Cottonseed,feed
-p089,Pigs farming,2541,c065,Sugar non-centrifugal,feed
-p089,Pigs farming,2542,c066,Sugar (Raw Equivalent),feed
 p089,Pigs farming,2571,c068,Soyabean Oil,feed
 p089,Pigs farming,2574,c071,Rape and Mustard Oil,feed
 p089,Pigs farming,2577,c074,Palm Oil,feed
@@ -479,17 +476,33 @@ p089,Pigs farming,2595,c086,Palmkernel Cake,feed
 p089,Pigs farming,2596,c087,Copra Cake,feed
 p089,Pigs farming,2597,c088,Sesameseed Cake,feed
 p089,Pigs farming,2598,c089,"Oilseed Cakes, Other",feed
-p089,Pigs farming,1034,c100,Pigs,seedwaste
-p089,Pigs farming,2848,c109,Milk - Excluding Butter,feed
-p089,Pigs farming,2740,c110,"Butter, Ghee",feed
-p089,Pigs farming,2744,c111,Eggs,feed
+p089,Pigs farming,2601,c031,Tomatoes and products,feed
+p089,Pigs farming,2602,c032,Onions,feed
+p089,Pigs farming,2605,c033,"Vegetables, Other",feed
+p089,Pigs farming,2611,c034,"Oranges, Mandarines",feed
+p089,Pigs farming,2615,c038,Bananas,feed
+p089,Pigs farming,2616,c039,Plantains,feed
+p089,Pigs farming,2617,c040,Apples and products,feed
+p089,Pigs farming,2619,c042,Dates,feed
+p089,Pigs farming,2625,c044,"Fruits, Other",feed
+p089,Pigs farming,2633,c046,Cocoa Beans and products,feed
+p089,Pigs farming,2642,c051,Cloves,feed
 p089,Pigs farming,2731,c113,Bovine Meat,feed
 p089,Pigs farming,2732,c114,Mutton & Goat Meat,feed
 p089,Pigs farming,2735,c117,"Meat, Other",feed
 p089,Pigs farming,2736,c118,"Offals, Edible",feed
 p089,Pigs farming,2737,c119,"Fats, Animals, Raw",feed
+p089,Pigs farming,2740,c110,"Butter, Ghee",feed
+p089,Pigs farming,2744,c111,Eggs,feed
 p089,Pigs farming,2745,c121,Honey,feed
-p090,Poultry Birds farming,2807,c001,Rice and products,feed
+p089,Pigs farming,2807,c001,Rice and products,feed
+p089,Pigs farming,2848,c109,Milk - Excluding Butter,feed
+p090,Poultry Birds farming,97,c141,Triticale,feed
+p090,Poultry Birds farming,165,c142,Molasses,feed
+p090,Poultry Birds farming,265,c143,Castor oil seeds,feed
+p090,Poultry Birds farming,266,c144,Oil of castor beans,feed
+p090,Poultry Birds farming,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p090,Poultry Birds farming,2029,c101,Poultry Birds,seedwaste
 p090,Poultry Birds farming,2511,c002,Wheat and products,feed
 p090,Poultry Birds farming,2513,c003,Barley and products,feed
 p090,Poultry Birds farming,2514,c004,Maize and products,feed
@@ -504,29 +517,18 @@ p090,Poultry Birds farming,2534,c013,"Roots, Other",feed
 p090,Poultry Birds farming,2535,c014,Yams,feed
 p090,Poultry Birds farming,2536,c015,Sugar cane,feed
 p090,Poultry Birds farming,2537,c016,Sugar beet,feed
+p090,Poultry Birds farming,2541,c065,Sugar non-centrifugal,feed
+p090,Poultry Birds farming,2542,c066,Sugar (Raw Equivalent),feed
 p090,Poultry Birds farming,2546,c017,Beans,feed
 p090,Poultry Birds farming,2547,c018,Peas,feed
 p090,Poultry Birds farming,2549,c019,"Pulses, Other and products",feed
-p090,Poultry Birds farming,2555,c021,Soyabeans,feed
 p090,Poultry Birds farming,2552,c022,Groundnuts,feed
+p090,Poultry Birds farming,2555,c021,Soyabeans,feed
 p090,Poultry Birds farming,2557,c023,Sunflower seed,feed
 p090,Poultry Birds farming,2558,c024,Rape and Mustardseed,feed
+p090,Poultry Birds farming,2559,c063,Cottonseed,feed
 p090,Poultry Birds farming,2560,c026,Coconuts - Incl Copra,feed
 p090,Poultry Birds farming,2561,c027,Sesame seed,feed
-p090,Poultry Birds farming,2601,c031,Tomatoes and products,feed
-p090,Poultry Birds farming,2602,c032,Onions,feed
-p090,Poultry Birds farming,2605,c033,"Vegetables, Other",feed
-p090,Poultry Birds farming,2611,c034,"Oranges, Mandarines",feed
-p090,Poultry Birds farming,2615,c038,Bananas,feed
-p090,Poultry Birds farming,2616,c039,Plantains,feed
-p090,Poultry Birds farming,2617,c040,Apples and products,feed
-p090,Poultry Birds farming,2619,c042,Dates,feed
-p090,Poultry Birds farming,2625,c044,"Fruits, Other",feed
-p090,Poultry Birds farming,2633,c046,Cocoa Beans and products,feed
-p090,Poultry Birds farming,2642,c051,Cloves,feed
-p090,Poultry Birds farming,2559,c063,Cottonseed,feed
-p090,Poultry Birds farming,2541,c065,Sugar non-centrifugal,feed
-p090,Poultry Birds farming,2542,c066,Sugar (Raw Equivalent),feed
 p090,Poultry Birds farming,2571,c068,Soyabean Oil,feed
 p090,Poultry Birds farming,2574,c071,Rape and Mustard Oil,feed
 p090,Poultry Birds farming,2577,c074,Palm Oil,feed
@@ -541,18 +543,36 @@ p090,Poultry Birds farming,2595,c086,Palmkernel Cake,feed
 p090,Poultry Birds farming,2596,c087,Copra Cake,feed
 p090,Poultry Birds farming,2597,c088,Sesameseed Cake,feed
 p090,Poultry Birds farming,2598,c089,"Oilseed Cakes, Other",feed
-p090,Poultry Birds farming,2029,c101,Poultry Birds,seedwaste
-p090,Poultry Birds farming,2848,c109,Milk - Excluding Butter,feed
-p090,Poultry Birds farming,2740,c110,"Butter, Ghee",feed
-p090,Poultry Birds farming,2744,c111,Eggs,seedwaste
-p090,Poultry Birds farming,2744,c111,Eggs,feed
+p090,Poultry Birds farming,2601,c031,Tomatoes and products,feed
+p090,Poultry Birds farming,2602,c032,Onions,feed
+p090,Poultry Birds farming,2605,c033,"Vegetables, Other",feed
+p090,Poultry Birds farming,2611,c034,"Oranges, Mandarines",feed
+p090,Poultry Birds farming,2615,c038,Bananas,feed
+p090,Poultry Birds farming,2616,c039,Plantains,feed
+p090,Poultry Birds farming,2617,c040,Apples and products,feed
+p090,Poultry Birds farming,2619,c042,Dates,feed
+p090,Poultry Birds farming,2625,c044,"Fruits, Other",feed
+p090,Poultry Birds farming,2633,c046,Cocoa Beans and products,feed
+p090,Poultry Birds farming,2642,c051,Cloves,feed
 p090,Poultry Birds farming,2731,c113,Bovine Meat,feed
 p090,Poultry Birds farming,2732,c114,Mutton & Goat Meat,feed
 p090,Poultry Birds farming,2735,c117,"Meat, Other",feed
 p090,Poultry Birds farming,2736,c118,"Offals, Edible",feed
 p090,Poultry Birds farming,2737,c119,"Fats, Animals, Raw",feed
+p090,Poultry Birds farming,2740,c110,"Butter, Ghee",feed
+p090,Poultry Birds farming,2744,c111,Eggs,seedwaste
+p090,Poultry Birds farming,2744,c111,Eggs,feed
 p090,Poultry Birds farming,2745,c121,Honey,feed
-p091,Horses husbandry,2807,c001,Rice and products,feed
+p090,Poultry Birds farming,2807,c001,Rice and products,feed
+p090,Poultry Birds farming,2848,c109,Milk - Excluding Butter,feed
+p091,Horses husbandry,97,c141,Triticale,feed
+p091,Horses husbandry,165,c142,Molasses,feed
+p091,Horses husbandry,265,c143,Castor oil seeds,feed
+p091,Horses husbandry,266,c144,Oil of castor beans,feed
+p091,Horses husbandry,1096,c102,Horses,seedwaste
+p091,Horses husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p091,Horses husbandry,2000,c061,Fodder crops,feed
+p091,Horses husbandry,2001,c062,Grazing,feed
 p091,Horses husbandry,2511,c002,Wheat and products,feed
 p091,Horses husbandry,2513,c003,Barley and products,feed
 p091,Horses husbandry,2514,c004,Maize and products,feed
@@ -567,31 +587,18 @@ p091,Horses husbandry,2534,c013,"Roots, Other",feed
 p091,Horses husbandry,2535,c014,Yams,feed
 p091,Horses husbandry,2536,c015,Sugar cane,feed
 p091,Horses husbandry,2537,c016,Sugar beet,feed
+p091,Horses husbandry,2541,c065,Sugar non-centrifugal,feed
+p091,Horses husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p091,Horses husbandry,2546,c017,Beans,feed
 p091,Horses husbandry,2547,c018,Peas,feed
 p091,Horses husbandry,2549,c019,"Pulses, Other and products",feed
-p091,Horses husbandry,2555,c021,Soyabeans,feed
 p091,Horses husbandry,2552,c022,Groundnuts,feed
+p091,Horses husbandry,2555,c021,Soyabeans,feed
 p091,Horses husbandry,2557,c023,Sunflower seed,feed
 p091,Horses husbandry,2558,c024,Rape and Mustardseed,feed
+p091,Horses husbandry,2559,c063,Cottonseed,feed
 p091,Horses husbandry,2560,c026,Coconuts - Incl Copra,feed
 p091,Horses husbandry,2561,c027,Sesame seed,feed
-p091,Horses husbandry,2601,c031,Tomatoes and products,feed
-p091,Horses husbandry,2602,c032,Onions,feed
-p091,Horses husbandry,2605,c033,"Vegetables, Other",feed
-p091,Horses husbandry,2611,c034,"Oranges, Mandarines",feed
-p091,Horses husbandry,2615,c038,Bananas,feed
-p091,Horses husbandry,2616,c039,Plantains,feed
-p091,Horses husbandry,2617,c040,Apples and products,feed
-p091,Horses husbandry,2619,c042,Dates,feed
-p091,Horses husbandry,2625,c044,"Fruits, Other",feed
-p091,Horses husbandry,2633,c046,Cocoa Beans and products,feed
-p091,Horses husbandry,2642,c051,Cloves,feed
-p091,Horses husbandry,2000,c061,Fodder crops,feed
-p091,Horses husbandry,2001,c062,Grazing,feed
-p091,Horses husbandry,2559,c063,Cottonseed,feed
-p091,Horses husbandry,2541,c065,Sugar non-centrifugal,feed
-p091,Horses husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p091,Horses husbandry,2571,c068,Soyabean Oil,feed
 p091,Horses husbandry,2574,c071,Rape and Mustard Oil,feed
 p091,Horses husbandry,2577,c074,Palm Oil,feed
@@ -606,17 +613,35 @@ p091,Horses husbandry,2595,c086,Palmkernel Cake,feed
 p091,Horses husbandry,2596,c087,Copra Cake,feed
 p091,Horses husbandry,2597,c088,Sesameseed Cake,feed
 p091,Horses husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p091,Horses husbandry,1096,c102,Horses,seedwaste
-p091,Horses husbandry,2848,c109,Milk - Excluding Butter,feed
-p091,Horses husbandry,2740,c110,"Butter, Ghee",feed
-p091,Horses husbandry,2744,c111,Eggs,feed
+p091,Horses husbandry,2601,c031,Tomatoes and products,feed
+p091,Horses husbandry,2602,c032,Onions,feed
+p091,Horses husbandry,2605,c033,"Vegetables, Other",feed
+p091,Horses husbandry,2611,c034,"Oranges, Mandarines",feed
+p091,Horses husbandry,2615,c038,Bananas,feed
+p091,Horses husbandry,2616,c039,Plantains,feed
+p091,Horses husbandry,2617,c040,Apples and products,feed
+p091,Horses husbandry,2619,c042,Dates,feed
+p091,Horses husbandry,2625,c044,"Fruits, Other",feed
+p091,Horses husbandry,2633,c046,Cocoa Beans and products,feed
+p091,Horses husbandry,2642,c051,Cloves,feed
 p091,Horses husbandry,2731,c113,Bovine Meat,feed
 p091,Horses husbandry,2732,c114,Mutton & Goat Meat,feed
 p091,Horses husbandry,2735,c117,"Meat, Other",feed
 p091,Horses husbandry,2736,c118,"Offals, Edible",feed
 p091,Horses husbandry,2737,c119,"Fats, Animals, Raw",feed
+p091,Horses husbandry,2740,c110,"Butter, Ghee",feed
+p091,Horses husbandry,2744,c111,Eggs,feed
 p091,Horses husbandry,2745,c121,Honey,feed
-p092,Asses husbandry,2807,c001,Rice and products,feed
+p091,Horses husbandry,2807,c001,Rice and products,feed
+p091,Horses husbandry,2848,c109,Milk - Excluding Butter,feed
+p092,Asses husbandry,97,c141,Triticale,feed
+p092,Asses husbandry,165,c142,Molasses,feed
+p092,Asses husbandry,265,c143,Castor oil seeds,feed
+p092,Asses husbandry,266,c144,Oil of castor beans,feed
+p092,Asses husbandry,1107,c103,Asses,seedwaste
+p092,Asses husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p092,Asses husbandry,2000,c061,Fodder crops,feed
+p092,Asses husbandry,2001,c062,Grazing,feed
 p092,Asses husbandry,2511,c002,Wheat and products,feed
 p092,Asses husbandry,2513,c003,Barley and products,feed
 p092,Asses husbandry,2514,c004,Maize and products,feed
@@ -631,31 +656,18 @@ p092,Asses husbandry,2534,c013,"Roots, Other",feed
 p092,Asses husbandry,2535,c014,Yams,feed
 p092,Asses husbandry,2536,c015,Sugar cane,feed
 p092,Asses husbandry,2537,c016,Sugar beet,feed
+p092,Asses husbandry,2541,c065,Sugar non-centrifugal,feed
+p092,Asses husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p092,Asses husbandry,2546,c017,Beans,feed
 p092,Asses husbandry,2547,c018,Peas,feed
 p092,Asses husbandry,2549,c019,"Pulses, Other and products",feed
-p092,Asses husbandry,2555,c021,Soyabeans,feed
 p092,Asses husbandry,2552,c022,Groundnuts,feed
+p092,Asses husbandry,2555,c021,Soyabeans,feed
 p092,Asses husbandry,2557,c023,Sunflower seed,feed
 p092,Asses husbandry,2558,c024,Rape and Mustardseed,feed
+p092,Asses husbandry,2559,c063,Cottonseed,feed
 p092,Asses husbandry,2560,c026,Coconuts - Incl Copra,feed
 p092,Asses husbandry,2561,c027,Sesame seed,feed
-p092,Asses husbandry,2601,c031,Tomatoes and products,feed
-p092,Asses husbandry,2602,c032,Onions,feed
-p092,Asses husbandry,2605,c033,"Vegetables, Other",feed
-p092,Asses husbandry,2611,c034,"Oranges, Mandarines",feed
-p092,Asses husbandry,2615,c038,Bananas,feed
-p092,Asses husbandry,2616,c039,Plantains,feed
-p092,Asses husbandry,2617,c040,Apples and products,feed
-p092,Asses husbandry,2619,c042,Dates,feed
-p092,Asses husbandry,2625,c044,"Fruits, Other",feed
-p092,Asses husbandry,2633,c046,Cocoa Beans and products,feed
-p092,Asses husbandry,2642,c051,Cloves,feed
-p092,Asses husbandry,2000,c061,Fodder crops,feed
-p092,Asses husbandry,2001,c062,Grazing,feed
-p092,Asses husbandry,2559,c063,Cottonseed,feed
-p092,Asses husbandry,2541,c065,Sugar non-centrifugal,feed
-p092,Asses husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p092,Asses husbandry,2571,c068,Soyabean Oil,feed
 p092,Asses husbandry,2574,c071,Rape and Mustard Oil,feed
 p092,Asses husbandry,2577,c074,Palm Oil,feed
@@ -670,17 +682,35 @@ p092,Asses husbandry,2595,c086,Palmkernel Cake,feed
 p092,Asses husbandry,2596,c087,Copra Cake,feed
 p092,Asses husbandry,2597,c088,Sesameseed Cake,feed
 p092,Asses husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p092,Asses husbandry,1107,c103,Asses,seedwaste
-p092,Asses husbandry,2848,c109,Milk - Excluding Butter,feed
-p092,Asses husbandry,2740,c110,"Butter, Ghee",feed
-p092,Asses husbandry,2744,c111,Eggs,feed
+p092,Asses husbandry,2601,c031,Tomatoes and products,feed
+p092,Asses husbandry,2602,c032,Onions,feed
+p092,Asses husbandry,2605,c033,"Vegetables, Other",feed
+p092,Asses husbandry,2611,c034,"Oranges, Mandarines",feed
+p092,Asses husbandry,2615,c038,Bananas,feed
+p092,Asses husbandry,2616,c039,Plantains,feed
+p092,Asses husbandry,2617,c040,Apples and products,feed
+p092,Asses husbandry,2619,c042,Dates,feed
+p092,Asses husbandry,2625,c044,"Fruits, Other",feed
+p092,Asses husbandry,2633,c046,Cocoa Beans and products,feed
+p092,Asses husbandry,2642,c051,Cloves,feed
 p092,Asses husbandry,2731,c113,Bovine Meat,feed
 p092,Asses husbandry,2732,c114,Mutton & Goat Meat,feed
 p092,Asses husbandry,2735,c117,"Meat, Other",feed
 p092,Asses husbandry,2736,c118,"Offals, Edible",feed
 p092,Asses husbandry,2737,c119,"Fats, Animals, Raw",feed
+p092,Asses husbandry,2740,c110,"Butter, Ghee",feed
+p092,Asses husbandry,2744,c111,Eggs,feed
 p092,Asses husbandry,2745,c121,Honey,feed
-p093,Mules husbandry,2807,c001,Rice and products,feed
+p092,Asses husbandry,2807,c001,Rice and products,feed
+p092,Asses husbandry,2848,c109,Milk - Excluding Butter,feed
+p093,Mules husbandry,97,c141,Triticale,feed
+p093,Mules husbandry,165,c142,Molasses,feed
+p093,Mules husbandry,265,c143,Castor oil seeds,feed
+p093,Mules husbandry,266,c144,Oil of castor beans,feed
+p093,Mules husbandry,1110,c104,Mules,seedwaste
+p093,Mules husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p093,Mules husbandry,2000,c061,Fodder crops,feed
+p093,Mules husbandry,2001,c062,Grazing,feed
 p093,Mules husbandry,2511,c002,Wheat and products,feed
 p093,Mules husbandry,2513,c003,Barley and products,feed
 p093,Mules husbandry,2514,c004,Maize and products,feed
@@ -695,31 +725,18 @@ p093,Mules husbandry,2534,c013,"Roots, Other",feed
 p093,Mules husbandry,2535,c014,Yams,feed
 p093,Mules husbandry,2536,c015,Sugar cane,feed
 p093,Mules husbandry,2537,c016,Sugar beet,feed
+p093,Mules husbandry,2541,c065,Sugar non-centrifugal,feed
+p093,Mules husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p093,Mules husbandry,2546,c017,Beans,feed
 p093,Mules husbandry,2547,c018,Peas,feed
 p093,Mules husbandry,2549,c019,"Pulses, Other and products",feed
-p093,Mules husbandry,2555,c021,Soyabeans,feed
 p093,Mules husbandry,2552,c022,Groundnuts,feed
+p093,Mules husbandry,2555,c021,Soyabeans,feed
 p093,Mules husbandry,2557,c023,Sunflower seed,feed
 p093,Mules husbandry,2558,c024,Rape and Mustardseed,feed
+p093,Mules husbandry,2559,c063,Cottonseed,feed
 p093,Mules husbandry,2560,c026,Coconuts - Incl Copra,feed
 p093,Mules husbandry,2561,c027,Sesame seed,feed
-p093,Mules husbandry,2601,c031,Tomatoes and products,feed
-p093,Mules husbandry,2602,c032,Onions,feed
-p093,Mules husbandry,2605,c033,"Vegetables, Other",feed
-p093,Mules husbandry,2611,c034,"Oranges, Mandarines",feed
-p093,Mules husbandry,2615,c038,Bananas,feed
-p093,Mules husbandry,2616,c039,Plantains,feed
-p093,Mules husbandry,2617,c040,Apples and products,feed
-p093,Mules husbandry,2619,c042,Dates,feed
-p093,Mules husbandry,2625,c044,"Fruits, Other",feed
-p093,Mules husbandry,2633,c046,Cocoa Beans and products,feed
-p093,Mules husbandry,2642,c051,Cloves,feed
-p093,Mules husbandry,2000,c061,Fodder crops,feed
-p093,Mules husbandry,2001,c062,Grazing,feed
-p093,Mules husbandry,2559,c063,Cottonseed,feed
-p093,Mules husbandry,2541,c065,Sugar non-centrifugal,feed
-p093,Mules husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p093,Mules husbandry,2571,c068,Soyabean Oil,feed
 p093,Mules husbandry,2574,c071,Rape and Mustard Oil,feed
 p093,Mules husbandry,2577,c074,Palm Oil,feed
@@ -734,17 +751,35 @@ p093,Mules husbandry,2595,c086,Palmkernel Cake,feed
 p093,Mules husbandry,2596,c087,Copra Cake,feed
 p093,Mules husbandry,2597,c088,Sesameseed Cake,feed
 p093,Mules husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p093,Mules husbandry,1110,c104,Mules,seedwaste
-p093,Mules husbandry,2848,c109,Milk - Excluding Butter,feed
-p093,Mules husbandry,2740,c110,"Butter, Ghee",feed
-p093,Mules husbandry,2744,c111,Eggs,feed
+p093,Mules husbandry,2601,c031,Tomatoes and products,feed
+p093,Mules husbandry,2602,c032,Onions,feed
+p093,Mules husbandry,2605,c033,"Vegetables, Other",feed
+p093,Mules husbandry,2611,c034,"Oranges, Mandarines",feed
+p093,Mules husbandry,2615,c038,Bananas,feed
+p093,Mules husbandry,2616,c039,Plantains,feed
+p093,Mules husbandry,2617,c040,Apples and products,feed
+p093,Mules husbandry,2619,c042,Dates,feed
+p093,Mules husbandry,2625,c044,"Fruits, Other",feed
+p093,Mules husbandry,2633,c046,Cocoa Beans and products,feed
+p093,Mules husbandry,2642,c051,Cloves,feed
 p093,Mules husbandry,2731,c113,Bovine Meat,feed
 p093,Mules husbandry,2732,c114,Mutton & Goat Meat,feed
 p093,Mules husbandry,2735,c117,"Meat, Other",feed
 p093,Mules husbandry,2736,c118,"Offals, Edible",feed
 p093,Mules husbandry,2737,c119,"Fats, Animals, Raw",feed
+p093,Mules husbandry,2740,c110,"Butter, Ghee",feed
+p093,Mules husbandry,2744,c111,Eggs,feed
 p093,Mules husbandry,2745,c121,Honey,feed
-p094,Camels husbandry,2807,c001,Rice and products,feed
+p093,Mules husbandry,2807,c001,Rice and products,feed
+p093,Mules husbandry,2848,c109,Milk - Excluding Butter,feed
+p094,Camels husbandry,97,c141,Triticale,feed
+p094,Camels husbandry,165,c142,Molasses,feed
+p094,Camels husbandry,265,c143,Castor oil seeds,feed
+p094,Camels husbandry,266,c144,Oil of castor beans,feed
+p094,Camels husbandry,1126,c105,Camels,seedwaste
+p094,Camels husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p094,Camels husbandry,2000,c061,Fodder crops,feed
+p094,Camels husbandry,2001,c062,Grazing,feed
 p094,Camels husbandry,2511,c002,Wheat and products,feed
 p094,Camels husbandry,2513,c003,Barley and products,feed
 p094,Camels husbandry,2514,c004,Maize and products,feed
@@ -759,31 +794,18 @@ p094,Camels husbandry,2534,c013,"Roots, Other",feed
 p094,Camels husbandry,2535,c014,Yams,feed
 p094,Camels husbandry,2536,c015,Sugar cane,feed
 p094,Camels husbandry,2537,c016,Sugar beet,feed
+p094,Camels husbandry,2541,c065,Sugar non-centrifugal,feed
+p094,Camels husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p094,Camels husbandry,2546,c017,Beans,feed
 p094,Camels husbandry,2547,c018,Peas,feed
 p094,Camels husbandry,2549,c019,"Pulses, Other and products",feed
-p094,Camels husbandry,2555,c021,Soyabeans,feed
 p094,Camels husbandry,2552,c022,Groundnuts,feed
+p094,Camels husbandry,2555,c021,Soyabeans,feed
 p094,Camels husbandry,2557,c023,Sunflower seed,feed
 p094,Camels husbandry,2558,c024,Rape and Mustardseed,feed
+p094,Camels husbandry,2559,c063,Cottonseed,feed
 p094,Camels husbandry,2560,c026,Coconuts - Incl Copra,feed
 p094,Camels husbandry,2561,c027,Sesame seed,feed
-p094,Camels husbandry,2601,c031,Tomatoes and products,feed
-p094,Camels husbandry,2602,c032,Onions,feed
-p094,Camels husbandry,2605,c033,"Vegetables, Other",feed
-p094,Camels husbandry,2611,c034,"Oranges, Mandarines",feed
-p094,Camels husbandry,2615,c038,Bananas,feed
-p094,Camels husbandry,2616,c039,Plantains,feed
-p094,Camels husbandry,2617,c040,Apples and products,feed
-p094,Camels husbandry,2619,c042,Dates,feed
-p094,Camels husbandry,2625,c044,"Fruits, Other",feed
-p094,Camels husbandry,2633,c046,Cocoa Beans and products,feed
-p094,Camels husbandry,2642,c051,Cloves,feed
-p094,Camels husbandry,2000,c061,Fodder crops,feed
-p094,Camels husbandry,2001,c062,Grazing,feed
-p094,Camels husbandry,2559,c063,Cottonseed,feed
-p094,Camels husbandry,2541,c065,Sugar non-centrifugal,feed
-p094,Camels husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p094,Camels husbandry,2571,c068,Soyabean Oil,feed
 p094,Camels husbandry,2574,c071,Rape and Mustard Oil,feed
 p094,Camels husbandry,2577,c074,Palm Oil,feed
@@ -798,17 +820,35 @@ p094,Camels husbandry,2595,c086,Palmkernel Cake,feed
 p094,Camels husbandry,2596,c087,Copra Cake,feed
 p094,Camels husbandry,2597,c088,Sesameseed Cake,feed
 p094,Camels husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p094,Camels husbandry,1126,c105,Camels,seedwaste
-p094,Camels husbandry,2848,c109,Milk - Excluding Butter,feed
-p094,Camels husbandry,2740,c110,"Butter, Ghee",feed
-p094,Camels husbandry,2744,c111,Eggs,feed
+p094,Camels husbandry,2601,c031,Tomatoes and products,feed
+p094,Camels husbandry,2602,c032,Onions,feed
+p094,Camels husbandry,2605,c033,"Vegetables, Other",feed
+p094,Camels husbandry,2611,c034,"Oranges, Mandarines",feed
+p094,Camels husbandry,2615,c038,Bananas,feed
+p094,Camels husbandry,2616,c039,Plantains,feed
+p094,Camels husbandry,2617,c040,Apples and products,feed
+p094,Camels husbandry,2619,c042,Dates,feed
+p094,Camels husbandry,2625,c044,"Fruits, Other",feed
+p094,Camels husbandry,2633,c046,Cocoa Beans and products,feed
+p094,Camels husbandry,2642,c051,Cloves,feed
 p094,Camels husbandry,2731,c113,Bovine Meat,feed
 p094,Camels husbandry,2732,c114,Mutton & Goat Meat,feed
 p094,Camels husbandry,2735,c117,"Meat, Other",feed
 p094,Camels husbandry,2736,c118,"Offals, Edible",feed
 p094,Camels husbandry,2737,c119,"Fats, Animals, Raw",feed
+p094,Camels husbandry,2740,c110,"Butter, Ghee",feed
+p094,Camels husbandry,2744,c111,Eggs,feed
 p094,Camels husbandry,2745,c121,Honey,feed
-p095,"Camelids husbandry, other",2807,c001,Rice and products,feed
+p094,Camels husbandry,2807,c001,Rice and products,feed
+p094,Camels husbandry,2848,c109,Milk - Excluding Butter,feed
+p095,"Camelids husbandry, other",97,c141,Triticale,feed
+p095,"Camelids husbandry, other",165,c142,Molasses,feed
+p095,"Camelids husbandry, other",265,c143,Castor oil seeds,feed
+p095,"Camelids husbandry, other",266,c144,Oil of castor beans,feed
+p095,"Camelids husbandry, other",1157,c106,"Camelids, other",seedwaste
+p095,"Camelids husbandry, other",1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p095,"Camelids husbandry, other",2000,c061,Fodder crops,feed
+p095,"Camelids husbandry, other",2001,c062,Grazing,feed
 p095,"Camelids husbandry, other",2511,c002,Wheat and products,feed
 p095,"Camelids husbandry, other",2513,c003,Barley and products,feed
 p095,"Camelids husbandry, other",2514,c004,Maize and products,feed
@@ -823,31 +863,18 @@ p095,"Camelids husbandry, other",2534,c013,"Roots, Other",feed
 p095,"Camelids husbandry, other",2535,c014,Yams,feed
 p095,"Camelids husbandry, other",2536,c015,Sugar cane,feed
 p095,"Camelids husbandry, other",2537,c016,Sugar beet,feed
+p095,"Camelids husbandry, other",2541,c065,Sugar non-centrifugal,feed
+p095,"Camelids husbandry, other",2542,c066,Sugar (Raw Equivalent),feed
 p095,"Camelids husbandry, other",2546,c017,Beans,feed
 p095,"Camelids husbandry, other",2547,c018,Peas,feed
 p095,"Camelids husbandry, other",2549,c019,"Pulses, Other and products",feed
-p095,"Camelids husbandry, other",2555,c021,Soyabeans,feed
 p095,"Camelids husbandry, other",2552,c022,Groundnuts,feed
+p095,"Camelids husbandry, other",2555,c021,Soyabeans,feed
 p095,"Camelids husbandry, other",2557,c023,Sunflower seed,feed
 p095,"Camelids husbandry, other",2558,c024,Rape and Mustardseed,feed
+p095,"Camelids husbandry, other",2559,c063,Cottonseed,feed
 p095,"Camelids husbandry, other",2560,c026,Coconuts - Incl Copra,feed
 p095,"Camelids husbandry, other",2561,c027,Sesame seed,feed
-p095,"Camelids husbandry, other",2601,c031,Tomatoes and products,feed
-p095,"Camelids husbandry, other",2602,c032,Onions,feed
-p095,"Camelids husbandry, other",2605,c033,"Vegetables, Other",feed
-p095,"Camelids husbandry, other",2611,c034,"Oranges, Mandarines",feed
-p095,"Camelids husbandry, other",2615,c038,Bananas,feed
-p095,"Camelids husbandry, other",2616,c039,Plantains,feed
-p095,"Camelids husbandry, other",2617,c040,Apples and products,feed
-p095,"Camelids husbandry, other",2619,c042,Dates,feed
-p095,"Camelids husbandry, other",2625,c044,"Fruits, Other",feed
-p095,"Camelids husbandry, other",2633,c046,Cocoa Beans and products,feed
-p095,"Camelids husbandry, other",2642,c051,Cloves,feed
-p095,"Camelids husbandry, other",2000,c061,Fodder crops,feed
-p095,"Camelids husbandry, other",2001,c062,Grazing,feed
-p095,"Camelids husbandry, other",2559,c063,Cottonseed,feed
-p095,"Camelids husbandry, other",2541,c065,Sugar non-centrifugal,feed
-p095,"Camelids husbandry, other",2542,c066,Sugar (Raw Equivalent),feed
 p095,"Camelids husbandry, other",2571,c068,Soyabean Oil,feed
 p095,"Camelids husbandry, other",2574,c071,Rape and Mustard Oil,feed
 p095,"Camelids husbandry, other",2577,c074,Palm Oil,feed
@@ -862,17 +889,33 @@ p095,"Camelids husbandry, other",2595,c086,Palmkernel Cake,feed
 p095,"Camelids husbandry, other",2596,c087,Copra Cake,feed
 p095,"Camelids husbandry, other",2597,c088,Sesameseed Cake,feed
 p095,"Camelids husbandry, other",2598,c089,"Oilseed Cakes, Other",feed
-p095,"Camelids husbandry, other",1157,c106,"Camelids, other",seedwaste
-p095,"Camelids husbandry, other",2848,c109,Milk - Excluding Butter,feed
-p095,"Camelids husbandry, other",2740,c110,"Butter, Ghee",feed
-p095,"Camelids husbandry, other",2744,c111,Eggs,feed
+p095,"Camelids husbandry, other",2601,c031,Tomatoes and products,feed
+p095,"Camelids husbandry, other",2602,c032,Onions,feed
+p095,"Camelids husbandry, other",2605,c033,"Vegetables, Other",feed
+p095,"Camelids husbandry, other",2611,c034,"Oranges, Mandarines",feed
+p095,"Camelids husbandry, other",2615,c038,Bananas,feed
+p095,"Camelids husbandry, other",2616,c039,Plantains,feed
+p095,"Camelids husbandry, other",2617,c040,Apples and products,feed
+p095,"Camelids husbandry, other",2619,c042,Dates,feed
+p095,"Camelids husbandry, other",2625,c044,"Fruits, Other",feed
+p095,"Camelids husbandry, other",2633,c046,Cocoa Beans and products,feed
+p095,"Camelids husbandry, other",2642,c051,Cloves,feed
 p095,"Camelids husbandry, other",2731,c113,Bovine Meat,feed
 p095,"Camelids husbandry, other",2732,c114,Mutton & Goat Meat,feed
 p095,"Camelids husbandry, other",2735,c117,"Meat, Other",feed
 p095,"Camelids husbandry, other",2736,c118,"Offals, Edible",feed
 p095,"Camelids husbandry, other",2737,c119,"Fats, Animals, Raw",feed
+p095,"Camelids husbandry, other",2740,c110,"Butter, Ghee",feed
+p095,"Camelids husbandry, other",2744,c111,Eggs,feed
 p095,"Camelids husbandry, other",2745,c121,Honey,feed
-p096,Rabbits husbandry,2807,c001,Rice and products,feed
+p095,"Camelids husbandry, other",2807,c001,Rice and products,feed
+p095,"Camelids husbandry, other",2848,c109,Milk - Excluding Butter,feed
+p096,Rabbits husbandry,97,c141,Triticale,feed
+p096,Rabbits husbandry,165,c142,Molasses,feed
+p096,Rabbits husbandry,265,c143,Castor oil seeds,feed
+p096,Rabbits husbandry,266,c144,Oil of castor beans,feed
+p096,Rabbits husbandry,1140,c107,Rabbits and hares,seedwaste
+p096,Rabbits husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
 p096,Rabbits husbandry,2511,c002,Wheat and products,feed
 p096,Rabbits husbandry,2513,c003,Barley and products,feed
 p096,Rabbits husbandry,2514,c004,Maize and products,feed
@@ -887,29 +930,18 @@ p096,Rabbits husbandry,2534,c013,"Roots, Other",feed
 p096,Rabbits husbandry,2535,c014,Yams,feed
 p096,Rabbits husbandry,2536,c015,Sugar cane,feed
 p096,Rabbits husbandry,2537,c016,Sugar beet,feed
+p096,Rabbits husbandry,2541,c065,Sugar non-centrifugal,feed
+p096,Rabbits husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p096,Rabbits husbandry,2546,c017,Beans,feed
 p096,Rabbits husbandry,2547,c018,Peas,feed
 p096,Rabbits husbandry,2549,c019,"Pulses, Other and products",feed
-p096,Rabbits husbandry,2555,c021,Soyabeans,feed
 p096,Rabbits husbandry,2552,c022,Groundnuts,feed
+p096,Rabbits husbandry,2555,c021,Soyabeans,feed
 p096,Rabbits husbandry,2557,c023,Sunflower seed,feed
 p096,Rabbits husbandry,2558,c024,Rape and Mustardseed,feed
+p096,Rabbits husbandry,2559,c063,Cottonseed,feed
 p096,Rabbits husbandry,2560,c026,Coconuts - Incl Copra,feed
 p096,Rabbits husbandry,2561,c027,Sesame seed,feed
-p096,Rabbits husbandry,2601,c031,Tomatoes and products,feed
-p096,Rabbits husbandry,2602,c032,Onions,feed
-p096,Rabbits husbandry,2605,c033,"Vegetables, Other",feed
-p096,Rabbits husbandry,2611,c034,"Oranges, Mandarines",feed
-p096,Rabbits husbandry,2615,c038,Bananas,feed
-p096,Rabbits husbandry,2616,c039,Plantains,feed
-p096,Rabbits husbandry,2617,c040,Apples and products,feed
-p096,Rabbits husbandry,2619,c042,Dates,feed
-p096,Rabbits husbandry,2625,c044,"Fruits, Other",feed
-p096,Rabbits husbandry,2633,c046,Cocoa Beans and products,feed
-p096,Rabbits husbandry,2642,c051,Cloves,feed
-p096,Rabbits husbandry,2559,c063,Cottonseed,feed
-p096,Rabbits husbandry,2541,c065,Sugar non-centrifugal,feed
-p096,Rabbits husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p096,Rabbits husbandry,2571,c068,Soyabean Oil,feed
 p096,Rabbits husbandry,2574,c071,Rape and Mustard Oil,feed
 p096,Rabbits husbandry,2577,c074,Palm Oil,feed
@@ -924,17 +956,33 @@ p096,Rabbits husbandry,2595,c086,Palmkernel Cake,feed
 p096,Rabbits husbandry,2596,c087,Copra Cake,feed
 p096,Rabbits husbandry,2597,c088,Sesameseed Cake,feed
 p096,Rabbits husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p096,Rabbits husbandry,1140,c107,Rabbits and hares,seedwaste
-p096,Rabbits husbandry,2848,c109,Milk - Excluding Butter,feed
-p096,Rabbits husbandry,2740,c110,"Butter, Ghee",feed
-p096,Rabbits husbandry,2744,c111,Eggs,feed
+p096,Rabbits husbandry,2601,c031,Tomatoes and products,feed
+p096,Rabbits husbandry,2602,c032,Onions,feed
+p096,Rabbits husbandry,2605,c033,"Vegetables, Other",feed
+p096,Rabbits husbandry,2611,c034,"Oranges, Mandarines",feed
+p096,Rabbits husbandry,2615,c038,Bananas,feed
+p096,Rabbits husbandry,2616,c039,Plantains,feed
+p096,Rabbits husbandry,2617,c040,Apples and products,feed
+p096,Rabbits husbandry,2619,c042,Dates,feed
+p096,Rabbits husbandry,2625,c044,"Fruits, Other",feed
+p096,Rabbits husbandry,2633,c046,Cocoa Beans and products,feed
+p096,Rabbits husbandry,2642,c051,Cloves,feed
 p096,Rabbits husbandry,2731,c113,Bovine Meat,feed
 p096,Rabbits husbandry,2732,c114,Mutton & Goat Meat,feed
 p096,Rabbits husbandry,2735,c117,"Meat, Other",feed
 p096,Rabbits husbandry,2736,c118,"Offals, Edible",feed
 p096,Rabbits husbandry,2737,c119,"Fats, Animals, Raw",feed
+p096,Rabbits husbandry,2740,c110,"Butter, Ghee",feed
+p096,Rabbits husbandry,2744,c111,Eggs,feed
 p096,Rabbits husbandry,2745,c121,Honey,feed
-p097,"Rodents husbandry, other",2807,c001,Rice and products,feed
+p096,Rabbits husbandry,2807,c001,Rice and products,feed
+p096,Rabbits husbandry,2848,c109,Milk - Excluding Butter,feed
+p097,"Rodents husbandry, other",97,c141,Triticale,feed
+p097,"Rodents husbandry, other",165,c142,Molasses,feed
+p097,"Rodents husbandry, other",265,c143,Castor oil seeds,feed
+p097,"Rodents husbandry, other",266,c144,Oil of castor beans,feed
+p097,"Rodents husbandry, other",1150,c108,"Rodents, other",seedwaste
+p097,"Rodents husbandry, other",1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
 p097,"Rodents husbandry, other",2511,c002,Wheat and products,feed
 p097,"Rodents husbandry, other",2513,c003,Barley and products,feed
 p097,"Rodents husbandry, other",2514,c004,Maize and products,feed
@@ -949,29 +997,18 @@ p097,"Rodents husbandry, other",2534,c013,"Roots, Other",feed
 p097,"Rodents husbandry, other",2535,c014,Yams,feed
 p097,"Rodents husbandry, other",2536,c015,Sugar cane,feed
 p097,"Rodents husbandry, other",2537,c016,Sugar beet,feed
+p097,"Rodents husbandry, other",2541,c065,Sugar non-centrifugal,feed
+p097,"Rodents husbandry, other",2542,c066,Sugar (Raw Equivalent),feed
 p097,"Rodents husbandry, other",2546,c017,Beans,feed
 p097,"Rodents husbandry, other",2547,c018,Peas,feed
 p097,"Rodents husbandry, other",2549,c019,"Pulses, Other and products",feed
-p097,"Rodents husbandry, other",2555,c021,Soyabeans,feed
 p097,"Rodents husbandry, other",2552,c022,Groundnuts,feed
+p097,"Rodents husbandry, other",2555,c021,Soyabeans,feed
 p097,"Rodents husbandry, other",2557,c023,Sunflower seed,feed
 p097,"Rodents husbandry, other",2558,c024,Rape and Mustardseed,feed
+p097,"Rodents husbandry, other",2559,c063,Cottonseed,feed
 p097,"Rodents husbandry, other",2560,c026,Coconuts - Incl Copra,feed
 p097,"Rodents husbandry, other",2561,c027,Sesame seed,feed
-p097,"Rodents husbandry, other",2601,c031,Tomatoes and products,feed
-p097,"Rodents husbandry, other",2602,c032,Onions,feed
-p097,"Rodents husbandry, other",2605,c033,"Vegetables, Other",feed
-p097,"Rodents husbandry, other",2611,c034,"Oranges, Mandarines",feed
-p097,"Rodents husbandry, other",2615,c038,Bananas,feed
-p097,"Rodents husbandry, other",2616,c039,Plantains,feed
-p097,"Rodents husbandry, other",2617,c040,Apples and products,feed
-p097,"Rodents husbandry, other",2619,c042,Dates,feed
-p097,"Rodents husbandry, other",2625,c044,"Fruits, Other",feed
-p097,"Rodents husbandry, other",2633,c046,Cocoa Beans and products,feed
-p097,"Rodents husbandry, other",2642,c051,Cloves,feed
-p097,"Rodents husbandry, other",2559,c063,Cottonseed,feed
-p097,"Rodents husbandry, other",2541,c065,Sugar non-centrifugal,feed
-p097,"Rodents husbandry, other",2542,c066,Sugar (Raw Equivalent),feed
 p097,"Rodents husbandry, other",2571,c068,Soyabean Oil,feed
 p097,"Rodents husbandry, other",2574,c071,Rape and Mustard Oil,feed
 p097,"Rodents husbandry, other",2577,c074,Palm Oil,feed
@@ -986,17 +1023,34 @@ p097,"Rodents husbandry, other",2595,c086,Palmkernel Cake,feed
 p097,"Rodents husbandry, other",2596,c087,Copra Cake,feed
 p097,"Rodents husbandry, other",2597,c088,Sesameseed Cake,feed
 p097,"Rodents husbandry, other",2598,c089,"Oilseed Cakes, Other",feed
-p097,"Rodents husbandry, other",1150,c108,"Rodents, other",seedwaste
-p097,"Rodents husbandry, other",2848,c109,Milk - Excluding Butter,feed
-p097,"Rodents husbandry, other",2740,c110,"Butter, Ghee",feed
-p097,"Rodents husbandry, other",2744,c111,Eggs,feed
+p097,"Rodents husbandry, other",2601,c031,Tomatoes and products,feed
+p097,"Rodents husbandry, other",2602,c032,Onions,feed
+p097,"Rodents husbandry, other",2605,c033,"Vegetables, Other",feed
+p097,"Rodents husbandry, other",2611,c034,"Oranges, Mandarines",feed
+p097,"Rodents husbandry, other",2615,c038,Bananas,feed
+p097,"Rodents husbandry, other",2616,c039,Plantains,feed
+p097,"Rodents husbandry, other",2617,c040,Apples and products,feed
+p097,"Rodents husbandry, other",2619,c042,Dates,feed
+p097,"Rodents husbandry, other",2625,c044,"Fruits, Other",feed
+p097,"Rodents husbandry, other",2633,c046,Cocoa Beans and products,feed
+p097,"Rodents husbandry, other",2642,c051,Cloves,feed
 p097,"Rodents husbandry, other",2731,c113,Bovine Meat,feed
 p097,"Rodents husbandry, other",2732,c114,Mutton & Goat Meat,feed
 p097,"Rodents husbandry, other",2735,c117,"Meat, Other",feed
 p097,"Rodents husbandry, other",2736,c118,"Offals, Edible",feed
 p097,"Rodents husbandry, other",2737,c119,"Fats, Animals, Raw",feed
+p097,"Rodents husbandry, other",2740,c110,"Butter, Ghee",feed
+p097,"Rodents husbandry, other",2744,c111,Eggs,feed
 p097,"Rodents husbandry, other",2745,c121,Honey,feed
-p099,Dairy cattle husbandry,2807,c001,Rice and products,feed
+p097,"Rodents husbandry, other",2807,c001,Rice and products,feed
+p097,"Rodents husbandry, other",2848,c109,Milk - Excluding Butter,feed
+p099,Dairy cattle husbandry,97,c141,Triticale,feed
+p099,Dairy cattle husbandry,165,c142,Molasses,feed
+p099,Dairy cattle husbandry,265,c143,Castor oil seeds,feed
+p099,Dairy cattle husbandry,266,c144,Oil of castor beans,feed
+p099,Dairy cattle husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p099,Dairy cattle husbandry,2000,c061,Fodder crops,feed
+p099,Dairy cattle husbandry,2001,c062,Grazing,feed
 p099,Dairy cattle husbandry,2511,c002,Wheat and products,feed
 p099,Dairy cattle husbandry,2513,c003,Barley and products,feed
 p099,Dairy cattle husbandry,2514,c004,Maize and products,feed
@@ -1011,31 +1065,18 @@ p099,Dairy cattle husbandry,2534,c013,"Roots, Other",feed
 p099,Dairy cattle husbandry,2535,c014,Yams,feed
 p099,Dairy cattle husbandry,2536,c015,Sugar cane,feed
 p099,Dairy cattle husbandry,2537,c016,Sugar beet,feed
+p099,Dairy cattle husbandry,2541,c065,Sugar non-centrifugal,feed
+p099,Dairy cattle husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p099,Dairy cattle husbandry,2546,c017,Beans,feed
 p099,Dairy cattle husbandry,2547,c018,Peas,feed
 p099,Dairy cattle husbandry,2549,c019,"Pulses, Other and products",feed
-p099,Dairy cattle husbandry,2555,c021,Soyabeans,feed
 p099,Dairy cattle husbandry,2552,c022,Groundnuts,feed
+p099,Dairy cattle husbandry,2555,c021,Soyabeans,feed
 p099,Dairy cattle husbandry,2557,c023,Sunflower seed,feed
 p099,Dairy cattle husbandry,2558,c024,Rape and Mustardseed,feed
+p099,Dairy cattle husbandry,2559,c063,Cottonseed,feed
 p099,Dairy cattle husbandry,2560,c026,Coconuts - Incl Copra,feed
 p099,Dairy cattle husbandry,2561,c027,Sesame seed,feed
-p099,Dairy cattle husbandry,2601,c031,Tomatoes and products,feed
-p099,Dairy cattle husbandry,2602,c032,Onions,feed
-p099,Dairy cattle husbandry,2605,c033,"Vegetables, Other",feed
-p099,Dairy cattle husbandry,2611,c034,"Oranges, Mandarines",feed
-p099,Dairy cattle husbandry,2615,c038,Bananas,feed
-p099,Dairy cattle husbandry,2616,c039,Plantains,feed
-p099,Dairy cattle husbandry,2617,c040,Apples and products,feed
-p099,Dairy cattle husbandry,2619,c042,Dates,feed
-p099,Dairy cattle husbandry,2625,c044,"Fruits, Other",feed
-p099,Dairy cattle husbandry,2633,c046,Cocoa Beans and products,feed
-p099,Dairy cattle husbandry,2642,c051,Cloves,feed
-p099,Dairy cattle husbandry,2000,c061,Fodder crops,feed
-p099,Dairy cattle husbandry,2001,c062,Grazing,feed
-p099,Dairy cattle husbandry,2559,c063,Cottonseed,feed
-p099,Dairy cattle husbandry,2541,c065,Sugar non-centrifugal,feed
-p099,Dairy cattle husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p099,Dairy cattle husbandry,2571,c068,Soyabean Oil,feed
 p099,Dairy cattle husbandry,2574,c071,Rape and Mustard Oil,feed
 p099,Dairy cattle husbandry,2577,c074,Palm Oil,feed
@@ -1050,17 +1091,35 @@ p099,Dairy cattle husbandry,2595,c086,Palmkernel Cake,feed
 p099,Dairy cattle husbandry,2596,c087,Copra Cake,feed
 p099,Dairy cattle husbandry,2597,c088,Sesameseed Cake,feed
 p099,Dairy cattle husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p099,Dairy cattle husbandry,2848,c109,Milk - Excluding Butter,seedwaste
-p099,Dairy cattle husbandry,2848,c109,Milk - Excluding Butter,feed
-p099,Dairy cattle husbandry,2740,c110,"Butter, Ghee",feed
-p099,Dairy cattle husbandry,2744,c111,Eggs,feed
+p099,Dairy cattle husbandry,2601,c031,Tomatoes and products,feed
+p099,Dairy cattle husbandry,2602,c032,Onions,feed
+p099,Dairy cattle husbandry,2605,c033,"Vegetables, Other",feed
+p099,Dairy cattle husbandry,2611,c034,"Oranges, Mandarines",feed
+p099,Dairy cattle husbandry,2615,c038,Bananas,feed
+p099,Dairy cattle husbandry,2616,c039,Plantains,feed
+p099,Dairy cattle husbandry,2617,c040,Apples and products,feed
+p099,Dairy cattle husbandry,2619,c042,Dates,feed
+p099,Dairy cattle husbandry,2625,c044,"Fruits, Other",feed
+p099,Dairy cattle husbandry,2633,c046,Cocoa Beans and products,feed
+p099,Dairy cattle husbandry,2642,c051,Cloves,feed
 p099,Dairy cattle husbandry,2731,c113,Bovine Meat,feed
 p099,Dairy cattle husbandry,2732,c114,Mutton & Goat Meat,feed
 p099,Dairy cattle husbandry,2735,c117,"Meat, Other",feed
 p099,Dairy cattle husbandry,2736,c118,"Offals, Edible",feed
 p099,Dairy cattle husbandry,2737,c119,"Fats, Animals, Raw",feed
+p099,Dairy cattle husbandry,2740,c110,"Butter, Ghee",feed
+p099,Dairy cattle husbandry,2744,c111,Eggs,feed
 p099,Dairy cattle husbandry,2745,c121,Honey,feed
-p100,Dairy buffaloes husbandry,2807,c001,Rice and products,feed
+p099,Dairy cattle husbandry,2807,c001,Rice and products,feed
+p099,Dairy cattle husbandry,2848,c109,Milk - Excluding Butter,seedwaste
+p099,Dairy cattle husbandry,2848,c109,Milk - Excluding Butter,feed
+p100,Dairy buffaloes husbandry,97,c141,Triticale,feed
+p100,Dairy buffaloes husbandry,165,c142,Molasses,feed
+p100,Dairy buffaloes husbandry,265,c143,Castor oil seeds,feed
+p100,Dairy buffaloes husbandry,266,c144,Oil of castor beans,feed
+p100,Dairy buffaloes husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p100,Dairy buffaloes husbandry,2000,c061,Fodder crops,feed
+p100,Dairy buffaloes husbandry,2001,c062,Grazing,feed
 p100,Dairy buffaloes husbandry,2511,c002,Wheat and products,feed
 p100,Dairy buffaloes husbandry,2513,c003,Barley and products,feed
 p100,Dairy buffaloes husbandry,2514,c004,Maize and products,feed
@@ -1075,31 +1134,18 @@ p100,Dairy buffaloes husbandry,2534,c013,"Roots, Other",feed
 p100,Dairy buffaloes husbandry,2535,c014,Yams,feed
 p100,Dairy buffaloes husbandry,2536,c015,Sugar cane,feed
 p100,Dairy buffaloes husbandry,2537,c016,Sugar beet,feed
+p100,Dairy buffaloes husbandry,2541,c065,Sugar non-centrifugal,feed
+p100,Dairy buffaloes husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p100,Dairy buffaloes husbandry,2546,c017,Beans,feed
 p100,Dairy buffaloes husbandry,2547,c018,Peas,feed
 p100,Dairy buffaloes husbandry,2549,c019,"Pulses, Other and products",feed
-p100,Dairy buffaloes husbandry,2555,c021,Soyabeans,feed
 p100,Dairy buffaloes husbandry,2552,c022,Groundnuts,feed
+p100,Dairy buffaloes husbandry,2555,c021,Soyabeans,feed
 p100,Dairy buffaloes husbandry,2557,c023,Sunflower seed,feed
 p100,Dairy buffaloes husbandry,2558,c024,Rape and Mustardseed,feed
+p100,Dairy buffaloes husbandry,2559,c063,Cottonseed,feed
 p100,Dairy buffaloes husbandry,2560,c026,Coconuts - Incl Copra,feed
 p100,Dairy buffaloes husbandry,2561,c027,Sesame seed,feed
-p100,Dairy buffaloes husbandry,2601,c031,Tomatoes and products,feed
-p100,Dairy buffaloes husbandry,2602,c032,Onions,feed
-p100,Dairy buffaloes husbandry,2605,c033,"Vegetables, Other",feed
-p100,Dairy buffaloes husbandry,2611,c034,"Oranges, Mandarines",feed
-p100,Dairy buffaloes husbandry,2615,c038,Bananas,feed
-p100,Dairy buffaloes husbandry,2616,c039,Plantains,feed
-p100,Dairy buffaloes husbandry,2617,c040,Apples and products,feed
-p100,Dairy buffaloes husbandry,2619,c042,Dates,feed
-p100,Dairy buffaloes husbandry,2625,c044,"Fruits, Other",feed
-p100,Dairy buffaloes husbandry,2633,c046,Cocoa Beans and products,feed
-p100,Dairy buffaloes husbandry,2642,c051,Cloves,feed
-p100,Dairy buffaloes husbandry,2000,c061,Fodder crops,feed
-p100,Dairy buffaloes husbandry,2001,c062,Grazing,feed
-p100,Dairy buffaloes husbandry,2559,c063,Cottonseed,feed
-p100,Dairy buffaloes husbandry,2541,c065,Sugar non-centrifugal,feed
-p100,Dairy buffaloes husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p100,Dairy buffaloes husbandry,2571,c068,Soyabean Oil,feed
 p100,Dairy buffaloes husbandry,2574,c071,Rape and Mustard Oil,feed
 p100,Dairy buffaloes husbandry,2577,c074,Palm Oil,feed
@@ -1114,17 +1160,35 @@ p100,Dairy buffaloes husbandry,2595,c086,Palmkernel Cake,feed
 p100,Dairy buffaloes husbandry,2596,c087,Copra Cake,feed
 p100,Dairy buffaloes husbandry,2597,c088,Sesameseed Cake,feed
 p100,Dairy buffaloes husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p100,Dairy buffaloes husbandry,2848,c109,Milk - Excluding Butter,seedwaste
-p100,Dairy buffaloes husbandry,2848,c109,Milk - Excluding Butter,feed
-p100,Dairy buffaloes husbandry,2740,c110,"Butter, Ghee",feed
-p100,Dairy buffaloes husbandry,2744,c111,Eggs,feed
+p100,Dairy buffaloes husbandry,2601,c031,Tomatoes and products,feed
+p100,Dairy buffaloes husbandry,2602,c032,Onions,feed
+p100,Dairy buffaloes husbandry,2605,c033,"Vegetables, Other",feed
+p100,Dairy buffaloes husbandry,2611,c034,"Oranges, Mandarines",feed
+p100,Dairy buffaloes husbandry,2615,c038,Bananas,feed
+p100,Dairy buffaloes husbandry,2616,c039,Plantains,feed
+p100,Dairy buffaloes husbandry,2617,c040,Apples and products,feed
+p100,Dairy buffaloes husbandry,2619,c042,Dates,feed
+p100,Dairy buffaloes husbandry,2625,c044,"Fruits, Other",feed
+p100,Dairy buffaloes husbandry,2633,c046,Cocoa Beans and products,feed
+p100,Dairy buffaloes husbandry,2642,c051,Cloves,feed
 p100,Dairy buffaloes husbandry,2731,c113,Bovine Meat,feed
 p100,Dairy buffaloes husbandry,2732,c114,Mutton & Goat Meat,feed
 p100,Dairy buffaloes husbandry,2735,c117,"Meat, Other",feed
 p100,Dairy buffaloes husbandry,2736,c118,"Offals, Edible",feed
 p100,Dairy buffaloes husbandry,2737,c119,"Fats, Animals, Raw",feed
+p100,Dairy buffaloes husbandry,2740,c110,"Butter, Ghee",feed
+p100,Dairy buffaloes husbandry,2744,c111,Eggs,feed
 p100,Dairy buffaloes husbandry,2745,c121,Honey,feed
-p101,Dairy sheep husbandry,2807,c001,Rice and products,feed
+p100,Dairy buffaloes husbandry,2807,c001,Rice and products,feed
+p100,Dairy buffaloes husbandry,2848,c109,Milk - Excluding Butter,seedwaste
+p100,Dairy buffaloes husbandry,2848,c109,Milk - Excluding Butter,feed
+p101,Dairy sheep husbandry,97,c141,Triticale,feed
+p101,Dairy sheep husbandry,165,c142,Molasses,feed
+p101,Dairy sheep husbandry,265,c143,Castor oil seeds,feed
+p101,Dairy sheep husbandry,266,c144,Oil of castor beans,feed
+p101,Dairy sheep husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p101,Dairy sheep husbandry,2000,c061,Fodder crops,feed
+p101,Dairy sheep husbandry,2001,c062,Grazing,feed
 p101,Dairy sheep husbandry,2511,c002,Wheat and products,feed
 p101,Dairy sheep husbandry,2513,c003,Barley and products,feed
 p101,Dairy sheep husbandry,2514,c004,Maize and products,feed
@@ -1139,31 +1203,18 @@ p101,Dairy sheep husbandry,2534,c013,"Roots, Other",feed
 p101,Dairy sheep husbandry,2535,c014,Yams,feed
 p101,Dairy sheep husbandry,2536,c015,Sugar cane,feed
 p101,Dairy sheep husbandry,2537,c016,Sugar beet,feed
+p101,Dairy sheep husbandry,2541,c065,Sugar non-centrifugal,feed
+p101,Dairy sheep husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p101,Dairy sheep husbandry,2546,c017,Beans,feed
 p101,Dairy sheep husbandry,2547,c018,Peas,feed
 p101,Dairy sheep husbandry,2549,c019,"Pulses, Other and products",feed
-p101,Dairy sheep husbandry,2555,c021,Soyabeans,feed
 p101,Dairy sheep husbandry,2552,c022,Groundnuts,feed
+p101,Dairy sheep husbandry,2555,c021,Soyabeans,feed
 p101,Dairy sheep husbandry,2557,c023,Sunflower seed,feed
 p101,Dairy sheep husbandry,2558,c024,Rape and Mustardseed,feed
+p101,Dairy sheep husbandry,2559,c063,Cottonseed,feed
 p101,Dairy sheep husbandry,2560,c026,Coconuts - Incl Copra,feed
 p101,Dairy sheep husbandry,2561,c027,Sesame seed,feed
-p101,Dairy sheep husbandry,2601,c031,Tomatoes and products,feed
-p101,Dairy sheep husbandry,2602,c032,Onions,feed
-p101,Dairy sheep husbandry,2605,c033,"Vegetables, Other",feed
-p101,Dairy sheep husbandry,2611,c034,"Oranges, Mandarines",feed
-p101,Dairy sheep husbandry,2615,c038,Bananas,feed
-p101,Dairy sheep husbandry,2616,c039,Plantains,feed
-p101,Dairy sheep husbandry,2617,c040,Apples and products,feed
-p101,Dairy sheep husbandry,2619,c042,Dates,feed
-p101,Dairy sheep husbandry,2625,c044,"Fruits, Other",feed
-p101,Dairy sheep husbandry,2633,c046,Cocoa Beans and products,feed
-p101,Dairy sheep husbandry,2642,c051,Cloves,feed
-p101,Dairy sheep husbandry,2000,c061,Fodder crops,feed
-p101,Dairy sheep husbandry,2001,c062,Grazing,feed
-p101,Dairy sheep husbandry,2559,c063,Cottonseed,feed
-p101,Dairy sheep husbandry,2541,c065,Sugar non-centrifugal,feed
-p101,Dairy sheep husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p101,Dairy sheep husbandry,2571,c068,Soyabean Oil,feed
 p101,Dairy sheep husbandry,2574,c071,Rape and Mustard Oil,feed
 p101,Dairy sheep husbandry,2577,c074,Palm Oil,feed
@@ -1178,17 +1229,35 @@ p101,Dairy sheep husbandry,2595,c086,Palmkernel Cake,feed
 p101,Dairy sheep husbandry,2596,c087,Copra Cake,feed
 p101,Dairy sheep husbandry,2597,c088,Sesameseed Cake,feed
 p101,Dairy sheep husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p101,Dairy sheep husbandry,2848,c109,Milk - Excluding Butter,seedwaste
-p101,Dairy sheep husbandry,2848,c109,Milk - Excluding Butter,feed
-p101,Dairy sheep husbandry,2740,c110,"Butter, Ghee",feed
-p101,Dairy sheep husbandry,2744,c111,Eggs,feed
+p101,Dairy sheep husbandry,2601,c031,Tomatoes and products,feed
+p101,Dairy sheep husbandry,2602,c032,Onions,feed
+p101,Dairy sheep husbandry,2605,c033,"Vegetables, Other",feed
+p101,Dairy sheep husbandry,2611,c034,"Oranges, Mandarines",feed
+p101,Dairy sheep husbandry,2615,c038,Bananas,feed
+p101,Dairy sheep husbandry,2616,c039,Plantains,feed
+p101,Dairy sheep husbandry,2617,c040,Apples and products,feed
+p101,Dairy sheep husbandry,2619,c042,Dates,feed
+p101,Dairy sheep husbandry,2625,c044,"Fruits, Other",feed
+p101,Dairy sheep husbandry,2633,c046,Cocoa Beans and products,feed
+p101,Dairy sheep husbandry,2642,c051,Cloves,feed
 p101,Dairy sheep husbandry,2731,c113,Bovine Meat,feed
 p101,Dairy sheep husbandry,2732,c114,Mutton & Goat Meat,feed
 p101,Dairy sheep husbandry,2735,c117,"Meat, Other",feed
 p101,Dairy sheep husbandry,2736,c118,"Offals, Edible",feed
 p101,Dairy sheep husbandry,2737,c119,"Fats, Animals, Raw",feed
+p101,Dairy sheep husbandry,2740,c110,"Butter, Ghee",feed
+p101,Dairy sheep husbandry,2744,c111,Eggs,feed
 p101,Dairy sheep husbandry,2745,c121,Honey,feed
-p102,Dairy goats husbandry,2807,c001,Rice and products,feed
+p101,Dairy sheep husbandry,2807,c001,Rice and products,feed
+p101,Dairy sheep husbandry,2848,c109,Milk - Excluding Butter,seedwaste
+p101,Dairy sheep husbandry,2848,c109,Milk - Excluding Butter,feed
+p102,Dairy goats husbandry,97,c141,Triticale,feed
+p102,Dairy goats husbandry,165,c142,Molasses,feed
+p102,Dairy goats husbandry,265,c143,Castor oil seeds,feed
+p102,Dairy goats husbandry,266,c144,Oil of castor beans,feed
+p102,Dairy goats husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p102,Dairy goats husbandry,2000,c061,Fodder crops,feed
+p102,Dairy goats husbandry,2001,c062,Grazing,feed
 p102,Dairy goats husbandry,2511,c002,Wheat and products,feed
 p102,Dairy goats husbandry,2513,c003,Barley and products,feed
 p102,Dairy goats husbandry,2514,c004,Maize and products,feed
@@ -1203,31 +1272,18 @@ p102,Dairy goats husbandry,2534,c013,"Roots, Other",feed
 p102,Dairy goats husbandry,2535,c014,Yams,feed
 p102,Dairy goats husbandry,2536,c015,Sugar cane,feed
 p102,Dairy goats husbandry,2537,c016,Sugar beet,feed
+p102,Dairy goats husbandry,2541,c065,Sugar non-centrifugal,feed
+p102,Dairy goats husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p102,Dairy goats husbandry,2546,c017,Beans,feed
 p102,Dairy goats husbandry,2547,c018,Peas,feed
 p102,Dairy goats husbandry,2549,c019,"Pulses, Other and products",feed
-p102,Dairy goats husbandry,2555,c021,Soyabeans,feed
 p102,Dairy goats husbandry,2552,c022,Groundnuts,feed
+p102,Dairy goats husbandry,2555,c021,Soyabeans,feed
 p102,Dairy goats husbandry,2557,c023,Sunflower seed,feed
 p102,Dairy goats husbandry,2558,c024,Rape and Mustardseed,feed
+p102,Dairy goats husbandry,2559,c063,Cottonseed,feed
 p102,Dairy goats husbandry,2560,c026,Coconuts - Incl Copra,feed
 p102,Dairy goats husbandry,2561,c027,Sesame seed,feed
-p102,Dairy goats husbandry,2601,c031,Tomatoes and products,feed
-p102,Dairy goats husbandry,2602,c032,Onions,feed
-p102,Dairy goats husbandry,2605,c033,"Vegetables, Other",feed
-p102,Dairy goats husbandry,2611,c034,"Oranges, Mandarines",feed
-p102,Dairy goats husbandry,2615,c038,Bananas,feed
-p102,Dairy goats husbandry,2616,c039,Plantains,feed
-p102,Dairy goats husbandry,2617,c040,Apples and products,feed
-p102,Dairy goats husbandry,2619,c042,Dates,feed
-p102,Dairy goats husbandry,2625,c044,"Fruits, Other",feed
-p102,Dairy goats husbandry,2633,c046,Cocoa Beans and products,feed
-p102,Dairy goats husbandry,2642,c051,Cloves,feed
-p102,Dairy goats husbandry,2000,c061,Fodder crops,feed
-p102,Dairy goats husbandry,2001,c062,Grazing,feed
-p102,Dairy goats husbandry,2559,c063,Cottonseed,feed
-p102,Dairy goats husbandry,2541,c065,Sugar non-centrifugal,feed
-p102,Dairy goats husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p102,Dairy goats husbandry,2571,c068,Soyabean Oil,feed
 p102,Dairy goats husbandry,2574,c071,Rape and Mustard Oil,feed
 p102,Dairy goats husbandry,2577,c074,Palm Oil,feed
@@ -1242,17 +1298,35 @@ p102,Dairy goats husbandry,2595,c086,Palmkernel Cake,feed
 p102,Dairy goats husbandry,2596,c087,Copra Cake,feed
 p102,Dairy goats husbandry,2597,c088,Sesameseed Cake,feed
 p102,Dairy goats husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p102,Dairy goats husbandry,2848,c109,Milk - Excluding Butter,seedwaste
-p102,Dairy goats husbandry,2848,c109,Milk - Excluding Butter,feed
-p102,Dairy goats husbandry,2740,c110,"Butter, Ghee",feed
-p102,Dairy goats husbandry,2744,c111,Eggs,feed
+p102,Dairy goats husbandry,2601,c031,Tomatoes and products,feed
+p102,Dairy goats husbandry,2602,c032,Onions,feed
+p102,Dairy goats husbandry,2605,c033,"Vegetables, Other",feed
+p102,Dairy goats husbandry,2611,c034,"Oranges, Mandarines",feed
+p102,Dairy goats husbandry,2615,c038,Bananas,feed
+p102,Dairy goats husbandry,2616,c039,Plantains,feed
+p102,Dairy goats husbandry,2617,c040,Apples and products,feed
+p102,Dairy goats husbandry,2619,c042,Dates,feed
+p102,Dairy goats husbandry,2625,c044,"Fruits, Other",feed
+p102,Dairy goats husbandry,2633,c046,Cocoa Beans and products,feed
+p102,Dairy goats husbandry,2642,c051,Cloves,feed
 p102,Dairy goats husbandry,2731,c113,Bovine Meat,feed
 p102,Dairy goats husbandry,2732,c114,Mutton & Goat Meat,feed
 p102,Dairy goats husbandry,2735,c117,"Meat, Other",feed
 p102,Dairy goats husbandry,2736,c118,"Offals, Edible",feed
 p102,Dairy goats husbandry,2737,c119,"Fats, Animals, Raw",feed
+p102,Dairy goats husbandry,2740,c110,"Butter, Ghee",feed
+p102,Dairy goats husbandry,2744,c111,Eggs,feed
 p102,Dairy goats husbandry,2745,c121,Honey,feed
-p103,Dairy camels husbandry,2807,c001,Rice and products,feed
+p102,Dairy goats husbandry,2807,c001,Rice and products,feed
+p102,Dairy goats husbandry,2848,c109,Milk - Excluding Butter,seedwaste
+p102,Dairy goats husbandry,2848,c109,Milk - Excluding Butter,feed
+p103,Dairy camels husbandry,97,c141,Triticale,feed
+p103,Dairy camels husbandry,165,c142,Molasses,feed
+p103,Dairy camels husbandry,265,c143,Castor oil seeds,feed
+p103,Dairy camels husbandry,266,c144,Oil of castor beans,feed
+p103,Dairy camels husbandry,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",feed
+p103,Dairy camels husbandry,2000,c061,Fodder crops,feed
+p103,Dairy camels husbandry,2001,c062,Grazing,feed
 p103,Dairy camels husbandry,2511,c002,Wheat and products,feed
 p103,Dairy camels husbandry,2513,c003,Barley and products,feed
 p103,Dairy camels husbandry,2514,c004,Maize and products,feed
@@ -1267,31 +1341,18 @@ p103,Dairy camels husbandry,2534,c013,"Roots, Other",feed
 p103,Dairy camels husbandry,2535,c014,Yams,feed
 p103,Dairy camels husbandry,2536,c015,Sugar cane,feed
 p103,Dairy camels husbandry,2537,c016,Sugar beet,feed
+p103,Dairy camels husbandry,2541,c065,Sugar non-centrifugal,feed
+p103,Dairy camels husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p103,Dairy camels husbandry,2546,c017,Beans,feed
 p103,Dairy camels husbandry,2547,c018,Peas,feed
 p103,Dairy camels husbandry,2549,c019,"Pulses, Other and products",feed
-p103,Dairy camels husbandry,2555,c021,Soyabeans,feed
 p103,Dairy camels husbandry,2552,c022,Groundnuts,feed
+p103,Dairy camels husbandry,2555,c021,Soyabeans,feed
 p103,Dairy camels husbandry,2557,c023,Sunflower seed,feed
 p103,Dairy camels husbandry,2558,c024,Rape and Mustardseed,feed
+p103,Dairy camels husbandry,2559,c063,Cottonseed,feed
 p103,Dairy camels husbandry,2560,c026,Coconuts - Incl Copra,feed
 p103,Dairy camels husbandry,2561,c027,Sesame seed,feed
-p103,Dairy camels husbandry,2601,c031,Tomatoes and products,feed
-p103,Dairy camels husbandry,2602,c032,Onions,feed
-p103,Dairy camels husbandry,2605,c033,"Vegetables, Other",feed
-p103,Dairy camels husbandry,2611,c034,"Oranges, Mandarines",feed
-p103,Dairy camels husbandry,2615,c038,Bananas,feed
-p103,Dairy camels husbandry,2616,c039,Plantains,feed
-p103,Dairy camels husbandry,2617,c040,Apples and products,feed
-p103,Dairy camels husbandry,2619,c042,Dates,feed
-p103,Dairy camels husbandry,2625,c044,"Fruits, Other",feed
-p103,Dairy camels husbandry,2633,c046,Cocoa Beans and products,feed
-p103,Dairy camels husbandry,2642,c051,Cloves,feed
-p103,Dairy camels husbandry,2000,c061,Fodder crops,feed
-p103,Dairy camels husbandry,2001,c062,Grazing,feed
-p103,Dairy camels husbandry,2559,c063,Cottonseed,feed
-p103,Dairy camels husbandry,2541,c065,Sugar non-centrifugal,feed
-p103,Dairy camels husbandry,2542,c066,Sugar (Raw Equivalent),feed
 p103,Dairy camels husbandry,2571,c068,Soyabean Oil,feed
 p103,Dairy camels husbandry,2574,c071,Rape and Mustard Oil,feed
 p103,Dairy camels husbandry,2577,c074,Palm Oil,feed
@@ -1306,16 +1367,28 @@ p103,Dairy camels husbandry,2595,c086,Palmkernel Cake,feed
 p103,Dairy camels husbandry,2596,c087,Copra Cake,feed
 p103,Dairy camels husbandry,2597,c088,Sesameseed Cake,feed
 p103,Dairy camels husbandry,2598,c089,"Oilseed Cakes, Other",feed
-p103,Dairy camels husbandry,2848,c109,Milk - Excluding Butter,seedwaste
-p103,Dairy camels husbandry,2848,c109,Milk - Excluding Butter,feed
-p103,Dairy camels husbandry,2740,c110,"Butter, Ghee",feed
-p103,Dairy camels husbandry,2744,c111,Eggs,feed
+p103,Dairy camels husbandry,2601,c031,Tomatoes and products,feed
+p103,Dairy camels husbandry,2602,c032,Onions,feed
+p103,Dairy camels husbandry,2605,c033,"Vegetables, Other",feed
+p103,Dairy camels husbandry,2611,c034,"Oranges, Mandarines",feed
+p103,Dairy camels husbandry,2615,c038,Bananas,feed
+p103,Dairy camels husbandry,2616,c039,Plantains,feed
+p103,Dairy camels husbandry,2617,c040,Apples and products,feed
+p103,Dairy camels husbandry,2619,c042,Dates,feed
+p103,Dairy camels husbandry,2625,c044,"Fruits, Other",feed
+p103,Dairy camels husbandry,2633,c046,Cocoa Beans and products,feed
+p103,Dairy camels husbandry,2642,c051,Cloves,feed
 p103,Dairy camels husbandry,2731,c113,Bovine Meat,feed
 p103,Dairy camels husbandry,2732,c114,Mutton & Goat Meat,feed
 p103,Dairy camels husbandry,2735,c117,"Meat, Other",feed
 p103,Dairy camels husbandry,2736,c118,"Offals, Edible",feed
 p103,Dairy camels husbandry,2737,c119,"Fats, Animals, Raw",feed
+p103,Dairy camels husbandry,2740,c110,"Butter, Ghee",feed
+p103,Dairy camels husbandry,2744,c111,Eggs,feed
 p103,Dairy camels husbandry,2745,c121,Honey,feed
+p103,Dairy camels husbandry,2807,c001,Rice and products,feed
+p103,Dairy camels husbandry,2848,c109,Milk - Excluding Butter,seedwaste
+p103,Dairy camels husbandry,2848,c109,Milk - Excluding Butter,feed
 p104,Cattle slaughtering,866,c096,Cattle,slaughtering
 p104,Cattle slaughtering,2731,c113,Bovine Meat,seedwaste
 p104,Cattle slaughtering,2736,c118,"Offals, Edible",seedwaste
@@ -1375,78 +1448,9 @@ p116,"Rodents slaughtering, other",2737,c119,"Fats, Animals, Raw",seedwaste
 p118,Beekeeping,2745,c121,Honey,seedwaste
 p119,Silkworm breeding,2747,c122,Silk,seedwaste
 p120,Fishing,2960,c123,"Fish, Seafood",seedwaste
-p121,Butter production,2848,c109,Milk - Excluding Butter,100%
 p121,Butter production,2740,c110,"Butter, Ghee",seedwaste
+p121,Butter production,2848,c109,Milk - Excluding Butter,100%
 p123,Castor oil production,265,c143,Castor oil seeds,NA
-p125,Biogasoline production,2807,c001,Rice and products,NA
-p125,Biogasoline production,2511,c002,Wheat and products,NA
-p125,Biogasoline production,2513,c003,Barley and products,NA
-p125,Biogasoline production,2514,c004,Maize and products,NA
-p125,Biogasoline production,2515,c005,Rye and products,NA
-p125,Biogasoline production,2518,c008,Sorghum and products,NA
-p125,Biogasoline production,2532,c011,Cassava and products,NA
-p125,Biogasoline production,2536,c015,Sugar cane,NA
-p125,Biogasoline production,2537,c016,Sugar beet,NA
-p125,Biogasoline production,97,c141,Triticale,NA
-p125,Biogasoline production,165,c142,Molasses,NA
-p125,Biogasoline production,NA,c901,"Other, Waste",NA
-p125,Biogasoline production,NA,c999,"Other, Unknown",NA
-p126,Biodiesel production,2571,c069,Soyabean Oil,NA
-p126,Biodiesel production,2573,c071,Sunflowerseed Oil,NA
-p126,Biodiesel production,2574,c072,Rape and Mustard Oil,NA
-p126,Biodiesel production,2575,c073,Cottonseed Oil,NA
-p126,Biodiesel production,2576,c074,Palmkernel Oil,NA
-p126,Biodiesel production,2577,c075,Palm Oil,NA
-p126,Biodiesel production,2578,c076,Coconut Oil,NA
-p126,Biodiesel production,2582,c080,Maize Germ Oil,NA
-p126,Biodiesel production,2737,c120,"Fats, Animals, Raw",NA
-p126,Biodiesel production,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",NA
-p126,Biodiesel production,NA,c901,"Other, Waste",NA
-p126,Biodiesel production,NA,c999,"Other, Unknown",NA
-p127,Renewable diesel production,2571,c069,Soyabean Oil,NA
-p127,Renewable diesel production,2574,c072,Rape and Mustard Oil,NA
-p127,Renewable diesel production,2577,c075,Palm Oil,NA
-p127,Renewable diesel production,2582,c080,Maize Germ Oil,NA
-p127,Renewable diesel production,2737,c120,"Fats, Animals, Raw",NA
-p127,Renewable diesel production,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",NA
-p127,Renewable diesel production,NA,c901,"Other, Waste",NA
-p127,Renewable diesel production,NA,c999,"Other, Unknown",NA
-p128,Lactic acid production,2807,c001,Rice and products,NA
-p128,Lactic acid production,2511,c002,Wheat and products,NA
-p128,Lactic acid production,2514,c004,Maize and products,NA
-p128,Lactic acid production,2531,c010,Potatoes and products,NA
-p128,Lactic acid production,2532,c011,Cassava and products,NA
-p128,Lactic acid production,2536,c015,Sugar cane,NA
-p128,Lactic acid production,2537,c016,Sugar beet,NA
-p128,Lactic acid production,NA,c148,"Glycerol, crude",NA
-p129,Sebacic acid production,266,c144,Oil of castor beans,NA
-p130,Succinic acid production,2511,c002,Wheat and products,NA
-p130,Succinic acid production,2514,c004,Maize and products,NA
-p130,Succinic acid production,2531,c010,Potatoes and products,NA
-p131,11-AA production,266,c144,Oil of castor beans,NA
-p132,Ethylene production,NA,c146,Biogasoline,NA
-p132,Ethylene production,NA,c151,Bionaphtha,NA
-p133,Propylene production,NA,c150,Biopropane,NA
-p133,Propylene production,NA,c151,Bionaphtha,NA
-p134,"1,3-PDO production",2514,c004,Maize and products,NA
-p134,"1,3-PDO production",NA,c148,"Glycerol, crude",NA
-p135,"1,4-BDO production",2807,c001,Rice and products,NA
-p135,"1,4-BDO production",2511,c002,Wheat and products,NA
-p135,"1,4-BDO production",2514,c004,Maize and products,NA
-p135,"1,4-BDO production",2531,c010,Potatoes and products,NA
-p135,"1,4-BDO production",2532,c011,Cassava and products,NA
-p135,"1,4-BDO production",NA,c154,Succinic acid,NA
-p136,MEG production,NA,c156,Ethylene,NA
-p137,MPG production,NA,c148,"Glycerol, crude",NA
-p138,ECH production,NA,c148,"Glycerol, crude",NA
-p139,PLA production,NA,c152,L-LA,NA
-p140,PE production,NA,c156,Ethylene,NA
-p141,PP production,NA,c157,Propylene,NA
-p142,PTT production,NA,c158,"1,3-PDO",NA
-p143,PET production,NA,c160,MEG,NA
-p144,PBAT production,NA,c159,"1,4-BDO",NA
-p145,PBS production,NA,c154,Succinic acid,NA
-p146,Epoxy resins production,NA,c162,ECH,NA
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2571,c068,Soyabean Oil,NA
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2572,c069,Groundnut Oil,NA
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2573,c070,Sunflowerseed Oil,NA
@@ -1459,3 +1463,72 @@ p124,"Animal or vegetable fats and oils and their fractions, chemically modified
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2580,c077,Olive Oil,NA
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2581,c078,Ricebran Oil,NA
 p124,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils collection",2582,c079,Maize Germ Oil,NA
+p125,Biogasoline production,97,c141,Triticale,NA
+p125,Biogasoline production,165,c142,Molasses,NA
+p125,Biogasoline production,2511,c002,Wheat and products,NA
+p125,Biogasoline production,2513,c003,Barley and products,NA
+p125,Biogasoline production,2514,c004,Maize and products,NA
+p125,Biogasoline production,2515,c005,Rye and products,NA
+p125,Biogasoline production,2518,c008,Sorghum and products,NA
+p125,Biogasoline production,2532,c011,Cassava and products,NA
+p125,Biogasoline production,2536,c015,Sugar cane,NA
+p125,Biogasoline production,2537,c016,Sugar beet,NA
+p125,Biogasoline production,2807,c001,Rice and products,NA
+p125,Biogasoline production,NA,c901,"Other, Waste",NA
+p125,Biogasoline production,NA,c999,"Other, Unknown",NA
+p126,Biodiesel production,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",NA
+p126,Biodiesel production,2571,c069,Soyabean Oil,NA
+p126,Biodiesel production,2573,c071,Sunflowerseed Oil,NA
+p126,Biodiesel production,2574,c072,Rape and Mustard Oil,NA
+p126,Biodiesel production,2575,c073,Cottonseed Oil,NA
+p126,Biodiesel production,2576,c074,Palmkernel Oil,NA
+p126,Biodiesel production,2577,c075,Palm Oil,NA
+p126,Biodiesel production,2578,c076,Coconut Oil,NA
+p126,Biodiesel production,2582,c080,Maize Germ Oil,NA
+p126,Biodiesel production,2737,c120,"Fats, Animals, Raw",NA
+p126,Biodiesel production,NA,c901,"Other, Waste",NA
+p126,Biodiesel production,NA,c999,"Other, Unknown",NA
+p127,Renewable diesel production,1274,c145,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",NA
+p127,Renewable diesel production,2571,c069,Soyabean Oil,NA
+p127,Renewable diesel production,2574,c072,Rape and Mustard Oil,NA
+p127,Renewable diesel production,2577,c075,Palm Oil,NA
+p127,Renewable diesel production,2582,c080,Maize Germ Oil,NA
+p127,Renewable diesel production,2737,c120,"Fats, Animals, Raw",NA
+p127,Renewable diesel production,NA,c901,"Other, Waste",NA
+p127,Renewable diesel production,NA,c999,"Other, Unknown",NA
+p128,Lactic acid production,2511,c002,Wheat and products,NA
+p128,Lactic acid production,2514,c004,Maize and products,NA
+p128,Lactic acid production,2531,c010,Potatoes and products,NA
+p128,Lactic acid production,2532,c011,Cassava and products,NA
+p128,Lactic acid production,2536,c015,Sugar cane,NA
+p128,Lactic acid production,2537,c016,Sugar beet,NA
+p128,Lactic acid production,2807,c001,Rice and products,NA
+p128,Lactic acid production,NA,c148,"Glycerol, crude",NA
+p129,Sebacic acid production,266,c144,Oil of castor beans,NA
+p130,Succinic acid production,2511,c002,Wheat and products,NA
+p130,Succinic acid production,2514,c004,Maize and products,NA
+p130,Succinic acid production,2531,c010,Potatoes and products,NA
+p131,11-AA production,266,c144,Oil of castor beans,NA
+p132,Ethylene production,NA,c146,Biogasoline,NA
+p132,Ethylene production,NA,c151,Bionaphtha,NA
+p133,Propylene production,NA,c150,Biopropane,NA
+p133,Propylene production,NA,c151,Bionaphtha,NA
+p134,"1,3-PDO production",2514,c004,Maize and products,NA
+p134,"1,3-PDO production",NA,c148,"Glycerol, crude",NA
+p135,"1,4-BDO production",2511,c002,Wheat and products,NA
+p135,"1,4-BDO production",2514,c004,Maize and products,NA
+p135,"1,4-BDO production",2531,c010,Potatoes and products,NA
+p135,"1,4-BDO production",2532,c011,Cassava and products,NA
+p135,"1,4-BDO production",2807,c001,Rice and products,NA
+p135,"1,4-BDO production",NA,c154,Succinic acid,NA
+p136,MEG production,NA,c156,Ethylene,NA
+p137,MPG production,NA,c148,"Glycerol, crude",NA
+p138,ECH production,NA,c148,"Glycerol, crude",NA
+p139,PLA production,NA,c152,L-LA,NA
+p140,PE production,NA,c156,Ethylene,NA
+p141,PP production,NA,c157,Propylene,NA
+p142,PTT production,NA,c158,"1,3-PDO",NA
+p143,PET production,NA,c160,MEG,NA
+p144,PBAT production,NA,c159,"1,4-BDO",NA
+p145,PBS production,NA,c154,Succinic acid,NA
+p146,Epoxy resins production,NA,c162,ECH,NA
