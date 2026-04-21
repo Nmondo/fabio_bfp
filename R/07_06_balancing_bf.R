@@ -1060,10 +1060,28 @@ full_compile_balanced <- full_compile_balanced %>%
   bind_rows(biogasoline_agg_p2) %>%
   mutate(
     process = ifelse(product == "Biogasoline", "Biogasoline production", process),
-    across(starts_with("unit"), ~ ifelse(product == "Biogasoline", "Ml", .x))
+    across(starts_with("unit"), ~ ifelse(product == "Biogasoline", "Ml", .x)),
+    y = case_when(
+      iso3c == "JPN" & product == "Biogasoline" ~ y - total_supply,
+      iso3c == "MOZ" & product == "Biogasoline" ~ 0,
+      TRUE ~ y
+    ),
+    y_Non_fuel = case_when(
+      iso3c == "JPN" & product == "Biogasoline" ~ y_Non_fuel - total_supply,
+      iso3c == "MOZ" & product == "Biogasoline" ~ 0,
+      TRUE ~ y_Non_fuel
+    ),
+    y_Fuel = case_when(
+      iso3c == "MOZ" & product == "Biogasoline" ~ 0,
+      TRUE ~ y_Fuel
+    ),
+    total_supply = case_when(
+      iso3c == "JPN" & product == "Biogasoline" ~ 0,
+      iso3c == "MOZ" & product == "Biogasoline" ~ 0,
+      TRUE ~ total_supply
+    )
   ) %>%
   arrange(iso3c, year, product)
-
 
 # Checking balances globally by product-year (sum of imports = sum of exports; sum of production = sum of use)
 

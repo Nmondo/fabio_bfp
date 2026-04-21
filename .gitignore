@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.mcp.json
 *.Rproj
 
 input/

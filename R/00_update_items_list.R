@@ -17,7 +17,7 @@ items <- read.csv("inst/items_full_123.csv")
 items_supply <- read.csv("inst/items_supply.csv")
 items_use <- read.csv("inst/items_use.csv")
 
-
+print(items[, c("comm_code", "item_code", "item")])
 
 
 ###########################################################
@@ -113,8 +113,8 @@ items_use_extension <- data.frame(
                 "PBAT production","PBS production","Epoxy resins production"),
   comm_code = c("c143",
                 "c001","c002","c003","c004","c005","c008","c011","c015","c016","c141","c142","c901","c999",
-                "c069","c071","c072","c073","c074","c075","c076","c080","c120","c145","c901","c999",
-                "c069","c072","c075","c080","c120","c145","c901","c999",
+                "c068","c070","c071","c072","c073","c074","c075","c079","c119","c145","c901","c999",
+                "c068","c071","c074","c079","c119","c145","c901","c999",
                 "c001","c002","c004","c010","c011","c015","c016","c148",
                 "c144",
                 "c002","c004","c010",
@@ -160,7 +160,6 @@ items_use_extension <- data.frame(
                 "1,3-PDO","MEG","1,4-BDO","Succinic acid","ECH"),
   stringsAsFactors = FALSE
 )
-
 
 
 ###########################################################

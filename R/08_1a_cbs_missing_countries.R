@@ -2,6 +2,8 @@
 ########### LOADING PACKAGES #########
 ###########################################################
 
+setwd("/home/mmondolfo/fabio_bfp/")
+
 library("data.table")
 library(dplyr)
 source("R/00_system_variables.R")
@@ -11,21 +13,16 @@ source("R/00_system_variables.R")
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
-
 regions <- fread("inst/regions_full.csv")
 items <- fread("inst/items_full_bcp.csv")
 
-# Supply ------------------------------------------------------------------
+# FABIO tables ------------------------------------------------------------------
 
 btd <- readRDS("data/btd_final.rds")
 cbs <- readRDS("data/cbs_full.rds")
 
-# BCP supply and btd ------------------------------------------------------------------
+# Use for BCP production -----------------------------------------------------------------
 
-# btd_bcp <- readRDS("data/btd_final_bcp.rds")
-# sup_bcp <- readRDS("data/sup_final_bcp.rds")
-# use_fd_bcp <- readRDS("data/use_fd_final_bcp.rds")
 use_bcp <- readRDS("data/use_final_bcp.rds")
 
 # SUA for shares in use ------------------------------------------------------------------

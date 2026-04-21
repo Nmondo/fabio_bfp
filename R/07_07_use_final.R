@@ -99,7 +99,11 @@ use_table_nonzero <- use_table %>%
   
   rename(unit_use = unit.x,
          unit_supply = unit.y)
-  
+
+# Excluding ZAF which produces synthetic ethanol
+use_table_nonzero <- use_table_nonzero %>%
+  filter(!(iso3c == "ZAF" & proc == "Biogasoline production"))
+
 # check for failed TCF joins. 
 # print(subset(use_table_nonzero, is.na(output_qty))) 
 
@@ -169,11 +173,12 @@ faostat_gapfill <- faostat_non_food %>%
 ###########################################################################################
 
 faostat_gapfill <- faostat_gapfill %>%
-  filter(!(iso3c %in% c("IRN", "SAU", "ARE","QAT") & proc == "Biogasoline production"))
+  filter(!(iso3c %in% c("IRN", "SAU", "ARE", "QAT", "ZAF") & proc == "Biogasoline production"))
+
 
 new_rows <- expand.grid(
   year  = unique(faostat_gapfill$year),
-  iso3c = c("IRN", "SAU", "ARE","QAT"),
+  iso3c = c("IRN", "SAU", "ARE","QAT", "ZAF"),
   stringsAsFactors = FALSE
 ) %>%
   mutate(
@@ -333,5 +338,22 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(use_table_final, "inputs_for_final_data/use_final_bf.rds")
 
+
+
+###########################################################################################
+########### FINAL CLEANING AND SAVING OF TCF TABLE IF NEEDED LATER #########
+###########################################################################################
+# Saving clean tcf table for later if needed
+
+tcf_table_clean <- tcf_table_clean %>%
+  mutate(item = case_when(input == "Inedible animal or vegetable fats and oils" ~ "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",
+                          input == "Sweeteners, Other" ~ "Molasses",
+                          input == "Cereals, Other" ~ " Triticale",
+                          input == "Castor oil" ~ "Oil of castor beans",
+                          TRUE ~ input)
+         ) %>%
+  select(-input)
+
+saveRDS(tcf_table_clean, "intermediate_data/tcf_table_final.rds")
 
 rm(list = ls())

@@ -9,7 +9,7 @@ library("quadprog")
 source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 
-cbs <- readRDS("data/cbs_sua_full.rds")
+cbs <- readRDS("data/cbs_sua_bal.rds")
 sup <- readRDS("data/sup.rds")
 items <- fread("inst/items_full_bcp.csv")
 use_items <- fread("inst/items_use_bcp.csv")
@@ -361,7 +361,7 @@ use_fd[, value := NULL]
 # Remove unneeded variables
 use <- use[, .(year, area_code, area, comm_code, item_code, item,
                proc_code, proc, type, use)]
-
+input_use_total <- cbs[, .(input_use_sum = na_sum(input_use)), by = .(comm_code, year)]
 
 # Correct remaining imbalances between supply and use -----
 a <- use %>% group_by(comm_code, year) %>% summarise(use_io = round(sum(use, na.rm = T)/1)) %>% as.data.table()
@@ -376,7 +376,7 @@ d[, `:=`(diff_io = diff / use_total * use_io,
 d[, diff_share := round(diff / supply_total *100)]
 
 # correct use_fd
-use_fd <- merge(use_fd, d[, .(comm_code, year, diff, use_fd_global = use_fd)],
+use_fd <- merge(use_fd, d[, .(comm_code, year, diff = diff_adjustable, use_fd_global = use_fd)],
                 by = c("comm_code", "year"), all.x = TRUE)
 
 # Calculate b at the country level
@@ -397,21 +397,17 @@ use_fd[!is.na(diff / use_fd_global) & !item %like% "Cake" & item_code > 2029, `:
 
 use_fd[, `:=`(diff = NULL, use_fd_global = NULL, use_fd_country = NULL)]
 
-
 # correct oilseed cakes, hops, livestock, fodder crops and grazing in use
-use <- merge(use, d[, .(comm_code, year, diff, use_io)],
+use <- merge(use, d[, .(comm_code, year, diff = diff_adjustable, use_io)],
              by = c("comm_code", "year"), all.x = TRUE)
 use[(item %like% "Cake" | item_code <= 2029) & !is.na(diff / use_io), 
     use := na_sum(use, round(diff / use_io * use))]
 
 use[, `:=`(diff = NULL, use_io = NULL)]
 
-
 # Delete products and processes that were discarded (ethanol, "Other"...)
 
 use <- use[! proc_code %in% c("p066","p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
-
-
 
 
 ########################################################################################################################
@@ -474,6 +470,11 @@ use_fd <- use_fd %>%
     food  = if_else(area == "China, mainland", food  - use * food  / div, pmax(0, food - use))
   ) %>%
   select(-use, -div)
+
+
+
+
+cbs[, input_use := NULL]
 
 # Save -----
 

@@ -10,7 +10,7 @@ items <- fread("inst/items_full_bcp.csv")
 # Supply ------------------------------------------------------------------
 
 btd <- readRDS("data/btd_full.rds")
-cbs <- readRDS("data/cbs_sua_full.rds")
+cbs <- readRDS("data/cbs_sua_bal.rds")
 sup <- fread("inst/items_supply_bcp.csv")
 
 
