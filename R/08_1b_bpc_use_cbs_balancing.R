@@ -500,9 +500,9 @@ cbs_sua_adjusted <- cbs_sua_adjusted %>%
 #2. Recalculate supply & use ######
 ###########################################################
 
-cbs_sua_adjusted[, `:=`(domestic_supply = na_sum(production, stock_withdrawal))]
+cbs_sua_adjusted[, `:=`(domestic_supply = production)]
 cbs_sua_adjusted[, `:=`(supply = na_sum(domestic_supply, imports))]
-cbs_sua_adjusted[, `:=`(domestic_use = na_sum(food, feed, other, tourist, seed, losses, processing, stock_addition, input_use))]
+cbs_sua_adjusted[, `:=`(domestic_use = na_sum(food, feed, other, tourist, seed, losses, processing, stock_addition, -stock_withdrawal))]
 cbs_sua_adjusted[, `:=`(use = na_sum(domestic_use, exports))]
 
 cbs_sua_full <- cbs_sua_full %>% mutate(input_use = 0)
