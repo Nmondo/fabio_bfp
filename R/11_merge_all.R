@@ -41,7 +41,7 @@ items_use_bcp <- read_csv("inst/items_use_bcp.csv")
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_supply_bcp <- read_csv("inst/items_supply_bcp.csv")
 regions <- read_csv("inst/regions_full.csv") %>% filter(current == TRUE)
-
+source("R/00_system_variables.R")
 
 ###########################################################
 ########### MAKING VECTORS#########
@@ -102,6 +102,9 @@ for (col in missing_cols) {
 new_fd_rows <- new_fd_rows %>% select(any_of(names(use_fd_full)))
 use_fd_full <- bind_rows(use_fd_full, new_fd_rows)
 
+
+
+
 ###########################################################
 ########### BINDING SUPPLY #########
 ###########################################################
@@ -126,7 +129,11 @@ gc()
 
 
 ###########################################################
-########### UPDATING OR CREATING, AND JOINING "SELF-CONSUMPTION" FLOWS #########
+########### REALLOCATING IMBALANCES #######################
+###########################################################
+
+###########################################################
+#1. Calculating imbalances
 ###########################################################
 
 supply_summary <- sup_full %>%
@@ -149,31 +156,93 @@ imports_summary <- btd_full %>%
   summarise(imports = sum(value, na.rm = TRUE), .groups = "drop") %>%
   rename(area_code = to_code)
 
-self_flows <- use_fd_full %>%
+balance_check <- use_fd_full %>%
   left_join(supply_summary, by = c("comm_code", "year", "area_code")) %>%
   left_join(use_summary, by = c("comm_code", "year", "area_code")) %>%
   left_join(exports_summary, by = c("comm_code", "year", "area_code")) %>%
   left_join(imports_summary, by = c("comm_code", "year", "area_code")) 
 
+balance_check <- balance_check %>%
+  mutate(across(c(imports, exports), ~ ifelse(comm_code %in% c("c901", "c999"), 0, .x)))
+
 #Checking imbalances and joining their quantities as a use in fd. 
 
-self_flows <- self_flows %>% 
-  mutate(tot_supply = prod + imports + stock_withdrawal, 
-         tot_use = use + food + losses + other + stock_addition + tourist + fuel + other_industrial + unknown_use + exports,
-         imbalance = tot_supply - tot_use)
+balance_check <- balance_check %>% 
+  mutate(tot_supply = na_sum(prod, imports, stock_withdrawal, - exports), 
+         tot_use    = na_sum(use, food, losses, other, stock_addition, 
+           tourist, fuel, other_industrial, unknown_use),
+         imbalance  = tot_supply - tot_use)
+
+
+
+
+###########################################################
+#2. Redistribute imbalances
+###########################################################
+
+fd_cols <- c("food", "losses", "other", "stock_addition", "tourist",
+             "fuel", "other_industrial", "unknown_use")
+
+# 1) Redistribute imbalances in balance_check
+balance_check_adj <- balance_check %>%
+  mutate(fd_sum = rowSums(across(all_of(fd_cols)), na.rm = TRUE)) %>%
+  # Positive imbalance -> distribute proportionally across FD items
+  mutate(across(all_of(fd_cols), ~ case_when(
+    imbalance > 0 & fd_sum > 0 ~ .x + imbalance * (.x / fd_sum),
+    TRUE                       ~ .x
+  ))) %>%
+  # Fallback: positive imbalance with fd_sum == 0 -> park in stock_addition
+  mutate(stock_addition = if_else(imbalance > 0 & fd_sum == 0,
+                                  stock_addition + imbalance,
+                                  stock_addition),
+         # Negative imbalance -> bump up production
+         prod_new = if_else(imbalance < 0, prod + abs(imbalance), prod)) %>%
+  # Recompute totals to verify zero imbalance
+  mutate(tot_use_new    = na_sum(use, food, losses, other, stock_addition,
+           tourist, fuel, other_industrial, unknown_use),
+         tot_supply_new = na_sum(prod_new, imports, stock_withdrawal, exports),
+         imbalance_new  = tot_supply_new - tot_use_new)
+
+
+###########################################################
+#2. Updating use in final demand with readjusted values
+###########################################################
 
 use_fd_full <- use_fd_full %>%
-  left_join(self_flows %>% select(comm_code, area_code, year, imbalance), by = c("comm_code", "area_code", "year"))
-
-
-self_flows <- self_flows %>%
-  mutate(
-    across(c(prod, imports, stock_withdrawal, use, food, losses, other, 
-             stock_addition, tourist, fuel, other_industrial, unknown_use, exports, imbalance),
-           ~ replace_na(.x, 0)),
-    domestic_use = food + losses + other + stock_addition + tourist + 
-      fuel + other_industrial + unknown_use + use + imbalance,
-    prod_share = if_else(tot_supply > 0, prod / tot_supply, 0),
-    self_consumption = prod_share * domestic_use
+  select(-all_of(fd_cols)) %>%
+  left_join(
+    balance_check_adj %>% select(comm_code, area_code, year, all_of(fd_cols)),
+    by = c("comm_code", "area_code", "year")
   )
 
+
+###########################################################
+#3. Updating supply with readjusted values
+###########################################################
+
+prod_update <- balance_check_adj %>%
+  select(comm_code, area_code, year, prod_new)
+
+sup_full <- sup_full %>%
+  left_join(prod_update, by = c("comm_code", "area_code", "year")) %>%
+  mutate(supply = if_else(!is.na(prod_new), prod_new, supply)) %>%
+  select(-prod_new)
+
+
+
+
+###########################################################
+########### CALCULATE 'SELF-FLOWS' AND UPDATE BTD #######################
+###########################################################
+
+self_flows <- balance_check_adj %>%
+  mutate(value = pmax(na_sum(tot_supply_new, - imports), 0), # 'self-consumption' is the part of use that is neither imported nor exported 
+         from_code = area_code,
+         to_code = area_code) %>%   
+  select(comm_code, item_code, from_code, to_code, year, value)
+
+## Sanity check 
+
+print(subset(self_flows, is.na(value))) # no NA
+
+btd_full <- rows_upsert(btd_full, self_flows, by = c("from_code", "to_code", "comm_code", "year"))

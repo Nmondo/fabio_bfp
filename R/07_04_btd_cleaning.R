@@ -30,7 +30,7 @@ regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter
 
 setwd("/home/bruckner2/fabio/")
 
-baci_hs07 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs07.rds")
+# baci_hs07 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs07.rds")
 baci_hs12 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs12.rds")
 
 ########### Trade data from Eurostat #########
@@ -55,7 +55,7 @@ url_data <- paste0(
 
 bilateral_bf_bp_eu <- request(url_data) %>%
   req_timeout(120) %>%
-  req_retry(max_tries = 20) %>%
+  req_retry(max_tries = 100) %>%
   req_perform() %>%
   resp_body_string() %>%
   read_csv(show_col_types = FALSE)
@@ -64,7 +64,6 @@ bilateral_bf_bp_eu %<>%
   mutate(across(c(reporter, partner, product, indicators), ~ sub(":.*", "", .x)),
          across(c(freq, flow),                             ~ sub(".*:", "", .x))) %>%
   rename(FLOW = flow)
-
 
 ########### Total imports and exports by product for Sweden #########
 
@@ -440,24 +439,24 @@ clean_baci <- function(df) {
 }
 
 # --- Biofuels: HS07 ---
-baci_hs07_base <- clean_baci(baci_hs07) %>%
-  filter(k %in% c(220710,220720,290919,382490) & t %in% 2010:2011)
-
-baci_hs07_base %<>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("i" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
-  left_join(regions_temp %>% select(iso3c, baci), by = c("j" = "baci")) %>% rename(importer_iso3 = iso3c)
-
-prices_baci_hs07 <- baci_hs07_base %>%
-  rename(year = t, product = k, exporter = i, importer = j, qty = q, value_kusd = v)
-
-baci_hs07_clean <- baci_hs07_base %>%
-  select(-v) %>%
-  rename(year = t, product = k, exporter = i, importer = j, value = q)
-
-baci_hs07_clean <- baci_hs07_clean %>% 
-  mutate(est_blend = case_when(product == 382490 ~ est_blend_avg$avg[est_blend_avg$year==2012],
-                                                                    TRUE ~ NA),
-                                              source = "BACI")
+# baci_hs07_base <- clean_baci(baci_hs07) %>%
+#   filter(k %in% c(220710,220720,290919,382490) & t %in% 2010:2011)
+# 
+# baci_hs07_base %<>%
+#   left_join(regions_temp %>% select(iso3c, baci), by = c("i" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
+#   left_join(regions_temp %>% select(iso3c, baci), by = c("j" = "baci")) %>% rename(importer_iso3 = iso3c)
+# 
+# prices_baci_hs07 <- baci_hs07_base %>%
+#   rename(year = t, product = k, exporter = i, importer = j, qty = q, value_Musd = v)
+# 
+# baci_hs07_clean <- baci_hs07_base %>%
+#   select(-v) %>%
+#   rename(year = t, product = k, exporter = i, importer = j, value = q)
+# 
+# baci_hs07_clean <- baci_hs07_clean %>% 
+#   mutate(est_blend = case_when(product == 382490 ~ est_blend_avg$avg[est_blend_avg$year==2012],
+#                                                                     TRUE ~ NA),
+#                                               source = "BACI")
 
 # --- Biofuels: HS12 ---
 
@@ -469,7 +468,7 @@ baci_hs12_base %<>%
   left_join(regions_temp %>% select(iso3c, baci), by = c("j" = "baci")) %>% rename(importer_iso3 = iso3c)
 
 prices_baci_hs12 <- baci_hs12_base %>%
-  rename(year = t, product = k, exporter = i, importer = j, qty = q, value_kusd = v)
+  rename(year = t, product = k, exporter = i, importer = j, qty = q, value_Musd = v)
 
 baci_hs12_clean <- baci_hs12_base %>%
   select(-v) %>%
@@ -498,8 +497,7 @@ baci_hs12_clean %<>%
 #1. Bringing BACI & ComTrade together (complementary for Biodiesel product) #########
 ###########################################################
 
-baci_comtrade_named <- bind_rows(baci_hs12_clean, baci_hs07_clean,
-                                 bilateral_comtrade_clean) %>%
+baci_comtrade_named <- bind_rows(baci_hs12_clean, bilateral_comtrade_clean) %>%
   mutate(
     est_blend    = replace(est_blend, is.na(est_blend) & product == 382600L, 0),
     product_code = product,
@@ -653,7 +651,7 @@ bf_bp_eu_prices <- bf_bp_eu_prices %>%
 
 # --- BACI HS12 ---
 prices_baci_hs12 <- prices_baci_hs12 %>%
-  rename(value = value_kusd) %>%
+  rename(value = value_Musd) %>%
   mutate(qty        = qty,
          value      = value * 1000,
          unit_qty   = "t",

@@ -361,53 +361,98 @@ use_fd[, value := NULL]
 # Remove unneeded variables
 use <- use[, .(year, area_code, area, comm_code, item_code, item,
                proc_code, proc, type, use)]
-input_use_total <- cbs[, .(input_use_sum = na_sum(input_use)), by = .(comm_code, year)]
 
 # Correct remaining imbalances between supply and use -----
-a <- use %>% group_by(comm_code, year) %>% summarise(use_io = round(sum(use, na.rm = T)/1)) %>% as.data.table()
-c <- sup %>% group_by(comm_code, year) %>% summarise(supply_total = round(sum(supply, na.rm = T)/1)) %>% as.data.table()
-b <- use_fd %>% group_by(comm_code, year) %>%
-  summarise(use_fd = round(na_sum(na_sum(food, losses, other, stock_addition, tourist))/1)) %>% as.data.table()
-d <- merge(merge(a,b), c)
-d[, use_total := na_sum(use_io, use_fd)]
+a <- use %>% group_by(comm_code, area_code, year) %>% summarise(use_io = round(sum(use, na.rm = T))) %>% as.data.table()
+c <- sup %>% group_by(comm_code, area_code, year) %>% summarise(production = round(sum(supply, na.rm = T))) %>% as.data.table()
+b <- use_fd %>% group_by(comm_code, area_code, year) %>%
+  summarise(use_fd = round(na_sum(food, losses, other, stock_addition, -stock_withdrawal, tourist))) %>% as.data.table()
+# Upstream-allocated process inputs: counted toward total use, but not redistributed
+e <- cbs %>% group_by(comm_code, area_code, year) %>%
+  summarise(use_input = round(na_sum(input_use)), imports = round(na_sum(imports)), exports = round(na_sum(exports))) %>% as.data.table()
+d <- merge(merge(merge(a, b, all = T), c, all = T), e, all = T)
+d[, use_total := na_sum(use_io, use_fd, use_input)]
+d[, supply_total := na_sum(production, imports, -exports)]
 d[, diff      := na_sum(supply_total, -use_total)]
-d[, `:=`(diff_io = diff / use_total * use_io,
-         diff_fd = diff / use_total * use_fd)]
-d[, diff_share := round(diff / supply_total *100)]
+d[, `:=`(diff_io    = diff / use_total * use_io,
+         diff_fd    = diff / use_total * use_fd,
+         diff_input = diff / use_total * use_input)]   # informational only
+#d[, diff_share := round(diff / supply_total *100)]
+d[, diff_share := diff / supply_total *100]
 
 # correct use_fd
-use_fd <- merge(use_fd, d[, .(comm_code, year, diff = diff_adjustable, use_fd_global = use_fd)],
-                by = c("comm_code", "year"), all.x = TRUE)
-
-# Calculate b at the country level
-b2 <- use_fd %>% group_by(comm_code, area_code, year) %>%
-  summarise(use_fd = round(na_sum(na_sum(food, losses, other, stock_addition, tourist))/1)) %>% as.data.table()
-
-use_fd <- merge(use_fd, b2[, .(comm_code, area_code, year, use_fd_country = use_fd)],
+use_fd <- merge(use_fd, d[, .(comm_code, area_code, year, diff, use_total)],
                 by = c("comm_code", "area_code", "year"), all.x = TRUE)
 
-# not for oilseed cakes, hops, livestock, fodder crops and grazing
-use_fd[!is.na(diff / use_fd_global) & !item %like% "Cake" & item_code > 2029, `:=`(
-  food            = na_sum(food,            round(diff / use_fd_global * food)),
-  losses          = na_sum(losses,          round(diff / use_fd_global * losses)),
-  other           = na_sum(other,           round(diff / use_fd_global * other)),
-  stock_addition  = na_sum(stock_addition,  round(diff / use_fd_global * stock_addition)),
-  tourist         = na_sum(tourist,         round(diff / use_fd_global * tourist))
-)]
+# # Diagnostic: total reallocation per comm_code × year from the FD correction step
+# reallocation_check <- copy(use_fd)
+# 
+# # Snapshot the pre-adjustment FD totals per row
+# reallocation_check[, `:=`(
+#   food_before           = food,
+#   losses_before         = losses,
+#   other_before          = other,
+#   stock_addition_before = stock_addition,
+#   tourist_before        = tourist
+# )]
+# 
+# # Apply the exact same adjustment (same filter, same formulas)
+# reallocation_check[!is.na(diff / use_total) & !item %like% "Cake" &
+#                      !item_code %in% items[group == "Livestock", item_code] &
+#                      !item_code %in% c(2000, 2001), `:=`(
+#                        food           = na_sum(food,           round(diff / use_total * food)),
+#                        losses         = na_sum(losses,         round(diff / use_total * losses)),
+#                        other          = na_sum(other,          round(diff / use_total * other)),
+#                        stock_addition = na_sum(stock_addition, round(diff / use_total * stock_addition)),
+#                        tourist        = na_sum(tourist,        round(diff / use_total * tourist))
+#                      )]
+# 
+# # Compute per-row deltas (NA-safe: treat NAs as 0 for the subtraction)
+# reallocation_check[, `:=`(
+#   d_food           = na_sum(food,           -food_before),
+#   d_losses         = na_sum(losses,         -losses_before),
+#   d_other          = na_sum(other,          -other_before),
+#   d_stock_addition = na_sum(stock_addition, -stock_addition_before),
+#   d_tourist        = na_sum(tourist,        -tourist_before)
+# )]
+# reallocation_check[, d_total := na_sum(d_food, d_losses, d_other, d_stock_addition, d_tourist)]
+# 
+# # Summary per comm_code × year
+# reallocation_summary <- reallocation_check[, .(
+#   diff             = unique(diff),
+#   use_total        = unique(use_total),
+#   d_food           = sum(d_food,           na.rm = TRUE),
+#   d_losses         = sum(d_losses,         na.rm = TRUE),
+#   d_other          = sum(d_other,          na.rm = TRUE),
+#   d_stock_addition = sum(d_stock_addition, na.rm = TRUE),
+#   d_tourist        = sum(d_tourist,        na.rm = TRUE),
+#   d_total          = sum(d_total,          na.rm = TRUE)
+# ), by = .(comm_code, area_code, year)][year %in% 2012:2022]
+# 
 
-use_fd[, `:=`(diff = NULL, use_fd_global = NULL, use_fd_country = NULL)]
+
+# not for oilseed cakes, hops, livestock, fodder crops and grazing
+use_fd[!is.na(diff / use_total) & !item %like% "Cake" & 
+         !item_code %in% items[group=="Livestock", item_code] & 
+         !item_code %in% c(2000, 2001), `:=`(
+           food            = na_sum(food,            round(diff / use_total * food)),
+           losses          = na_sum(losses,          round(diff / use_total * losses)),
+           other           = na_sum(other,           round(diff / use_total * other)),
+           stock_addition  = na_sum(stock_addition,  round(diff / use_total * stock_addition)),
+           tourist         = na_sum(tourist,         round(diff / use_total * tourist))
+         )]
+
+use_fd[, `:=`(diff = NULL, use_total = NULL)]
+
 
 # correct oilseed cakes, hops, livestock, fodder crops and grazing in use
-use <- merge(use, d[, .(comm_code, year, diff = diff_adjustable, use_io)],
-             by = c("comm_code", "year"), all.x = TRUE)
+use <- merge(use, d[, .(comm_code, area_code, year, diff, use_io)],
+             by = c("comm_code", "area_code", "year"), all.x = TRUE)
 use[(item %like% "Cake" | item_code <= 2029) & !is.na(diff / use_io), 
     use := na_sum(use, round(diff / use_io * use))]
 
 use[, `:=`(diff = NULL, use_io = NULL)]
 
-# Delete products and processes that were discarded (ethanol, "Other"...)
-
-use <- use[! proc_code %in% c("p066","p079","p084") & ! item %in% c("Oilcrops, Other", "Oilcrops Oil, Other", "Sweeteners, Other", "Cereals, Other")]
 
 
 ########################################################################################################################
@@ -444,8 +489,6 @@ food_share_veg_oil <- food_share_veg_oil %>%
     unmatched = "ignore"
   )
 
-### HERE THERE ARE STILL NAs BECAUSE OF THE INCOMPLETENESS OF THE SUA (FEW COUNTRIES)
-
 uco_supply <- food_share_veg_oil %>%
   mutate(use = uco_supply * share_uco,
          proc_code = "p124",
@@ -476,7 +519,23 @@ use_fd <- use_fd %>%
 
 cbs[, input_use := NULL]
 
-# Save -----
+
+
+
+########################################################################################################################
+######################################## RESTRICTING YEARS ########################################
+########################################################################################################################
+
+cbs <- cbs %>% filter(year %in% years)
+use <- use %>% filter(year %in% years)
+use_fd <- use_fd %>% filter(year %in% years)
+sup <- sup %>% filter(year %in% years)
+
+
+
+########################################################################################################################
+######################################## WRITING TABLES ########################################
+########################################################################################################################
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
