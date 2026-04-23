@@ -31,25 +31,25 @@ setkey(template, proc_code, comm_code)
 
 # List with block-diagonal supply matrices, per year
 mr_sup_mass <- mclapply(years, function(x) {
-
+  
   matrices <- lapply(areas, function(y, sup_y) {
     # Get supply for area y and merge with the template
     sup_x <- sup_y[area_code == y, .(proc_code, comm_code, supply)]
     out <- if(nrow(sup_x) == 0) {
       template[, .(proc_code, comm_code, supply = 0)]
     } else {merge(template, sup_x, all.x = TRUE)}
-
+    
     # Cast the datatable to convert into a matrix
     out <- tryCatch(data.table::dcast(out, proc_code ~ comm_code,
                                       value.var = "supply", fun.aggregate = sum, na.rm = TRUE, fill = 0),
                     error = function(e) {stop("Issue at ", x, "_", y, ": ", e)})
-
+    
     # Return a (sparse) matrix of supply for region y and year x
     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
                   dimnames = list(out$proc_code, colnames(out)[-1])))
-
+    
   }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, supply)])
-
+  
   # Return a block-diagonal matrix with all countries for year x
   return(bdiag(matrices))
 }, mc.cores = detectCores() - 2)
@@ -61,25 +61,25 @@ sup[is.na(price) | !is.finite(price), value := supply]
 
 # List with block-diagonal supply matrices in value, per year
 mr_sup_value <- mclapply(years, function(x) {
-
+  
   matrices <- lapply(areas, function(y, sup_y) {
     # Get supply for area y and merge with the template
     sup_x <- sup_y[area_code == y, .(proc_code, comm_code, value)]
     out <- if(nrow(sup_x) == 0) {
       template[, .(proc_code, comm_code, value = 0)]
     } else {merge(template, sup_x, all.x = TRUE)}
-
+    
     # Cast the datatable to convert into a matrix
     out <- tryCatch(data.table::dcast(out, proc_code ~ comm_code,
                                       value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0),
                     error = function(e) {stop("Issue at ", x, "_", y, ": ", e)})
-
+    
     # Return a (sparse) matrix of supply for region y and year x
     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
                   dimnames = list(out$proc_code, colnames(out)[-1])))
-
+    
   }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, value)])
-
+  
   # Return a block-diagonal matrix with all countries for year x
   return(bdiag(matrices))
 }, mc.cores = detectCores() - 2)
@@ -116,11 +116,11 @@ btd_cast <- mclapply(years, function(x, btd_x) {
                                  by = c("from_code", "to_code", "comm_code"), all.x = TRUE),
                            to_code + comm_code ~ from_code,
                            value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0)
-
+  
   return(Matrix(data.matrix(out[, c(-1, -2)]), sparse = TRUE,
                 dimnames = list(paste0(out$to_code, "_", out$comm_code),
                                 colnames(out)[c(-1, -2)])))
-
+  
 }, btd_x = btd[, .(year, from_code, to_code, comm_code, value)], mc.cores = detectCores() - 2)
 
 names(btd_cast) <- years
@@ -194,14 +194,14 @@ setkey(template, area_code, proc_code, comm_code)
 use_cast <- mclapply(years, function(x, use_x) {
   # Cast use to convert to a matrix
   out <- data.table::dcast(merge(template[, .(area_code, proc_code, comm_code)],
-    use_x[year == x, .(area_code, proc_code, comm_code, use)],
-    by = c("area_code", "proc_code", "comm_code"), all.x = TRUE),
-    comm_code ~ area_code + proc_code,
-    value.var = "use", fun.aggregate = sum, na.rm = TRUE, fill = 0)
-
+                                 use_x[year == x, .(area_code, proc_code, comm_code, use)],
+                                 by = c("area_code", "proc_code", "comm_code"), all.x = TRUE),
+                           comm_code ~ area_code + proc_code,
+                           value.var = "use", fun.aggregate = sum, na.rm = TRUE, fill = 0)
+  
   return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
-    dimnames = list(out$comm_code, colnames(out)[-1])))
-
+                dimnames = list(out$comm_code, colnames(out)[-1])))
+  
 }, use_x = use[, .(year, area_code, proc_code, comm_code, use)], mc.cores = detectCores() - 2)
 
 
@@ -308,25 +308,25 @@ saveRDS(mr_use, file.path(output_dir,"mr_use.rds"))
 # Template to always get full tables
 template <- data.table(expand.grid(
   area_code = areas, comm_code = commodities,
-  variable = c("food", "losses", "other", "stock_addition", "stock_withdrawal", "tourist"),
+  variable = c("food", "losses", "other", "stock_addition", "tourist"),
   stringsAsFactors = FALSE))
 setkey(template, area_code, comm_code, variable)
 
 use_fd <- melt(use_fd[, .(year, area_code, comm_code,
-  food, losses, other, stock_addition, stock_withdrawal = -stock_withdrawal, tourist)],
-  id.vars = c("year", "area_code", "comm_code"))
+                          food, losses, other, stock_addition, tourist)],
+               id.vars = c("year", "area_code", "comm_code"))
 
 # List with final use matrices, per year
 use_fd_cast <- mclapply(years, function(x, use_fd_x) {
   # Cast final use to convert to a matrix
   out <- data.table::dcast(merge(template[, .(area_code, comm_code, variable)],
-    use_fd_x[year == x, .(area_code, comm_code, variable, value)],
-    by = c("area_code", "comm_code", "variable"), all.x = TRUE),
-    comm_code ~ area_code + variable,
-    value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0)
-
+                                 use_fd_x[year == x, .(area_code, comm_code, variable, value)],
+                                 by = c("area_code", "comm_code", "variable"), all.x = TRUE),
+                           comm_code ~ area_code + variable,
+                           value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0)
+  
   Matrix(data.matrix(out[, -1]), sparse = TRUE,
-    dimnames = list(out$comm_code, colnames(out)[-1]))
+         dimnames = list(out$comm_code, colnames(out)[-1]))
 }, use_fd[, .(year, area_code, comm_code, variable, value)], mc.cores = 6)
 
 
@@ -421,39 +421,39 @@ mr_use_fd <- mcmapply(function(x, y) {
 
 
 
-# Put stock_withdrawal on the domestic block
-mr_use_fd <- mcmapply(function(x, n_prod = length(commodities), n_ctry = length(areas)) {
-  # 1. Extract stock_withdrawal columns
-  stock_cols <- grep("stock_withdrawal$", colnames(x))
-  stock_mat  <- x[, stock_cols, drop = FALSE]  # 23001 x 187
-  
-  # 2. Aggregate rows by product → 123 x 187
-  group_index <- rep(1:n_prod, times = n_ctry)
-  agg_mat <- matrix(0, n_prod, n_ctry)
-  for (j in seq_len(n_ctry)) {
-    agg_mat[, j] <- rowsum(as.numeric(stock_mat[, j]), group = group_index)
-  }
-  agg_mat <- Matrix(agg_mat, sparse = TRUE)  # 123 x 187
-  
-  # 3. Expand into 23001 x 187
-  expand_mat <- Matrix(0, n_prod * n_ctry, n_ctry, sparse = TRUE)
-  for (j in seq_len(n_ctry)) {
-    rows <- ((j - 1) * n_prod + 1):(j * n_prod)
-    expand_mat[rows, j] <- agg_mat[, j]
-  }
-  
-  # 4. Replace stock_withdrawals
-  x <- x[, -stock_cols]
-  stock_cols <- grep("stock_addition$", colnames(x))
-  x[, stock_cols] <- x[, stock_cols] + expand_mat
-  
-  x
-  
-}, mr_use_fd, mc.cores = detectCores() - 2, SIMPLIFY = FALSE)
+# # This step is not needed. Stock withdrawals are simply treated as negative stock additions and kept in fd.
+# # Put stock_withdrawal on the domestic block
+# mr_use_fd <- mcmapply(function(x, n_prod = length(commodities), n_ctry = length(areas)) {
+#   # 1. Extract stock_withdrawal columns
+#   stock_cols <- grep("stock_withdrawal$", colnames(x))
+#   stock_mat  <- x[, stock_cols, drop = FALSE]  # 23001 x 187
+#   
+#   # 2. Aggregate rows by product → 123 x 187
+#   group_index <- rep(1:n_prod, times = n_ctry)
+#   agg_mat <- matrix(0, n_prod, n_ctry)
+#   for (j in seq_len(n_ctry)) {
+#     agg_mat[, j] <- rowsum(as.numeric(stock_mat[, j]), group = group_index)
+#   }
+#   agg_mat <- Matrix(agg_mat, sparse = TRUE)  # 123 x 187
+#   
+#   # 3. Expand into 23001 x 187
+#   expand_mat <- Matrix(0, n_prod * n_ctry, n_ctry, sparse = TRUE)
+#   for (j in seq_len(n_ctry)) {
+#     rows <- ((j - 1) * n_prod + 1):(j * n_prod)
+#     expand_mat[rows, j] <- agg_mat[, j]
+#   }
+#   
+#   # 4. Replace stock_withdrawals
+#   x <- x[, -stock_cols]
+#   stock_cols <- grep("stock_addition$", colnames(x))
+#   x[, stock_cols] <- x[, stock_cols] + expand_mat
+#   
+#   x
+#   
+# }, mr_use_fd, mc.cores = detectCores() - 2, SIMPLIFY = FALSE)
 
 
 mr_use_fd <- lapply(mr_use_fd, round)
 names(mr_use_fd) <- years
 saveRDS(mr_use_fd, file.path(output_dir,"mr_use_fd.rds"))
-
 

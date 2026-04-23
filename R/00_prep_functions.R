@@ -16,18 +16,18 @@
 #' )
 #' }
 fa_dl <- function(
-  file, link, path, v = TRUE) {
-
+    file, link, path, v = TRUE) {
+  
   dl <- paste0(link, file)
   dest <- paste0(path, file)
-
+  
   out <- vector("integer", length(file))
   for(i in seq_along(file)) {
     if(!file.exists(dest[i])) {
       out[i] <- download.file(dl[i], dest[i], method = "auto")
     } else if(v) cat("Skipping download, already found:", file[i], "\n")
   }
-
+  
   out
 }
 
@@ -62,15 +62,19 @@ fa_dl <- function(
 #' )
 #' }
 fa_extract <- function(
-  path_in, files, path_out, name, extr = NULL,
-  col_types = NULL, stack = FALSE, read_method = NULL,
-  rm = TRUE, v = TRUE, ...) {
-
+    path_in, files, path_out, name, extr = NULL,
+    col_types = NULL, stack = FALSE, read_method = NULL,
+    rm = TRUE, v = TRUE, ...) {
+  
   zip = paste0(path_in, files)
   
   if(length(zip) == 1 && length(extr) > 1 || is.null(extr)) {
     if(v) cat("Extracting multiple files from a single ZIP archive\n")
     csv <- unzip(zip, extr, exdir = gsub("(.*)/", "\\1", path_out))
+    
+    junk_patterns <- c("\\.DS_Store$", "^__MACOSX", "\\._")
+    csv <- csv[!grepl(paste(junk_patterns, collapse = "|"), csv)]
+    
   } else {
     if(v) cat("Extracting single files from multiple ZIP archives\n")
     csv <- vector("character", length(zip))
@@ -79,9 +83,9 @@ fa_extract <- function(
         extr[i] <- unzip(zip[i], list = TRUE)[[1]][1]
       }
       # if(file.info(zip[i])$size > 200000000) {
-        csv[i] <- paste0(path_out, ifelse(!is.na(extr[i]), extr[i], sub("zip", "csv", zip[i])))
-        if(grepl("\\(|\\)", zip[i])) file.rename(zip[i], gsub("\\(|\\)", "", zip[i]))
-        decompress_file(path_out, gsub("\\(|\\)", "", files[i]))
+      csv[i] <- paste0(path_out, ifelse(!is.na(extr[i]), extr[i], sub("zip", "csv", zip[i])))
+      if(grepl("\\(|\\)", zip[i])) file.rename(zip[i], gsub("\\(|\\)", "", zip[i]))
+      decompress_file(path_out, gsub("\\(|\\)", "", files[i]))
       # } else { csv[i] <- unzip(zip[i], extr[i], exdir = gsub("(.*)/", "\\1", path_out)) }
     }
   }
@@ -93,9 +97,12 @@ fa_extract <- function(
       rds[[i]] <- data.table::fread(csv[i], colClasses = col_types[[i]])
     } else if (read_method[i] == "read_csv") {
       rds[[i]] <- as.data.table(readr::read_csv(csv[i]))
-    } else {stop("Wrong read_method specified for", csv[i], ". Must be either 'fread' or 'read_csv'. If read_method is NULL, fread is used by default. \n")}
+    } else if (read_method[i] == "read_xlsx") {
+      sheet <- if(!is.null(col_types[[i]]$sheet)) col_types[[i]]$sheet else 1
+      rds[[i]] <- as.data.table(readxl::read_excel(csv[i], sheet = sheet))
+    } else {stop("Wrong read_method specified for", csv[i], ". Must be either 'fread', 'read_csv', or 'read_xlsx'. If read_method is NULL, fread is used by default. \n")}
   }
-
+  
   if(stack) {
     dest_rds <- paste0(path_out, name, ".rds")
     if(v) cat("Stacking CSV files via data.table::rbindlist()")
@@ -104,9 +111,9 @@ fa_extract <- function(
     dest_rds <- paste0(path_out, tools::file_path_sans_ext(basename(csv)), ".rds")
     for(i in seq_along(csv)) saveRDS(rds[[i]], dest_rds[i])
   }
-
+  
   if(rm) file.remove(csv)
-
+  
   dest_rds
 }
 
@@ -129,29 +136,29 @@ fa_extract <- function(
 #' }
 #' @source https://stackoverflow.com/questions/42740206/r-possible-truncation-of-4gb-file
 decompress_file <- function(directory, file, .file_cache = FALSE) {
-
+  
   if (.file_cache == TRUE) {
     print("decompression skipped")
   } else {
-
+    
     # Set working directory for decompression
     # simplifies unzip directory location behavior
     wd <- getwd()
     setwd(directory)
-
+    
     # Run decompression
     decompression <-
       system2("unzip",
               args = c("-o", # include override flag
                        file),
               stdout = TRUE)
-
+    
     # uncomment to delete archive once decompressed
     # file.remove(file)
-
+    
     # Reset working directory
     setwd(wd); rm(wd)
-
+    
     # Test for success criteria
     # change the search depending on
     # your implementation
