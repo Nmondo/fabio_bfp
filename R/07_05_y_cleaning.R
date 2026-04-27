@@ -450,12 +450,12 @@ y_table <- y_table %>%
 ########### SAVING CONSUMPTION TABLE ###############################
 ################################################################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(y_table,
-        "y_table_initial.rds")
+        "intermediate_data/y_table_initial.rds")
 
 saveRDS(y_other_bf,
-        "y_other_bf.rds")
+        "intermediate_data/y_other_bf.rds")
 
 rm(list = ls())

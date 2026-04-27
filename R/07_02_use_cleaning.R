@@ -393,7 +393,8 @@ supply %<>%
             by = c("process", "input", "output", "country_iso3")) %>%
   rows_update(
     case2_complete,
-    by = c("process", "input", "country_iso3")
+    by = c("process", "input", "country_iso3"),
+    unmatched = "ignore"
   ) %>%
   mutate(input_subtype = ifelse(country_iso3=="DEU"&input=="Cereals, Other", "Triticale",input_subtype))
 
@@ -636,21 +637,21 @@ supply_feedstock <- supply_feedstock %>% left_join(tcf_table %>% select(input,in
 ########### SAVING CLEANED TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(supply_feedstock,
-        "supply_feedstock.rds")
+        "intermediate_data/supply_feedstock.rds")
 
 saveRDS(use_long,
-        "use_long.rds")
+        "intermediate_data/use_long.rds")
 
 saveRDS(tcf_table,
-        "tcf_table_clean.rds")
+        "intermediate_data/tcf_table_clean.rds")
 
 saveRDS(oecd_fao_use,
-        "oecd_fao_use_clean.rds")
+        "intermediate_data/oecd_fao_use_clean.rds")
 
 saveRDS(fao_nonfood,
-        "fao_nonfood.rds")
+        "intermediate_data/fao_nonfood.rds")
 
 rm(list = ls())

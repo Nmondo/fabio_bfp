@@ -20,6 +20,8 @@ n <- length(areas)
 
 # Prepare reallocation of re-exports --------------------------------------
 # Create a structure to map importers to exporters per item (+ targets)
+# Prepare reallocation of re-exports --------------------------------------
+# Create a structure to map importers to exporters per item (+ targets)
 mapping_templ <- data.table(
   from_code = rep(areas, each = length(areas), times = length(items)),
   to_code = rep(areas, times = length(areas) * length(items)),
@@ -81,7 +83,7 @@ for(i in seq_along(years)) {
     
     # convert into CsparseMatrix
     T <- as(mat, "CsparseMatrix")
-
+    
     # n <- length(areas)
     
     if (na_sum(mat) == 0) { final_result <- T + Diagonal(x = DU)
@@ -89,7 +91,7 @@ for(i in seq_along(years)) {
       
       A <- sweep(T, 1, TS, FUN = "/")
       A[is.na(A)] <- 0
-
+      
       # Solve linear system: X = (I - A)^(-1) %*% DS
       I <- Diagonal(n)
       # Try regular solve, fallback to generalized inverse if singular
@@ -99,7 +101,7 @@ for(i in seq_along(years)) {
                       mat[is.na(mat) | is.infinite(mat)] <- 0
                       MASS::ginv(mat)
                     })
-
+      
       # Allocate exports proportionally to total domestic use
       F <- L * DS
       F[F < 0] <- 0
@@ -108,7 +110,8 @@ for(i in seq_along(years)) {
       col_sums <- colSums(F)
       
       # Handle division by zero: if col_sum is 0, set corresponding column to 0
-      S <- as.matrix(t(t(F) / pmax(col_sums, 1)))      S[, col_sums == 0] <- 0
+      S <- as.matrix(t(t(F) / pmax(col_sums, 1)))
+      S[, col_sums == 0] <- 0
       S[is.na(S) | is.infinite(S)] <- 0  # Clean up any remaining NAs or Inf
       
       final_result <- t(t(S) * DU)
@@ -175,20 +178,6 @@ btd_final[, comm_code := items$comm_code[match(btd_final$item_code, items$item_c
 sup_shares[, comm_code := items$comm_code[match(sup_shares$item_code, items$item_code)]]
 
 
-
-# Missing SUA extension countries -----------------------------------------------
-missing_sua_area_code <- c(26, 29, 37, 39, 53, 55, 110, 133, 151, 177, 178, 200, 201, 217, 276, 277)
-btd_join <- subset(btd_full, item_code %in% c(97, 165, 265, 266, 1274) & 
-                     (from_code %in% missing_sua_area_code | to_code %in% missing_sua_area_code)) %>%
-  filter(unit == "tonnes") %>%
-  select(from_code, to_code, value, year, item_code, comm_code)
-
-btd_final <- bind_rows(btd_final, btd_join)
- 
-
 # Store the balanced sheets -----------------------------------------------
 saveRDS(btd_final, "data/btd_final.rds")
 saveRDS(sup_shares, "data/sup_shares.rds")
-
-rm(list = ls())
-gc()

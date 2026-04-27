@@ -935,12 +935,12 @@ mutate(process = case_when(process == "FAME" ~ "Biodiesel production",
 ################## SAVING SUPPLY AND USE TABLE ####################
 #########################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(object = supply_fame_hvo,
-        file = "sup_fame_hvo_full.rds")
+        file = "intermediate_data/sup_fame_hvo_full.rds")
 
 saveRDS(object = use_biodiesel_complete,
-        file = "use_fame_hvo_full.rds")
+        file = "intermediate_data/use_fame_hvo_full.rds")
 
 rm(list = ls())

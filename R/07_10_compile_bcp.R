@@ -209,12 +209,12 @@ btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts) %>%
 ########### WRITING TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
-write_rds(use_final_bcp, "use_final_bcp.rds")
-write_rds(use_fd_final_bcp, "use_fd_final_bcp.rds")
-write_rds(supply_final_bcp, "sup_final_bcp.rds")
-write_rds(btd_final_bcp, "btd_final_bcp.rds")
+write_rds(use_final_bcp, "data/use_final_bcp.rds")
+write_rds(use_fd_final_bcp, "data/use_fd_final_bcp.rds")
+write_rds(supply_final_bcp, "data/sup_final_bcp.rds")
+write_rds(btd_final_bcp, "data/btd_final_bcp.rds")
 
 rm(list = ls())
 

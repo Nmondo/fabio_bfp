@@ -9,13 +9,13 @@ if (branch_name == "data-1986-2013") {
 } else {
   stop("Unknown branch!")
 }
+
 input_path <- output_dir
-
 output_dir_v525 <-"/mnt/nfs_fineprint/tmp/fabio/v2_525/"
-
-
-# Ensure the directory exists
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+output_dir_bcp  <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+# Ensure the directories exist
+dir.create(output_dir,     recursive = TRUE, showWarnings = FALSE)
+dir.create(output_dir_bcp, recursive = TRUE, showWarnings = FALSE)
 
 # # Use the output_dir in your code
 # write.csv(data, file.path(output_dir, "output.csv"))

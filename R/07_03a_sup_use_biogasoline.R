@@ -818,13 +818,13 @@ supply_biogasoline <- bind_rows(supply_biogasoline, etbe_zeros) %>%
 ################## WRITING BIOGASOLINE SUPPLY AND USE TABLE ####################
 #########################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 saveRDS(object = supply_biogasoline,
-        file = "sup_biogasoline_full.rds")
+        file = "intermediate_data/sup_biogasoline_full.rds")
 
 saveRDS(object = use_biogasoline_complete,
-        file = "use_biogasoline_full.rds")
+        file = "intermediate_data/use_biogasoline_full.rds")
 
 
 

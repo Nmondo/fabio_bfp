@@ -731,12 +731,12 @@ btd_intermediate <- readRDS("btd_intermediate.rds")
 ########### WRITING DATA TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd("/home/mmondolfo/fabio_bfp/")
 
 # Trade 
-saveRDS(total_trade,   "btd_total.rds")
-saveRDS(btd,           "btd_intermediate.rds")
-saveRDS(btd_excluded,  "btd_excluded_flows.rds")
+saveRDS(total_trade,   "intermediate_data/btd_total.rds")
+saveRDS(btd,           "intermediate_data/btd_intermediate.rds")
+saveRDS(btd_excluded,  "intermediate_data/btd_excluded_flows.rds")
 
 # Prices
 saveRDS(prices, "prices.rds")

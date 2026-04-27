@@ -1,3 +1,8 @@
+###########################################################
+########### LOADING PACKAGES #########
+###########################################################
+
+setwd("/home/mmondolfo/fabio_bfp/")
 
 library(Matrix)
 library(parallel)
@@ -8,16 +13,24 @@ source("R/00_system_variables.R")
 agg <- function(x) { as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x)) }
 
 
-# MRIO Table ---
+
+
+###########################################################
+########### MRIO TABLE #########
+###########################################################
 
 
 # Load multi-regional supply and use tables ---
-mr_sup_m <- readRDS(file.path(output_dir,"mr_sup_mass.rds"))  # list of industry × product in mass units
-mr_sup_v <- readRDS(file.path(output_dir,"mr_sup_value.rds")) # list of industry × product in monetary units
-mr_use <- readRDS(file.path(output_dir,"mr_use.rds"))         # list of product × industry in mass units
+mr_sup_m <- readRDS(file.path(output_dir_bcp,"mr_sup_mass.rds"))  # list of industry × product in mass units
+# mr_sup_v <- readRDS(file.path(output_dir_bcp,"mr_sup_value.rds")) # list of industry × product in monetary units
+mr_use <- readRDS(file.path(output_dir_bcp,"mr_use.rds"))         # list of product × industry in mass units
 
 
-# Mass allocation ---
+
+
+###########################################################
+#1. With mass allocation
+###########################################################
 
 # --- Step 1: Normalize supply (industry shares of products) ---
 trans_m <- mclapply(mr_sup_m, function(x) {
@@ -38,35 +51,39 @@ Z_m <- mcmapply(function(use, trans) {
 Z_m <- lapply(Z_m, round)
 
 
-# Value allocation ---
-
-# --- Step 1: Normalize supply (industry shares of products) ---
-trans_v <- mclapply(mr_sup_v, function(x) {
-  rs <- rowSums(x)                # row sums (industry outputs)
-  rs[rs == 0] <- 1                # avoid division by zero
-  out <- x
-  out@x <- out@x / rs[out@i + 1]
-  out
-}, mc.cores = detectCores() - 2)
-
-# --- Step 2: Compute symmetric product × product tables ---
-Z_v <- mcmapply(function(use, trans) {
-  out <- use %*% trans
-  out[!is.finite(out)] <- 0  # just in case
-  out
-}, mr_use, trans_v, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
 
 
-Z_v <- lapply(Z_v, round)
-
+###########################################################
+#2. With value allocation
+###########################################################
+# 
+# # --- Step 1: Normalize supply (industry shares of products) ---
+# trans_v <- mclapply(mr_sup_v, function(x) {
+#   rs <- rowSums(x)                # row sums (industry outputs)
+#   rs[rs == 0] <- 1                # avoid division by zero
+#   out <- x
+#   out@x <- out@x / rs[out@i + 1]
+#   out
+# }, mc.cores = detectCores() - 2)
+# 
+# # --- Step 2: Compute symmetric product × product tables ---
+# Z_v <- mcmapply(function(use, trans) {
+#   out <- use %*% trans
+#   out[!is.finite(out)] <- 0  # just in case
+#   out
+# }, mr_use, trans_v, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
+# 
+# 
+# Z_v <- lapply(Z_v, round)
+# 
 
 
 # Rebalance row sums in Z and Y -----------------------------------------
 
 regions <- fread("inst/regions_full.csv")[current==TRUE]
-items <- fread("inst/items_full_123.csv")
+items <- fread("inst/items_full_bcp.csv")
 nrcom <- nrow(items)
-Y <- readRDS(file.path(output_dir,"mr_use_fd.rds"))
+Y <- readRDS(file.path(output_dir_bcp,"mr_use_fd.rds"))
 
 
 
@@ -117,8 +134,8 @@ X <- do.call(cbind, X)
 # this is mainly due to reporting issues in FAOSTAT, where some countries report seed = production
 # SOLUTION: We move 80% of the value to final demand, equally spreading over all fd-categories
 
-fd_labels <- fread(file.path(output_dir,"fd_labels.csv"))
-io_labels <- read_csv(file.path(output_dir,"io_labels.csv"))
+fd_labels <- fread(file.path(output_dir_bcp,"fd_labels.csv"))
+io_labels <- read_csv(file.path(output_dir_bcp,"io_labels.csv"))
 
 # year <- 2020
 for(year in years){
@@ -126,11 +143,11 @@ for(year in years){
   print(year)
   
   Zmi <- Z_m[[as.character(year)]]
-  Zvi <- Z_v[[as.character(year)]]
+#  Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
-  
-  # Assign column and row names
+
+      # Assign column and row names
   colnames(Yi) <- fd_labels$fd
   rownames(Yi) <- io_labels$comm_code
   
@@ -156,12 +173,12 @@ for(year in years){
     
     if (sum(temp) > 0) {
       # Compute new Yi row for area
-      bal <- mean(Zmi[i,i], Zvi[i,i]) * 0.8
+      bal <- Zmi[i,i] * 0.8
       share <- temp / sum(temp)
       Yi[i, area_col] <- temp + bal * share
       
       # Update Z matrices
-      Zmi[i, i] <- Zvi[i, i] <- mean(Zmi[i,i], Zvi[i,i]) * 0.2
+      Zmi[i, i] <- Zmi[i,i] * 0.2
       
       # Update X
       Xi[i] <- sum(Zmi[i, ]) + sum(Yi[i, ])
@@ -170,7 +187,7 @@ for(year in years){
   
   # Save back results
   Z_m[[as.character(year)]] <- Zmi
-  Z_v[[as.character(year)]] <- Zvi
+#  Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
 }
@@ -188,27 +205,26 @@ for(year in years){
   print(year)
   
   Zmi <- Z_m[[as.character(year)]]
-  Zvi <- Z_v[[as.character(year)]]
+#  Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   
   # Assign row and column names
-  rownames(Yi) <- rownames(Zmi) <- colnames(Zmi) <- 
-    rownames(Zvi) <- colnames(Zvi) <- io_names
+  rownames(Yi) <- rownames(Zmi) <- colnames(Zmi) <- io_names
   colnames(Yi) <- fd_names
   
   
   # Save back results
   Z_m[[as.character(year)]] <- Zmi
-  Z_v[[as.character(year)]] <- Zvi
+#  Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
 }
 
 
 # Store X, Y, Z variables
-saveRDS(Z_m, file.path(output_dir,"Z_mass.rds"))
-saveRDS(Z_v, file.path(output_dir,"Z_value.rds"))
-saveRDS(Y, file.path(output_dir,"Y.rds"))
-saveRDS(X, file.path(output_dir,"X.rds"))
+saveRDS(Z_m, file.path(output_dir_bcp,"Z_mass.rds"))
+# saveRDS(Z_v, file.path(output_dir_bcp,"Z_value.rds"))
+saveRDS(Y, file.path(output_dir_bcp,"Y.rds"))
+saveRDS(X, file.path(output_dir_bcp,"X.rds"))
 
 
 
@@ -255,11 +271,11 @@ for(year in years){
   Zi <- Zi + combined_matrix
   Z_m[[as.character(year)]] <- Zi
   
-  # add losses to the main diagonals of each submatrix of Z_v
-  Zi <- Z_v[[as.character(year)]]
-  Zi <- Zi + combined_matrix
-  Z_v[[as.character(year)]] <- Zi
-  
+  # # add losses to the main diagonals of each submatrix of Z_v
+  # Zi <- Z_v[[as.character(year)]]
+  # Zi <- Zi + combined_matrix
+  # Z_v[[as.character(year)]] <- Zi
+  # 
 }
 
 
@@ -268,7 +284,7 @@ for(year in years){
 # this is mainly due to reporting issues in FAOSTAT, where some countries report seed = production
 # SOLUTION: We move 80% of the value to final demand, equally spreading over all fd-categories
 
-fd_labels <- fread(file.path(output_dir,"losses/fd_labels.csv"))
+fd_labels <- fread(file.path(output_dir_bcp,"losses/fd_labels.csv"))
 
 # year <- 2019
 for(year in years){
@@ -276,7 +292,7 @@ for(year in years){
   print(year)
   
   Zmi <- Z_m[[as.character(year)]]
-  Zvi <- Z_v[[as.character(year)]]
+  # Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
   
@@ -305,12 +321,12 @@ for(year in years){
     
     if (sum(temp) > 0) {
       # Compute new Yi row for area
-      bal <- mean(Zmi[i,i], Zvi[i,i]) * 0.8
+      bal <- Zmi[i,i] * 0.8
       share <- temp / sum(temp)
       Yi[i, area_col] <- temp + bal * share
       
       # Update Z matrices
-      Zmi[i, i] <- Zvi[i, i] <- mean(Zmi[i,i], Zvi[i,i]) * 0.2
+      Zmi[i, i] <- Zmi[i,i] * 0.2
       
       # Update X
       Xi[i] <- sum(Zmi[i, ]) + sum(Yi[i, ])
@@ -319,17 +335,17 @@ for(year in years){
   
   # Save back results
   Z_m[[as.character(year)]] <- Zmi
-  Z_v[[as.character(year)]] <- Zvi
+  # Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
   
 }
 
 
-saveRDS(X, file.path(output_dir,"losses/X.rds"))
-saveRDS(Y, file.path(output_dir,"losses/Y.rds"))
-saveRDS(Z_m, file.path(output_dir,"losses/Z_mass.rds"))
-saveRDS(Z_v, file.path(output_dir,"losses/Z_value.rds"))
+saveRDS(X, file.path(output_dir_bcp,"losses/X.rds"))
+saveRDS(Y, file.path(output_dir_bcp,"losses/Y.rds"))
+saveRDS(Z_m, file.path(output_dir_bcp,"losses/Z_mass.rds"))
+# saveRDS(Z_v, file.path(output_dir_bcp,"losses/Z_value.rds"))
 
 
 
@@ -338,12 +354,12 @@ saveRDS(Z_v, file.path(output_dir,"losses/Z_value.rds"))
 
 # Correction of Other vs. Food use of Chinese veg. oils --------------------------------------------------------------
 # FAO overstates other and understates food use. We use official Chinese data and USDA data to correct this.
-io <- fread(file.path(output_dir,"io_labels.csv"))
-su <- fread(file.path(output_dir,"su_labels.csv"))
-fd <- fread(file.path(output_dir,"fd_labels.csv"))
-Y <- readRDS(file.path(output_dir,"Y.rds"))
-fd_l <- fread(file.path(output_dir,"losses/fd_labels.csv"))
-Y_l <- readRDS(file.path(output_dir,"losses/Y.rds"))
+io <- fread(file.path(output_dir_bcp,"io_labels.csv"))
+su <- fread(file.path(output_dir_bcp,"su_labels.csv"))
+fd <- fread(file.path(output_dir_bcp,"fd_labels.csv"))
+Y <- readRDS(file.path(output_dir_bcp,"Y.rds"))
+fd_l <- fread(file.path(output_dir_bcp,"losses/fd_labels.csv"))
+Y_l <- readRDS(file.path(output_dir_bcp,"losses/Y.rds"))
 
 # Chinese edible oil statistics
 # Sources: 
@@ -388,8 +404,8 @@ for(i in seq_along(Y)){
                round(food_new/1000000), "/", round(other_new/1000000), " Mt, ", round(share_new*100), "%"))
 }
 
-saveRDS(Y_new, file.path(output_dir,"Y.rds"))
-saveRDS(Y_l_new, file.path(output_dir,"losses/Y.rds"))
+saveRDS(Y_new, file.path(output_dir_bcp,"Y.rds"))
+saveRDS(Y_l_new, file.path(output_dir_bcp,"losses/Y.rds"))
 
 
 
@@ -406,9 +422,9 @@ saveRDS(Y_l_new, file.path(output_dir,"losses/Y.rds"))
 # gwp_names <- gwp[[1]][,1]
 # luh_names <- luh[[1]][,1]
 # 
-# write_csv(data.frame(ghg_names), file.path(output_dir,"ghg_names.csv"))
-# write_csv(data.frame(gwp_names), file.path(output_dir,"gwp_names.csv"))
-# write_csv(data.frame(luh_names), file.path(output_dir,"luh_names.csv"))
+# write_csv(data.frame(ghg_names), file.path(output_dir_bcp,"ghg_names.csv"))
+# write_csv(data.frame(gwp_names), file.path(output_dir_bcp,"gwp_names.csv"))
+# write_csv(data.frame(luh_names), file.path(output_dir_bcp,"luh_names.csv"))
 # 
 # # remove years not included in this version of FABIO
 # ghg <- ghg[as.character(years[years %in% as.integer(names(ghg))])]
@@ -431,10 +447,12 @@ saveRDS(Y_l_new, file.path(output_dir,"losses/Y.rds"))
 # gwp_v <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = gwp, y = trans_v[seq_along(years[years %in% as.numeric(names(ghg))])])
 # luh_v <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = luh, y = trans_v[seq_along(years[years %in% as.numeric(names(ghg))])])
 # 
-# saveRDS(ghg_m, file.path(output_dir,"E_ghg_mass.rds"))
-# saveRDS(gwp_m, file.path(output_dir,"E_gwp_mass.rds"))
-# saveRDS(luh_m, file.path(output_dir,"E_luh_mass.rds"))
+# saveRDS(ghg_m, file.path(output_dir_bcp,"E_ghg_mass.rds"))
+# saveRDS(gwp_m, file.path(output_dir_bcp,"E_gwp_mass.rds"))
+# saveRDS(luh_m, file.path(output_dir_bcp,"E_luh_mass.rds"))
 # 
-# saveRDS(ghg_v, file.path(output_dir,"E_ghg_value.rds"))
-# saveRDS(gwp_v, file.path(output_dir,"E_gwp_value.rds"))
-# saveRDS(luh_v, file.path(output_dir,"E_luh_value.rds"))
+# saveRDS(ghg_v, file.path(output_dir_bcp,"E_ghg_value.rds"))
+# saveRDS(gwp_v, file.path(output_dir_bcp,"E_gwp_value.rds"))
+# saveRDS(luh_v, file.path(output_dir_bcp,"E_luh_value.rds"))
+
+

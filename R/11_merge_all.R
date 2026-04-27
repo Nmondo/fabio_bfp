@@ -6,6 +6,7 @@ rm(list = ls())
 
 library("tidyverse")
 library("data.table")
+library(Matrix)
 library(dplyr)
 
 ###########################################################
@@ -48,15 +49,15 @@ source("R/00_system_variables.R")
 ###########################################################
 
 extension_items <- unique(use_fd_final_bcp$item)
-
-
+current_codes <- regions$code
 
 ###########################################################
 ########### BINDING USE #########
 ###########################################################
 
 use_full <- bind_rows(use_final, use_final_bcp) %>%
-  select(-unit)
+  select(-unit) %>%
+  filter(area_code %in% current_codes)
 
 
 
@@ -73,7 +74,8 @@ use_fd_full <- bind_rows(use_fd_final, use_fd_final_bcp) %>%
                 ~ case_when(item %in% extension_items & is.na(.x) ~ 0, 
                             ! item %in% extension_items           ~ 0,
                             TRUE                                  ~ .x))
-         )
+         )  %>%
+  filter(area_code %in% current_codes)
 
 
 # Item info for the two comm_codes
@@ -110,7 +112,8 @@ use_fd_full <- bind_rows(use_fd_full, new_fd_rows)
 ###########################################################
 
 sup_full <- bind_rows(sup_final, sup_final_bcp) %>%
-  select(-production, -unit)
+  select(-production, -unit)  %>%
+  filter(area_code %in% current_codes)
 
 
 
@@ -125,7 +128,7 @@ btd_full <- bind_rows(btd_final, btd_final_bcp) %>%
 rm(btd_final)
 gc()
 
-
+print(subset(btd_full, comm_code == "c028" & from_code != to_code & value > 0))
 
 
 ###########################################################
@@ -235,14 +238,126 @@ sup_full <- sup_full %>%
 ########### CALCULATE 'SELF-FLOWS' AND UPDATE BTD #######################
 ###########################################################
 
-self_flows <- balance_check_adj %>%
-  mutate(value = pmax(na_sum(tot_supply_new, - imports), 0), # 'self-consumption' is the part of use that is neither imported nor exported 
-         from_code = area_code,
-         to_code = area_code) %>%   
-  select(comm_code, item_code, from_code, to_code, year, value)
+# self_flows <- balance_check_adj %>%
+#   mutate(value = pmax(na_sum(tot_supply_new, - imports), 0), # 'self-consumption' is the part of use that is neither imported nor exported 
+#          from_code = area_code,
+#          to_code = area_code) %>%   
+#   select(comm_code, item_code, from_code, to_code, year, value)
+# 
+# 
+# btd_full <- rows_upsert(btd_full, self_flows, by = c("from_code", "to_code", "comm_code", "year"))
+# 
+# 
 
-## Sanity check 
 
-print(subset(self_flows, is.na(value))) # no NA
 
-btd_full <- rows_upsert(btd_full, self_flows, by = c("from_code", "to_code", "comm_code", "year"))
+
+areas <- sort(unique(balance_check_adj$area_code))
+n <- length(areas)
+commodities_vec <- sort(unique(balance_check_adj$comm_code))
+
+# (from_code × to_code) template to force full n × n matrices
+mapping_templ <- data.table(
+  from_code = rep(areas, each = n),
+  to_code   = rep(areas, times = n))
+
+btd_dt <- as.data.table(btd_full)
+
+# DS / TS / DU per (comm, area, year), derived from the adjusted balance
+bal_dt <- as.data.table(as.data.frame(balance_check_adj))[, .(
+  comm_code, item_code, area_code, year,
+  DS = pmax(prod_new, 0, na.rm = TRUE), # Domestic supply 
+  TS = pmax(na_sum(prod_new, imports), 0), # Total supply 
+  DU = pmax(tot_use_new, 0, na.rm = TRUE))] # Domestic use
+
+stopifnot(
+  nrow(bal_dt) == nrow(balance_check_adj),
+  nrow(bal_dt[, .N, by = .(comm_code, area_code, year)][N > 1]) == 0
+)            # domestic use
+
+self_flows_list <- vector("list", length(years))
+
+for (i in seq_along(years)) {
+  y <- years[i]
+  cat("Calculating self-flows for year ", y, ".\n", sep = "")
+  
+  bal_y <- bal_dt[year == y]
+  setkey(bal_y, comm_code, area_code)
+  btd_y <- btd_dt[year == y, .(from_code, to_code, comm_code, value)]
+  
+  self_j <- lapply(commodities_vec, function(j) {
+    # Build bilateral trade matrix T (n × n) for this commodity
+    x <- btd_y[comm_code == j, .(from_code, to_code, value)]
+    if (nrow(x) == 0) {
+      T_mat <- Matrix::Matrix(0, n, n, sparse = TRUE,
+                              dimnames = list(areas, areas))
+    } else {
+      tmp <- merge(mapping_templ, x, by = c("from_code", "to_code"), all.x = TRUE)
+      tmp[is.na(value), value := 0]
+      mat_wide <- data.table::dcast(tmp, from_code ~ to_code,
+                                    fun.aggregate = sum, value.var = "value")[, -"from_code"]
+      T_mat <- as(as.matrix(mat_wide), "CsparseMatrix")
+    }
+    
+    # DS, TS, DU aligned with 'areas'
+    b <- bal_y[.(j, areas), on = c("comm_code", "area_code")]
+    DS <- b$DS; DS[is.na(DS)] <- 0
+    TS <- b$TS; TS[is.na(TS)] <- 0
+    DU <- b$DU; DU[is.na(DU)] <- 0
+    item_j <- b$item_code[!is.na(b$item_code)][1]
+    
+    T_offdiag_sum <- sum(T_mat) - sum(Matrix::diag(T_mat))
+    
+    if (T_offdiag_sum == 0) {
+      # No bilateral trade -> entire domestic use is self-sourced
+      self_vals <- DU
+    } else {
+      A <- sweep(T_mat, 1, TS, FUN = "/")
+      A[is.na(A)] <- 0
+      
+      L <- tryCatch(solve(Diagonal(n) - A),
+                    error = function(e) {
+                      m <- as.matrix(Diagonal(n) - A); m[!is.finite(m)] <- 0
+                      MASS::ginv(m)
+                    })
+      
+      F <- L * DS                       # row-scale: F[i,j] = L[i,j] * DS[i]
+      F[F < 0] <- 0
+      col_sums <- colSums(F)
+      S <- as.matrix(t(t(F) / pmax(col_sums, 1)))
+      S[, col_sums == 0] <- 0
+      S[!is.finite(S)] <- 0
+      
+      # Only the diagonal of final_result is needed: S[i,i] * DU[i]
+      self_vals <- diag(S) * DU
+    }
+    
+    data.table(comm_code = j, item_code = item_j,
+               area_code = areas, value = round(self_vals))
+  })
+  
+  self_flows_list[[i]] <- rbindlist(self_j)[, year := y]
+}
+
+self_flows <- rbindlist(self_flows_list)
+self_flows[, `:=`(from_code = area_code, to_code = area_code)]
+self_flows <- self_flows[, .(comm_code, item_code, from_code, to_code, year, value)]
+
+
+# Updating btd_full with the updated flows. 
+btd_full <- rows_upsert(btd_full, self_flows,
+                        by = c("from_code", "to_code", "comm_code", "year"))
+
+
+
+
+###########################################################
+########### WRITING TABLES #######################
+###########################################################
+
+setwd("/home/mmondolfo/fabio_bfp/")
+
+saveRDS(sup_full, "data/sup_final_merged.rds")
+saveRDS(use_full, "data/use_final_merged.rds")
+saveRDS(use_fd_full, "data/use_fd_final_merged.rds")
+saveRDS(btd_full, "data/btd_final_merged.rds")

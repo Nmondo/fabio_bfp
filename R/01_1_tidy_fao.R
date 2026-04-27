@@ -1161,26 +1161,26 @@ saveRDS(tcf_full, "data/tidy/tcf_sua_tidy.rds")
 
 
 # Fish --------------------------------------------------------------------
-
-cat("\nTidying fish.\n")
-
-fish <- readRDS("input/fao/fish_prod.rds")
-fish <- dt_rename(fish, rename, drop = TRUE)
-
-fish[, source := ifelse(source_code == "CAPTURE", "Capture", "Aquaculture")] # see "CL_FI_PRODUCTION_SOURCE_DET.csv" in the "GlobalProduction_2022.1.0.zip" folder
-fish[, unit := ifelse(unit == "Q_tlw", "t", "no")]
-
-# Country / Area adjustments
-country_match <- match(fish[["country"]], regions[["fish"]])
-fish[, `:=`(area = regions$name[country_match],
-            area_code = regions$code[country_match], country = NULL)]
-
-fish <- dt_filter(fish, !is.na(area))
-
-fish <- area_kick(fish, code = 351, pattern = "China", groups = TRUE)
-fish <- area_merge(fish, orig = 62, dest = 238, pattern = "Ethiopia")
-fish <- area_merge(fish, orig = 206, dest = 276, pattern = "Sudan")
-fish <- area_fix(fish, regions)
-
-# Store
-saveRDS(fish, "data/tidy/fish_tidy.rds")
+# 
+# cat("\nTidying fish.\n")
+# 
+# fish <- readRDS("input/fao/fish_prod.rds")
+# fish <- dt_rename(fish, rename, drop = TRUE)
+# 
+# fish[, source := ifelse(source_code == "CAPTURE", "Capture", "Aquaculture")] # see "CL_FI_PRODUCTION_SOURCE_DET.csv" in the "GlobalProduction_2022.1.0.zip" folder
+# fish[, unit := ifelse(unit == "Q_tlw", "t", "no")]
+# 
+# # Country / Area adjustments
+# country_match <- match(fish[["country"]], regions[["fish"]])
+# fish[, `:=`(area = regions$name[country_match],
+#             area_code = regions$code[country_match], country = NULL)]
+# 
+# fish <- dt_filter(fish, !is.na(area))
+# 
+# fish <- area_kick(fish, code = 351, pattern = "China", groups = TRUE)
+# fish <- area_merge(fish, orig = 62, dest = 238, pattern = "Ethiopia")
+# fish <- area_merge(fish, orig = 206, dest = 276, pattern = "Sudan")
+# fish <- area_fix(fish, regions)
+# 
+# # Store
+# saveRDS(fish, "data/tidy/fish_tidy.rds")

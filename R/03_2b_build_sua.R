@@ -43,9 +43,12 @@ imps <- btd[!unit %in% c("usd", "No") , list(value = na_sum(value)),
 imps[unit == "Head", unit := "head"]
 imps <- data.table::dcast(imps, to_code + to + item_code + item + year ~ unit,
                           value.var = "value")
-imps[, value := ifelse(!is.na(head), head,
-                       ifelse(!is.na(`1000 head`), `1000 head`, t))][, `:=` 
-                        (head = NULL, `1000 head`= NULL, t = NULL)]
+# imps[, value := ifelse(!is.na(head), head,
+#                        ifelse(!is.na(`1000 head`), `1000 head`, t))][, `:=` 
+#                         (head = NULL, `1000 head`= NULL, t = NULL)]
+imps[, value := fcoalesce(`1000 head`, An, tonnes)]
+imps[, c("1000 head", "An", "tonnes") := NULL]
+
 imps$item <- iconv(imps$item, from = "", to = "UTF-8")
 
 # Exports
@@ -54,9 +57,11 @@ exps <- btd[!unit %in% c("usd", "No") , list(value = na_sum(value)),
 exps[ unit == "Head", unit := "head"]
 exps <- data.table::dcast(exps, from_code + from + item_code + item + year ~ unit,
                           value.var = "value")
-exps[, value := ifelse(!is.na(head), head,
-                       ifelse(!is.na(`1000 head`), `1000 head`, t))][, `:=` 
-                     (head = NULL, `1000 head`= NULL, t = NULL)]
+# exps[, value := ifelse(!is.na(head), head,
+#                        ifelse(!is.na(`1000 head`), `1000 head`, t))][, `:=` 
+#                      (head = NULL, `1000 head`= NULL, t = NULL)]
+exps[, value := fcoalesce(`1000 head`, An, tonnes)]
+exps[, c("1000 head", "An", "tonnes") := NULL]
 exps$item <- iconv(exps$item, from = "", to = "UTF-8")
 
 
@@ -386,7 +391,7 @@ sua <- sua[, lapply(.SD, na_sum),
 btd <- replace_RoW(btd, cols = c("from_code", "to_code"),
                    codes = c(regions[current == TRUE, code], 252, 254))
 btd <- btd[, lapply(.SD, na_sum), by = c("from_code", "from",
-                                         "to_code", "to","element", "item_code", 
+                                         "to_code", "to", "item_code", 
                                          "item", "unit", "year")]
 
 # Remove ROW-internal trade from sua

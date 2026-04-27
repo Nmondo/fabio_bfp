@@ -10,7 +10,7 @@ tcf_avg <- fread("inst/sua/tcf_sua_world_averages.csv")
 tcf_expert <- fread("inst/sua/tcf_sua_expert.csv")
 #cbs <- readRDS("data/tidy/cbs_tidy.rds")  
 #prod_trad <- readRDS("data/tidy/prod_trad_full.rds")
-  
+
 proc_sua <- fread("inst/sua/proc_sua.csv")
 sua <- readRDS("data/tidy/sua_tidy.rds") # does this work?
 use_structure <- fread("inst/sua/use_structure_sua.csv")
@@ -56,7 +56,7 @@ fill_country_gaps(tcf, source_vec, target_vec)
 # Add aggregate supply data from sua_tidy, cbs and prod_trad 
 # -> only gap-fill where production is positive
 prod_agg <- sua[, .(total_prod = sum(production, na.rm = TRUE)),
-                     by = .(area, item)]
+                by = .(area, item)]
 
 # cbs <- cbs[year %in% years & item %in% items_sua$item & !item %in% sua$item, .(area, item, production)]
 # cbs <- cbs[,.(total_prod = sum(production, na.rm = TRUE)),
@@ -72,8 +72,8 @@ prod_agg <- sua[, .(total_prod = sum(production, na.rm = TRUE)),
 
 # add aggregated production to tcf
 tcf <- merge(tcf, prod_agg, by.x = c("country_sua", "item_sua"),
-                  by.y = c( "area", "item"),
-                  all.x = TRUE)
+             by.y = c( "area", "item"),
+             all.x = TRUE)
 tcf <- tcf[total_prod > 0 & !is.na(total_prod)]
 tcf[is.nan(value), value := NA_real_]
 
@@ -97,7 +97,7 @@ tcf[, avg := if (all(is.na(value))) NA_real_ else
 
 # clean up
 tcf <- tcf[variable == "extraction rates", .(country_sua, item_sua, value = 
-                                              round(value/100,2), avg =
+                                               round(value/100,2), avg =
                                                round(avg/100, 2))]
 
 
@@ -119,7 +119,7 @@ saveRDS(use_items_sua, "data/sua/use_items_sua.rds")
 # Add use and process information --------------------------------------------
 # create full table for gap filling with use_items_sua repeated along countries
 
-tcf_full <- CJ(area = unique(regions$area), row_id = seq_len(nrow(use_items_sua)))[
+tcf_full <- CJ(area = unique(regions$name), row_id = seq_len(nrow(use_items_sua)))[
   , cbind(.SD, use_items_sua[row_id]), .SDcols = "area"
 ]
 
@@ -141,9 +141,9 @@ tcf_full <- tcf_full[!is.na(production_child) & !is.na(production_parent) &
 
 # add data from tcf_official on country level
 tcf_full <- merge(tcf_full, tcf[,.(country_sua, item_sua, 
-                                                extraction_rate = value, avg)],
-                           by.x =c("area", "child"), by.y = c("country_sua","item_sua"),
-                           all.x = TRUE)
+                                   extraction_rate = value, avg)],
+                  by.x =c("area", "child"), by.y = c("country_sua","item_sua"),
+                  all.x = TRUE)
 
 # add averages from commodity trees 
 tcf_full <- merge(tcf_full, tcf_avg, by.x = c("proc", "proc_code","child", "child_code"),
@@ -188,7 +188,7 @@ problems_full <- tcf_full[child %in% problems$child]
 cat("\nCase 1: extraction rate is the same for different parents\n")
 
 problems_full[child %in% c("Malt, whether or not roasted", "Starch of potatoes",
-                          "Grape juice", "Rice-fermented beverages"),
+                           "Grape juice", "Rice-fermented beverages"),
               `:=`(corrected_rate = extraction_rate, corrected = TRUE)]
 
 cat("\nCase 2: extraction rate only belongs to one parent and it can be identified which
@@ -225,7 +225,7 @@ fwrite(tcf_min_avail, "input/tcf_sua/tcf_min_avail.csv")
 tcf_max_avail <- unique(tcf_full[!is.na(max), .(parent, proc, child)])
 fwrite(tcf_max_avail, "input/tcf_sua/tcf_max_avail.csv")
 
-stop("break")
+# stop("break")
 # Merging TCF and TCF_expert ---------------------------------------------------
 tcf_full <- merge(tcf_full, tcf_expert[,.(parent, child, proc,expert_rate = extraction_rate, 
                                           expert_min = min, expert_max = max)], 
@@ -247,6 +247,5 @@ setorder(tcf_full, area_code , parent_code, proc_code, child_code)
 saveRDS(tcf_full, "data/sua/tcf_sua_final.rds")
 
 rm(problem_items, problems, problems_full ,prod_agg, tcf, tcf_avg, tcf_expert)
-
 
 
