@@ -1,13 +1,10 @@
 ###########################################################
 ########### LOADING PACKAGES #########
 ###########################################################
-
 setwd("/home/mmondolfo/fabio_bfp/")
-
 library(data.table)
 library(Matrix)
 source("R/00_system_variables.R")
-
 # Leontief inverse ---
 prep_solve <- function(year, Z, X,
                        adj_X = FALSE, adj_A = TRUE, adj_diag = FALSE) {
@@ -27,54 +24,46 @@ prep_solve <- function(year, Z, X,
   #L_inv[L_inv<0] <- 0
   return(L_inv)
 }
-
 years_singular <- 0 #c(2011,2013)
 years_singular_losses <- 2010 #c(2011,2013,2021,2022)
-
-Z_m <- readRDS(file.path(output_dir_bcp,"Z_mass.rds"))
-# Z_v <- readRDS(file.path(output_dir_bcp,"Z_value.rds"))
+# Z_m <- readRDS(file.path(output_dir_bcp,"Z_mass.rds"))
+Z_v <- readRDS(file.path(output_dir_bcp,"Z_value.rds"))
 Y <- readRDS(file.path(output_dir_bcp,"Y.rds"))
 X <- readRDS(file.path(output_dir_bcp,"X.rds"))
-
 #year <- 2013
 for(year in years){
   print(year)
   adjust <- ifelse(year %in% years_singular, TRUE, FALSE)
-  L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
-                  X = X[, as.character(year)], adj_diag = adjust)
-  L[L<0] <- 0
-  saveRDS(L, paste0(output_dir_bcp,"/", year, "_L_mass.rds"))
-  # L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
+  # L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
   #                 X = X[, as.character(year)], adj_diag = adjust)
   # L[L<0] <- 0
-  # saveRDS(L, paste0(output_dir_bcp,"/", year, "_L_value.rds"))
+  # saveRDS(L, paste0(output_dir_bcp,"/", year, "_L_mass.rds"))
+  L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
+                  X = X[, as.character(year)], adj_diag = adjust)
+  L[L<0] <- 0
+  saveRDS(L, paste0(output_dir_bcp,"/", year, "_L_value.rds"))
 }
-
 # L inverse for losses version of fabio ---
 X <- readRDS(file.path(output_dir_bcp,"losses/X.rds"))
 Y <- readRDS(file.path(output_dir_bcp,"losses/Y.rds"))
-Z_m <- readRDS(file.path(output_dir_bcp,"losses/Z_mass.rds"))
-# Z_v <- readRDS(file.path(output_dir_bcp,"losses/Z_value.rds"))
-
+# Z_m <- readRDS(file.path(output_dir_bcp,"losses/Z_mass.rds"))
+Z_v <- readRDS(file.path(output_dir_bcp,"losses/Z_value.rds"))
 #year <- 2022
 for(year in years){
   print(year)
   adjust_losses <- ifelse(year %in% years_singular_losses, TRUE, FALSE)
-  L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
-                  X = X[, as.character(year)], adj_diag = adjust_losses)
-  L[L<0] <- 0
-  saveRDS(L, paste0(output_dir_bcp,"/losses/", year, "_L_mass.rds"))
-  # L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
+  # L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
   #                 X = X[, as.character(year)], adj_diag = adjust_losses)
   # L[L<0] <- 0
-  # saveRDS(L, paste0(output_dir_bcp,"/losses/", year, "_L_value.rds"))
+  # saveRDS(L, paste0(output_dir_bcp,"/losses/", year, "_L_mass.rds"))
+  L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
+                  X = X[, as.character(year)], adj_diag = adjust_losses)
+  L[L<0] <- 0
+  saveRDS(L, paste0(output_dir_bcp,"/losses/", year, "_L_value.rds"))
 }
-
-
 ## Checking some rows to check consistency
-
 # 
-# L         <- readRDS(file.path(output_dir_bcp, "2019_L_mass.rds"))
+# L         <- readRDS(file.path(output_dir_bcp, "2019_L_value.rds"))
 # io_labels <- fread(file.path(output_dir_bcp, "io_labels.csv"))
 # items     <- fread("inst/items_full_bcp.csv")
 # 
@@ -96,4 +85,3 @@ for(year in years){
 # col_long[src_comm == "c145", item := "Used cooking oil"]
 # 
 # View(col_long)
-

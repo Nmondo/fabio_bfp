@@ -21,8 +21,8 @@ agg <- function(x) { as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x
 
 
 # Load multi-regional supply and use tables ---
-mr_sup_m <- readRDS(file.path(output_dir_bcp,"mr_sup_mass.rds"))  # list of industry × product in mass units
-# mr_sup_v <- readRDS(file.path(output_dir_bcp,"mr_sup_value.rds")) # list of industry × product in monetary units
+# mr_sup_m <- readRDS(file.path(output_dir_bcp,"mr_sup_mass.rds"))  # list of industry × product in mass units
+mr_sup_v <- readRDS(file.path(output_dir_bcp,"mr_sup_value.rds")) # list of industry × product in monetary units
 mr_use <- readRDS(file.path(output_dir_bcp,"mr_use.rds"))         # list of product × industry in mass units
 
 
@@ -32,33 +32,8 @@ mr_use <- readRDS(file.path(output_dir_bcp,"mr_use.rds"))         # list of prod
 #1. With mass allocation
 ###########################################################
 
-# --- Step 1: Normalize supply (industry shares of products) ---
-trans_m <- mclapply(mr_sup_m, function(x) {
-  rs <- rowSums(x)                # row sums (industry outputs)
-  rs[rs == 0] <- 1                # avoid division by zero
-  out <- x
-  out@x <- out@x / rs[out@i + 1]
-  out
-}, mc.cores = detectCores() - 2)
-
-# --- Step 2: Compute symmetric product × product tables ---
-Z_m <- mcmapply(function(use, trans) {
-  out <- use %*% trans
-  out[!is.finite(out)] <- 0  # just in case
-  out
-}, mr_use, trans_m, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
-
-Z_m <- lapply(Z_m, round)
-
-
-
-
-###########################################################
-#2. With value allocation
-###########################################################
-# 
 # # --- Step 1: Normalize supply (industry shares of products) ---
-# trans_v <- mclapply(mr_sup_v, function(x) {
+# trans_m <- mclapply(mr_sup_m, function(x) {
 #   rs <- rowSums(x)                # row sums (industry outputs)
 #   rs[rs == 0] <- 1                # avoid division by zero
 #   out <- x
@@ -67,15 +42,40 @@ Z_m <- lapply(Z_m, round)
 # }, mc.cores = detectCores() - 2)
 # 
 # # --- Step 2: Compute symmetric product × product tables ---
-# Z_v <- mcmapply(function(use, trans) {
+# Z_m <- mcmapply(function(use, trans) {
 #   out <- use %*% trans
 #   out[!is.finite(out)] <- 0  # just in case
 #   out
-# }, mr_use, trans_v, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
+# }, mr_use, trans_m, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
 # 
-# 
-# Z_v <- lapply(Z_v, round)
-# 
+# Z_m <- lapply(Z_m, round)
+
+
+
+
+###########################################################
+#2. With value allocation
+###########################################################
+
+# --- Step 1: Normalize supply (industry shares of products) ---
+trans_v <- mclapply(mr_sup_v, function(x) {
+  rs <- rowSums(x)                # row sums (industry outputs)
+  rs[rs == 0] <- 1                # avoid division by zero
+  out <- x
+  out@x <- out@x / rs[out@i + 1]
+  out
+}, mc.cores = detectCores() - 2)
+
+# --- Step 2: Compute symmetric product × product tables ---
+Z_v <- mcmapply(function(use, trans) {
+  out <- use %*% trans
+  out[!is.finite(out)] <- 0  # just in case
+  out
+}, mr_use, trans_v, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
+
+
+Z_v <- lapply(Z_v, round)
+
 
 
 # Rebalance row sums in Z and Y -----------------------------------------
@@ -92,7 +92,7 @@ Y <- readRDS(file.path(output_dir_bcp,"mr_use_fd.rds"))
 
 X <- mapply(function(x, y) {
   rowSums(x) + rowSums(y)
-}, x = Z_m, y = Y)
+}, x = Z_v, y = Y)
 
 
 
@@ -121,7 +121,7 @@ X <- mcmapply(function(z, y) {
   
   # Return corrected row sums
   rowSums(z) + rowSums(y)
-}, z = Z_m, y = Y, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
+}, z = Z_v, y = Y, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
 
 # Convert list of vectors to a matrix
 X <- do.call(cbind, X)
@@ -142,12 +142,12 @@ for(year in years){
   
   print(year)
   
-  Zmi <- Z_m[[as.character(year)]]
-#  Zvi <- Z_v[[as.character(year)]]
+  #  Zmi <- Z_m[[as.character(year)]]
+  Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
-
-      # Assign column and row names
+  
+  # Assign column and row names
   colnames(Yi) <- fd_labels$fd
   rownames(Yi) <- io_labels$comm_code
   
@@ -155,8 +155,8 @@ for(year in years){
   Y_global <- t(agg(t(agg(Yi))))
   
   # Pre-identify relevant indices where update is needed
-  diag_Zmi <- Matrix::diag(Zmi)
-  valid <- (Xi != 0) & (diag_Zmi >= Xi)
+  diag_Zvi <- Matrix::diag(Zvi)
+  valid <- (Xi != 0) & (diag_Zvi >= Xi)
   # print(table(valid))
   
   # Get area match matrix (cache once)
@@ -173,21 +173,21 @@ for(year in years){
     
     if (sum(temp) > 0) {
       # Compute new Yi row for area
-      bal <- Zmi[i,i] * 0.8
+      bal <- Zvi[i,i] * 0.8
       share <- temp / sum(temp)
       Yi[i, area_col] <- temp + bal * share
       
       # Update Z matrices
-      Zmi[i, i] <- Zmi[i,i] * 0.2
+      Zvi[i, i] <- Zvi[i,i] * 0.2
       
       # Update X
-      Xi[i] <- sum(Zmi[i, ]) + sum(Yi[i, ])
+      Xi[i] <- sum(Zvi[i, ]) + sum(Yi[i, ])
     }
   }
   
   # Save back results
-  Z_m[[as.character(year)]] <- Zmi
-#  Z_v[[as.character(year)]] <- Zvi
+  #  Z_m[[as.character(year)]] <- Zmi
+  Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
 }
@@ -204,25 +204,25 @@ for(year in years){
   
   print(year)
   
-  Zmi <- Z_m[[as.character(year)]]
-#  Zvi <- Z_v[[as.character(year)]]
+  #  Zmi <- Z_m[[as.character(year)]]
+  Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   
   # Assign row and column names
-  rownames(Yi) <- rownames(Zmi) <- colnames(Zmi) <- io_names
+  rownames(Yi) <- rownames(Zvi) <- colnames(Zvi) <- io_names
   colnames(Yi) <- fd_names
   
   
   # Save back results
-  Z_m[[as.character(year)]] <- Zmi
-#  Z_v[[as.character(year)]] <- Zvi
+  #  Z_m[[as.character(year)]] <- Zmi
+  Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
 }
 
 
 # Store X, Y, Z variables
-saveRDS(Z_m, file.path(output_dir_bcp,"Z_mass.rds"))
-# saveRDS(Z_v, file.path(output_dir_bcp,"Z_value.rds"))
+# saveRDS(Z_m, file.path(output_dir_bcp,"Z_mass.rds"))
+saveRDS(Z_v, file.path(output_dir_bcp,"Z_value.rds"))
 saveRDS(Y, file.path(output_dir_bcp,"Y.rds"))
 saveRDS(X, file.path(output_dir_bcp,"X.rds"))
 
@@ -266,16 +266,16 @@ for(year in years){
   combined_matrix <- do.call(cbind, matrix_list)
   combined_matrix <- as(combined_matrix, "dgCMatrix")
   
-  # add losses to the main diagonals of each submatrix of Z_m
-  Zi <- Z_m[[as.character(year)]]
-  Zi <- Zi + combined_matrix
-  Z_m[[as.character(year)]] <- Zi
-  
-  # # add losses to the main diagonals of each submatrix of Z_v
-  # Zi <- Z_v[[as.character(year)]]
+  # # add losses to the main diagonals of each submatrix of Z_m
+  # Zi <- Z_m[[as.character(year)]]
   # Zi <- Zi + combined_matrix
-  # Z_v[[as.character(year)]] <- Zi
-  # 
+  # Z_m[[as.character(year)]] <- Zi
+  
+  # add losses to the main diagonals of each submatrix of Z_v
+  Zi <- Z_v[[as.character(year)]]
+  Zi <- Zi + combined_matrix
+  Z_v[[as.character(year)]] <- Zi
+  
 }
 
 
@@ -291,8 +291,8 @@ for(year in years){
   
   print(year)
   
-  Zmi <- Z_m[[as.character(year)]]
-  # Zvi <- Z_v[[as.character(year)]]
+  # Zmi <- Z_m[[as.character(year)]]
+  Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
   
@@ -303,8 +303,8 @@ for(year in years){
   Y_global <- t(agg(t(agg(Y_global))))
   
   # Pre-identify relevant indices where update is needed
-  diag_Zmi <- Matrix::diag(Zmi)
-  valid <- (Xi != 0) & (diag_Zmi >= Xi)
+  diag_Zvi <- Matrix::diag(Zvi)
+  valid <- (Xi != 0) & (diag_Zvi >= Xi)
   # print(table(valid))
   
   # Get area match matrix (cache once)
@@ -321,21 +321,21 @@ for(year in years){
     
     if (sum(temp) > 0) {
       # Compute new Yi row for area
-      bal <- Zmi[i,i] * 0.8
+      bal <- Zvi[i,i] * 0.8
       share <- temp / sum(temp)
       Yi[i, area_col] <- temp + bal * share
       
       # Update Z matrices
-      Zmi[i, i] <- Zmi[i,i] * 0.2
+      Zvi[i, i] <- Zvi[i,i] * 0.2
       
       # Update X
-      Xi[i] <- sum(Zmi[i, ]) + sum(Yi[i, ])
+      Xi[i] <- sum(Zvi[i, ]) + sum(Yi[i, ])
     }
   }
   
   # Save back results
-  Z_m[[as.character(year)]] <- Zmi
-  # Z_v[[as.character(year)]] <- Zvi
+  # Z_m[[as.character(year)]] <- Zmi
+  Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
   
@@ -344,8 +344,8 @@ for(year in years){
 
 saveRDS(X, file.path(output_dir_bcp,"losses/X.rds"))
 saveRDS(Y, file.path(output_dir_bcp,"losses/Y.rds"))
-saveRDS(Z_m, file.path(output_dir_bcp,"losses/Z_mass.rds"))
-# saveRDS(Z_v, file.path(output_dir_bcp,"losses/Z_value.rds"))
+# saveRDS(Z_m, file.path(output_dir_bcp,"losses/Z_mass.rds"))
+saveRDS(Z_v, file.path(output_dir_bcp,"losses/Z_value.rds"))
 
 
 
@@ -407,52 +407,5 @@ for(i in seq_along(Y)){
 saveRDS(Y_new, file.path(output_dir_bcp,"Y.rds"))
 saveRDS(Y_l_new, file.path(output_dir_bcp,"losses/Y.rds"))
 
-
-
-
-
-
-# # ghg emissions are now dealt with in script 12_5
-# # allocate ghg emissions to products --------------------------------------------------------------
-# ghg <- readRDS("/mnt/nfs_fineprint/tmp/fabio/ghg/E_ghg.rds")
-# gwp <- readRDS("/mnt/nfs_fineprint/tmp/fabio/ghg/E_gwp.rds")
-# luh <- readRDS("/mnt/nfs_fineprint/tmp/fabio/ghg/E_luh2.rds")
-# 
-# ghg_names <- ghg[[1]][,1]
-# gwp_names <- gwp[[1]][,1]
-# luh_names <- luh[[1]][,1]
-# 
-# write_csv(data.frame(ghg_names), file.path(output_dir_bcp,"ghg_names.csv"))
-# write_csv(data.frame(gwp_names), file.path(output_dir_bcp,"gwp_names.csv"))
-# write_csv(data.frame(luh_names), file.path(output_dir_bcp,"luh_names.csv"))
-# 
-# # remove years not included in this version of FABIO
-# ghg <- ghg[as.character(years[years %in% as.integer(names(ghg))])]
-# gwp <- gwp[as.character(years[years %in% as.integer(names(gwp))])]
-# luh <- luh[as.character(years[years %in% as.integer(names(luh))])]
-# 
-# # remove countries not included in this version of FABIO
-# columns_to_keep <- substr(colnames(ghg[["2010"]]),1,3) %in% regions[current==TRUE, iso3c]
-# ghg <- lapply(ghg, function(x) x[, columns_to_keep])
-# gwp <- lapply(gwp, function(x) x[, columns_to_keep])
-# luh <- lapply(luh, function(x) x[, columns_to_keep])
-# 
-# nrreg <- length(unique(io_labels$area_code))
-# range <- rep(c(1:97,99:116,118:121), nrreg) + rep(((0:(nrreg-1))*121), each=119)
-# 
-# ghg_m <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = ghg, y = trans_m[seq_along(years[years %in% as.numeric(names(ghg))])])
-# gwp_m <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = gwp, y = trans_m[seq_along(years[years %in% as.numeric(names(ghg))])])
-# luh_m <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = luh, y = trans_m[seq_along(years[years %in% as.numeric(names(ghg))])])
-# ghg_v <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = ghg, y = trans_v[seq_along(years[years %in% as.numeric(names(ghg))])])
-# gwp_v <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = gwp, y = trans_v[seq_along(years[years %in% as.numeric(names(ghg))])])
-# luh_v <- mapply(function(x, y) { as.matrix(x[,range]) %*% y }, x = luh, y = trans_v[seq_along(years[years %in% as.numeric(names(ghg))])])
-# 
-# saveRDS(ghg_m, file.path(output_dir_bcp,"E_ghg_mass.rds"))
-# saveRDS(gwp_m, file.path(output_dir_bcp,"E_gwp_mass.rds"))
-# saveRDS(luh_m, file.path(output_dir_bcp,"E_luh_mass.rds"))
-# 
-# saveRDS(ghg_v, file.path(output_dir_bcp,"E_ghg_value.rds"))
-# saveRDS(gwp_v, file.path(output_dir_bcp,"E_gwp_value.rds"))
-# saveRDS(luh_v, file.path(output_dir_bcp,"E_luh_value.rds"))
 
 

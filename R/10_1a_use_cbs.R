@@ -491,7 +491,7 @@ food_share_veg_oil <- food_share_veg_oil %>%
   )
 
 uco_supply <- food_share_veg_oil %>%
-  mutate(use = uco_supply * share_uco,
+  mutate(use = uco_supply * share_uco * 1/2, #value allocation, assuming UCO is the same price as vegetable oil
          proc_code = "p124",
          proc = sup_items$proc[sup_items$proc_code=="p124"]) %>%
   ungroup() %>%
@@ -510,8 +510,8 @@ use_fd <- use_fd %>%
   mutate(
     use   = replace_na(use, 0),
     div   = if_else(food + other == 0, NA_real_, food + other),
-    other = other - use * other / div,
-    food  = food  - use * food  / div
+    other = other - 1/2 * use * other / div,
+    food  = food  - 1/2 * use * food  / div
   ) %>%
   select(-use, -div)
 

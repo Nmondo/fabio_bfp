@@ -52,70 +52,69 @@ template <- data.table(expand.grid(
   proc_code = processes, comm_code = commodities, stringsAsFactors = FALSE))
 setkey(template, proc_code, comm_code)
 
-# List with block-diagonal supply matrices, per year
-mr_sup_mass <- mclapply(years, function(x) {
+# # List with block-diagonal supply matrices, per year
+# mr_sup_mass <- mclapply(years, function(x) {
+# 
+#   matrices <- lapply(areas, function(y, sup_y) {
+#     # Get supply for area y and merge with the template
+#     sup_x <- sup_y[area_code == y, .(proc_code, comm_code, supply)]
+#     out <- if(nrow(sup_x) == 0) {
+#       template[, .(proc_code, comm_code, supply = 0)]
+#     } else {merge(template, sup_x, all.x = TRUE)}
+# 
+#     # Cast the datatable to convert into a matrix
+#     out <- tryCatch(data.table::dcast(out, proc_code ~ comm_code,
+#                                       value.var = "supply", fun.aggregate = sum, na.rm = TRUE, fill = 0),
+#                     error = function(e) {stop("Issue at ", x, "_", y, ": ", e)})
+# 
+#     # Return a (sparse) matrix of supply for region y and year x
+#     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
+#                   dimnames = list(out$proc_code, colnames(out)[-1])))
+# 
+#   }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, supply)])
+# 
+#   # Return a block-diagonal matrix with all countries for year x
+#   return(bdiag(matrices))
+# }, mc.cores = detectCores() - 2)
+
+###########################################################
+#2. With value allocation
+###########################################################
+
+# Convert to monetary values
+sup[!is.na(price) & is.finite(price), value := supply * price]
+# If no price available, keep physical quantities
+sup[is.na(price) | !is.finite(price), value := supply]
+
+# List with block-diagonal supply matrices in value, per year
+mr_sup_value <- mclapply(years, function(x) {
   
   matrices <- lapply(areas, function(y, sup_y) {
     # Get supply for area y and merge with the template
-    sup_x <- sup_y[area_code == y, .(proc_code, comm_code, supply)]
+    sup_x <- sup_y[area_code == y, .(proc_code, comm_code, value)]
     out <- if(nrow(sup_x) == 0) {
-      template[, .(proc_code, comm_code, supply = 0)]
+      template[, .(proc_code, comm_code, value = 0)]
     } else {merge(template, sup_x, all.x = TRUE)}
     
     # Cast the datatable to convert into a matrix
     out <- tryCatch(data.table::dcast(out, proc_code ~ comm_code,
-                                      value.var = "supply", fun.aggregate = sum, na.rm = TRUE, fill = 0),
+                                      value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0),
                     error = function(e) {stop("Issue at ", x, "_", y, ": ", e)})
     
     # Return a (sparse) matrix of supply for region y and year x
     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
                   dimnames = list(out$proc_code, colnames(out)[-1])))
     
-  }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, supply)])
+  }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, value)])
   
   # Return a block-diagonal matrix with all countries for year x
   return(bdiag(matrices))
 }, mc.cores = detectCores() - 2)
 
-###########################################################
-#2. With value allocation
-###########################################################
+names(mr_sup_value) <- years
 
-# # Convert to monetary values
-# sup[!is.na(price) & is.finite(price), value := supply * price]
-# # If no price available, keep physical quantities
-# sup[is.na(price) | !is.finite(price), value := supply]
-# 
-# # List with block-diagonal supply matrices in value, per year
-# mr_sup_value <- mclapply(years, function(x) {
-#   
-#   matrices <- lapply(areas, function(y, sup_y) {
-#     # Get supply for area y and merge with the template
-#     sup_x <- sup_y[area_code == y, .(proc_code, comm_code, value)]
-#     out <- if(nrow(sup_x) == 0) {
-#       template[, .(proc_code, comm_code, value = 0)]
-#     } else {merge(template, sup_x, all.x = TRUE)}
-#     
-#     # Cast the datatable to convert into a matrix
-#     out <- tryCatch(data.table::dcast(out, proc_code ~ comm_code,
-#                                       value.var = "value", fun.aggregate = sum, na.rm = TRUE, fill = 0),
-#                     error = function(e) {stop("Issue at ", x, "_", y, ": ", e)})
-#     
-#     # Return a (sparse) matrix of supply for region y and year x
-#     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
-#                   dimnames = list(out$proc_code, colnames(out)[-1])))
-#     
-#   }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, value)])
-#   
-#   # Return a block-diagonal matrix with all countries for year x
-#   return(bdiag(matrices))
-# }, mc.cores = detectCores() - 2)
-
-# names(mr_sup_mass) <- names(mr_sup_value) <- years
-names(mr_sup_mass) <- years
-
-saveRDS(mr_sup_mass, file.path(output_dir_bcp,"mr_sup_mass.rds"))
-# saveRDS(mr_sup_value, file.path(output_dir_bcp,"mr_sup_value.rds"))
+# saveRDS(mr_sup_mass, file.path(output_dir_bcp,"mr_sup_mass.rds"))
+saveRDS(mr_sup_value, file.path(output_dir_bcp,"mr_sup_value.rds"))
 
 
 # Bilateral supply shares ---

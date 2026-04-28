@@ -232,6 +232,19 @@ sup_full <- sup_full %>%
   select(-prod_new)
 
 
+### Completing the proc_code and proc info
+patch_tbl <- items_supply_bcp %>%
+  select(item, proc, comm_code, proc_code) %>%
+  semi_join(sup_full, by = "item") %>%     
+  add_count(item) %>%
+  filter(n == 1) %>%
+  select(-n)
+
+sup_full <- sup_full %>% 
+  rows_patch(patch_tbl, by = "item") %>%
+  mutate(price = ifelse(grepl("^p(12[5-9]|13[0-9]|14[0-6]|901|999)$", proc_code), 1, price))
+
+
 
 
 ###########################################################
