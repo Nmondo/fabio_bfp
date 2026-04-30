@@ -644,84 +644,60 @@ fp_trade_breakdown_feedstock <- function(year,
 
 # # --- Environmental footprint (land) ---
 # out_feedstock <- fp_feedstock(
-#   country      = "CHN", year = 2022,
+#   country      = "CHN", 
+#   year = 2022,
 #   extension    = "land_harv",
 #   commodity    = c("c146", "c147", "c149"),
 #   by_commodity = TRUE,
 #   regions = regions, io = io, fd = fd, ex = ex,
 #   X = X, Y = Y, Z = Z, E = E
 # )
-#
-# # --- Material flow (no env. characterization) ---
-# out_feedstock_mat <- fp_feedstock(
-#   country      = "CHN", year = 2022,
-#   commodity    = c("c146", "c147", "c149"),
-#   by_commodity = TRUE,
-#   regions = regions, io = io, fd = fd, ex = ex,
-#   X = X, Y = Y, Z = Z             # E not needed, not passed
-# )
-#
-# # --- Trade breakdown, bilateral, environmental ---
-# out_trade <- fp_trade_breakdown(
-#   year         = 2022,
-#   extension    = "land_harv",
-#   commodity    = c("c146", "c147", "c149"),
-#   bilateral    = TRUE,
-#   by_commodity = TRUE,
-#   regions = regions, io = io, fd = fd, ex = ex,
-#   X = X, Y = Y, E = E
-# )
-#
-# # --- Trade breakdown, bilateral, material ---
-# out_trade_mat <- fp_trade_breakdown(
-#   year         = 2022,
-#   commodity    = c("c146", "c147", "c149"),
-#   bilateral    = TRUE,
-#   by_commodity = TRUE,
-#   regions = regions, io = io, fd = fd, ex = ex,
-#   X = X, Y = Y              # E not needed, not passed
-# )
-#
-# # --- Trade-feedstock, bilateral, environmental ---
-# out_trade_feedstock <- fp_trade_breakdown_feedstock(
-#   year         = 2022,
-#   extension    = "land_harv",
-#   commodity    = c("c146", "c147", "c149"),
-#   by_commodity = TRUE, by_feedstock = TRUE,
-#   bilateral    = TRUE, save = TRUE,
-#   regions = regions, io = io, fd = fd, ex = ex,
-#   X = X, Y = Y, Z = Z, E = E
-# )
-#
-# # --- Trade-feedstock, bilateral, material ---
-# out_trade_feedstock_mat <- fp_trade_breakdown_feedstock(
-#   year         = 2022,
-#   commodity    = c("c146", "c147", "c149"),
-#   by_commodity = TRUE, by_feedstock = TRUE,
-#   bilateral    = TRUE, save = TRUE,
-#   regions = regions, io = io, fd = fd, ex = ex,
-#   X = X, Y = Y, Z = Z           # E not needed, not passed
-# )
+
 
 
 # 2012-2022, saving impacts embodied in each year's bilateral trade, with feedstock breakdown
 ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
 extensions_choice <- c(list(NULL), list("land_harv"), as.list(ibif_stressors))
 
+
+######################################################################################################################
+############################## LOOPS TO EXTRACT THE RESULTS #######################
+######################################################################################################################
+
+## Silenced loops are those which have already been run. 
+
+# for (yr in 2012:2022) {
+#   for (ext in extensions_choice) {
+#     ext_val <- ext
+#   message("--- ", yr, " | ext: ", ext, " ---")
+#   fp_trade_breakdown_feedstock(
+#     year         = yr,
+#     extension    = ext_val,
+#     commodity    = c("c146", "c147", "c149"),
+#     by_commodity = TRUE,
+#     by_feedstock = TRUE,
+#     bilateral    = TRUE,
+#     save         = TRUE,
+#     regions = regions, io = io, fd = fd, ex = ex,
+#     X = X, Y = Y, Z = Z, E = E
+#   )
+#   }
+# }
+
+
 for (yr in 2012:2022) {
   for (ext in extensions_choice) {
     ext_val <- ext
-  message("--- ", yr, " | ext: ", ext, " ---")
-  fp_trade_breakdown_feedstock(
-    year         = yr,
-    extension    = ext_val,
-    commodity    = c("c146", "c147", "c149"),
-    by_commodity = TRUE,
-    by_feedstock = TRUE,
-    bilateral    = TRUE,
-    save         = TRUE,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, Z = Z, E = E
-  )
+    message("--- ", yr, " | ext: ", ext, " ---")
+    fp_feedstock(
+      country      = "CHN", 
+      year = yr,
+      extension    = ext_val,
+      commodity    = c("c146", "c147", "c149"),
+      by_commodity = TRUE,
+      save = TRUE,
+      regions = regions, io = io, fd = fd, ex = ex,
+      X = X, Y = Y, Z = Z, E = E
+)
   }
-  }
+}

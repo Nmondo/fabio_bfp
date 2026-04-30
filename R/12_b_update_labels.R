@@ -54,6 +54,7 @@ nrcom <- nrow(items)
 # Processes ------------------------------------------------------------------
 use <- readRDS("data/use_final_merged.rds")
 sup <- readRDS("data/sup_final_merged.rds")
+sup <- setDT(sup)
 proc_ref <- unique(rbindlist(list(
   use[, .(proc_code, proc)],
   sup[, .(proc_code, proc)]

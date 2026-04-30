@@ -227,10 +227,27 @@ prod_update <- balance_check_adj %>%
   select(comm_code, area_code, year, prod_new)
 
 sup_full <- sup_full %>%
+  # 1. compute supply shares within group
+  group_by(comm_code, area_code, year) %>%
+  mutate(
+    share = if (sum(supply, na.rm = TRUE) > 0) {
+      supply / sum(supply, na.rm = TRUE)
+    } else {
+      0
+    }
+  ) %>%
+  ungroup() %>%
+  # 2. join updated production
   left_join(prod_update, by = c("comm_code", "area_code", "year")) %>%
-  mutate(supply = if_else(!is.na(prod_new), prod_new, supply)) %>%
-  select(-prod_new)
-
+  # 3. update supply using shares
+  mutate(
+    supply = if_else(
+      !is.na(prod_new),
+      share * prod_new,
+      supply
+    )
+  ) %>%
+  select(-prod_new, -share)
 
 ### Completing the proc_code and proc info
 patch_tbl <- items_supply_bcp %>%

@@ -81,6 +81,7 @@ setkey(template, proc_code, comm_code)
 #2. With value allocation
 ###########################################################
 
+setDT(sup)
 # Convert to monetary values
 sup[!is.na(price) & is.finite(price), value := supply * price]
 # If no price available, keep physical quantities
