@@ -90,7 +90,7 @@ for(i in seq_along(years)) {
     } else {
       
       A <- sweep(T, 1, TS, FUN = "/")
-      A[is.na(A)] <- 0
+      A[!is.finite(A)] <- 0 
       
       # Solve linear system: X = (I - A)^(-1) %*% DS
       I <- Diagonal(n)
@@ -181,3 +181,4 @@ sup_shares[, comm_code := items$comm_code[match(sup_shares$item_code, items$item
 # Store the balanced sheets -----------------------------------------------
 saveRDS(btd_final, "data/btd_final.rds")
 saveRDS(sup_shares, "data/sup_shares.rds")
+
