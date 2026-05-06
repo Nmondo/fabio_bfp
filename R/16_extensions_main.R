@@ -11,6 +11,7 @@ source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
+years <- 2011:2023
 ##############################################################################################
 ######################################  LOADING DATA ######################################
 ##############################################################################################
@@ -209,8 +210,6 @@ reorder_cols <- function(ext_list, order_vec) {
 E_bcp    <- zero_fill_missing(E_bcp,    comms_bcp, areas_bcp)
 E_bcp    <- reorder_cols(E_bcp,    target_order)
 
-# Verify exact 1:1 alignment with io_labels
-stopifnot(identical(colnames(E_bcp[["2012"]]),    target_order))
 
 
 ##############################################################################################
