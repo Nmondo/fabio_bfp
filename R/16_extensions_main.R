@@ -12,6 +12,8 @@ source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
 years <- 2011:2023
+
+
 ##############################################################################################
 ######################################  LOADING DATA ######################################
 ##############################################################################################
@@ -51,6 +53,8 @@ if (nchar(msg) > 0) stop(msg) else message("All file lists are identical within 
 nms <- copy(nms_sua)
 nms_fd <- copy(nms_fd_sua)
 rm(nms_cbs, nms_sua, nms_fd_sua, nms_fd_cbs, p, pairs, msg)
+
+nms <- setdiff(nms, setdiff(nms, E_labels$Stressor))
 
 # E_label checks -----------
 E_labels <- fread("inst/E_labels_initial.csv")

@@ -90,27 +90,64 @@ set_primary_comtrade_key("ec6b584d5b364bc39580ac71f1cd438f")
 #######################################################
 
 
-hs_codes <- c("152000","271020","290531","291030","291811","382490","390770","391211","391212")
-safe_get <- possibly(
-  \(yr) ct_get_data(
-    type                     = "goods",
-    frequency                = "A",
-    commodity_classification = "HS",
-    commodity_code           = hs_codes,
-    reporter                 = "all_countries",
-    partner                  = "all_countries",
-    flow_direction           = c("import", "export"),
-    start_date               = as.character(yr),
-    end_date                 = as.character(yr),
-    extra_params             = list(customsCode = "C00", motCode = "0")
-  ),
-  otherwise = NULL
-)
+# hs_codes <- c("152000","271020","290531","291030","291811","382490","390770","391211","391212")
+# safe_get <- possibly(
+#   \(yr) ct_get_data(
+#     type                     = "goods",
+#     frequency                = "A",
+#     commodity_classification = "HS",
+#     commodity_code           = hs_codes,
+#     reporter                 = "all_countries",
+#     partner                  = "all_countries",
+#     flow_direction           = c("import", "export"),
+#     start_date               = as.character(yr),
+#     end_date                 = as.character(yr),
+#     extra_params             = list(customsCode = "C00", motCode = "0")
+#   ),
+#   otherwise = NULL
+# )
+# 
+# 
+# raw_list <- map(2012:2022, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
+# 
+# bilateral_comtrade <- bind_rows(raw_list)
+# 
 
-raw_list <- map(2010:2022, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
+reporter_codes <- iso_regions
 
-bilateral_comtrade <- bind_rows(raw_list)
+dir.create("comtrade_cache", showWarnings = FALSE)
 
+walk(reporter_codes, \(r) {
+  fname <- paste0("comtrade_cache/", r, ".rds")
+  if (file.exists(fname)) return(invisible())   # resume support
+  
+  message(Sys.time(), " | ", r)
+  
+  result <- tryCatch(
+    ct_get_data(
+      type                     = "goods",
+      frequency                = "A",
+      commodity_classification = "HS",
+      commodity_code           = hs_codes,
+      reporter                 = r,
+      partner                  = "everything",
+      flow_direction           = c("import", "export"),
+      start_date               = "2012",
+      end_date                 = "2022",
+      extra_params             = list(customsCode = "C00", motCode = "0")
+    ),
+    error = \(e) { message("  SKIP ", r, ": ", conditionMessage(e)); NULL }
+  )
+  
+  if (!is.null(result) && nrow(result) > 0)
+    saveRDS(result, fname)
+  # no Sys.sleep() — comtradr handles throttle internally
+})
+
+bilateral_comtrade <- map(
+  list.files("comtrade_cache", full.names = TRUE, pattern = "\\.rds$"),
+  readRDS
+) |> bind_rows()
 
 ###########################################################
 ########### BTD USA (Sebacic acid only) #########
@@ -598,7 +635,7 @@ eur_usd <- request("https://data-api.ecb.europa.eu/service/data/EXR/A.USD.EUR.SP
 bf_bp_eu_prices$product <- as.integer(bf_bp_eu_prices$product)
 bf_bp_eu_prices <- bf_bp_eu_prices %>%
   mutate(product = case_when(
-  product %in% c(271020, 38260010, 38260090) ~ "Biodiesel",
+  product %in% c(38260010, 38260090)         ~ "Biodiesel",
   product == 2207                            ~ "Bioethanol",
   product == 29171310                        ~ "Sebacic acid",
   product == 29171920                        ~ "Succinic acid",
@@ -606,7 +643,7 @@ bf_bp_eu_prices <- bf_bp_eu_prices %>%
   product == 29053995                        ~ "1,3-propanediol",
   product == 29012190                        ~ "Ethylene",
   product == 29012290                        ~ "Propylene",
-  product == 29091910                      ~ "ETBE",
+  product == 29091910                        ~ "ETBE",
   product %in% c(39121100, 39121200)         ~ "Cellulose acetate"
 ))
 
@@ -614,7 +651,7 @@ str(prices_comtrade)
 prices_comtrade <- prices_comtrade %>% 
   mutate(product = case_when(
     product == 152000                      ~ "Glycerol, crude",
-    product %in% c(271020, 382600, 382490) ~ "Biodiesel",
+    product %in% c(382600)                 ~ "Biodiesel",
     product %in% c(220710, 220720)         ~ "Bioethanol",
     product == 290531                      ~ "MEG",
     product == 290919                      ~ "ETBE",
@@ -626,7 +663,7 @@ prices_comtrade <- prices_comtrade %>%
 
 prices_baci_hs12 <- prices_baci_hs12 %>% 
   mutate(product = case_when(
-    product %in% c(271020, 382600, 382490) ~ "Biodiesel",
+    product %in% c(382600) ~ "Biodiesel",
     product %in% c(220710, 220720)         ~ "Bioethanol",
     product == 290919                      ~ "ETBE",
   ))
@@ -652,8 +689,8 @@ bf_bp_eu_prices <- bf_bp_eu_prices %>%
 # --- BACI HS12 ---
 prices_baci_hs12 <- prices_baci_hs12 %>%
   rename(value = value_Musd) %>%
-  mutate(qty        = qty,
-         value      = value * 1000,
+  mutate(qty        = qty*1000,
+         value      = value * 1000000,
          unit_qty   = "t",
          unit_value = "USD",
          source     = "BACI") %>%
@@ -687,39 +724,49 @@ prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_s
   filter(! product %in% c("MEG", "1,3-propanediol"),
          ! is.na(value),
          ! is.na(qty),
-         qty > 10,
+         qty > 10, 
          value > 100,
-         year %in% 2012:2022) %>%
-mutate(unit_price = value / qty) %>%
-  group_by(year, product) %>%
-  mutate(mean_price = mean(unit_price, na.rm = TRUE),
-         sd_price   = sd(unit_price, na.rm = TRUE)) %>%
-  filter(unit_price >= mean_price - sd_price,
-         unit_price <= mean_price + sd_price) %>%
-  ungroup() %>%
-  mutate(product = ifelse(product %in% c("Bioethanol", "ETBE"), "Biogasoline", product)) %>%
-  group_by(year, product, exporter_iso3) %>%
-  summarise(qty   = sum(qty),
-            value = sum(value),
-            .groups = "drop") %>%
-  mutate(price = value / qty)
+         ! is.na(product)) %>%
+  mutate(unit_price = value / qty) %>%
+  filter(is.finite(unit_price))
 
-caps <- prices %>%
-  group_by(product) %>%
-  summarise(
-    price_max = max(price, na.rm = TRUE),
-    price_q95 = quantile(price, .95, na.rm = TRUE),
-    price_q90 = quantile(price, .90, na.rm = TRUE),
-    price_q80 = quantile(price, .80, na.rm = TRUE),
-    price_q50 = quantile(price, .50, na.rm = TRUE),
-    price_q20 = quantile(price, .20, na.rm = TRUE),
-    price_q10 = quantile(price, .10, na.rm = TRUE),
-    price_q05 = quantile(price, .05, na.rm = TRUE),
-    price_min = min(price, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-prices <- left_join(prices, caps, by = "product")
+# prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_sebacic_us) %>%
+#   filter(! product %in% c("MEG", "1,3-propanediol"),
+#          ! is.na(value),
+#          ! is.na(qty),
+#          qty > 10,
+#          value > 100,
+#          year %in% 2012:2022) %>%
+# mutate(unit_price = value / qty) %>%
+#   group_by(year, product) %>%
+#   mutate(mean_price = mean(unit_price, na.rm = TRUE),
+#          sd_price   = sd(unit_price, na.rm = TRUE)) %>%
+#   filter(unit_price >= mean_price - sd_price,
+#          unit_price <= mean_price + sd_price) %>%
+#   ungroup() %>%
+#   mutate(product = ifelse(product %in% c("Bioethanol", "ETBE"), "Biogasoline", product)) %>%
+#   group_by(year, product, exporter_iso3) %>%
+#   summarise(qty   = sum(qty),
+#             value = sum(value),
+#             .groups = "drop") %>%
+#   mutate(price = value / qty)
+# 
+# caps <- prices %>%
+#   group_by(product) %>%
+#   summarise(
+#     price_max = max(price, na.rm = TRUE),
+#     price_q95 = quantile(price, .95, na.rm = TRUE),
+#     price_q90 = quantile(price, .90, na.rm = TRUE),
+#     price_q80 = quantile(price, .80, na.rm = TRUE),
+#     price_q50 = quantile(price, .50, na.rm = TRUE),
+#     price_q20 = quantile(price, .20, na.rm = TRUE),
+#     price_q10 = quantile(price, .10, na.rm = TRUE),
+#     price_q05 = quantile(price, .05, na.rm = TRUE),
+#     price_min = min(price, na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# prices <- left_join(prices, caps, by = "product")
 
 
 setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
