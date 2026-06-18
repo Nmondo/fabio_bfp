@@ -462,8 +462,7 @@ use[, `:=`(diff = NULL, use_io = NULL)]
 # Compute Vegetable oils' food share by year-country (2012-2022)
 food_share_veg_oil <- subset(use_fd, comm_code %in% unique(use_items$comm_code[use_items$proc_code=="p124"]) & year %in% 2012:2022)
 food_share_veg_oil <- food_share_veg_oil %>%
-  # mutate(tot_uco_avail = ifelse(area == "China, mainland", food + other, food)) %>% # Total UCO availability= food + other for China, = food for all other countries.
-  mutate(tot_uco_avail =  na_sum(food, other)) %>% # Total UCO availability= food + other for China, = food for all other countries.
+  mutate(tot_uco_avail =  na_sum(food, other)) %>% # Total UCO availability= food + other
   group_by(year, area) %>%
   mutate(share_uco = ifelse(tot_uco_avail > 0, tot_uco_avail / sum(tot_uco_avail, na.rm = TRUE), 0)) %>%
   select(comm_code, area_code, area, item_code, item, year, share_uco)

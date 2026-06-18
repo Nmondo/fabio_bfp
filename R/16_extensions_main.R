@@ -24,6 +24,9 @@ items_bcp <- read_csv("inst/items_full_bcp.csv")
 io_labels_bcp <- fread(file.path(output_dir_bcp, "io_labels.csv"))
 areas_bcp <- unique(io_labels_bcp$iso3c)
 
+# E_label checks -----------
+E_labels <- fread("inst/E_labels_initial.csv")
+E_fd_labels <- fread("inst/E_fd_labels_initial.csv")
 
 # Prepping E_labels --------------
 # Check that the same files are present in sua and cbs folders
@@ -56,9 +59,7 @@ rm(nms_cbs, nms_sua, nms_fd_sua, nms_fd_cbs, p, pairs, msg)
 
 nms <- setdiff(nms, setdiff(nms, E_labels$Stressor))
 
-# E_label checks -----------
-E_labels <- fread("inst/E_labels_initial.csv")
-E_fd_labels <- fread("inst/E_fd_labels_initial.csv")
+
 
 # check if E_labels is fully updated
 missing_labels <- E_labels[!Stressor %in% nms]

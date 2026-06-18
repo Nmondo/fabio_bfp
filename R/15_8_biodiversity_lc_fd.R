@@ -48,7 +48,6 @@ LC_with_regions <- dcast(LC_with_regions, iso3c  ~ colname, value.var = "cf") #s
 LC_climate[, colname := paste0("cf_", type, "_", tolower(realm), "_",  "climate", "_", tolower(approach))]
 LC_climate <- dcast(LC_climate, iso3c ~ colname, value.var = "cf")[, iso3c := NULL]
 
-
 ## Functional Diversity -----------------
 ## country-level
 FD_with_regions <- rbindlist(FD_with_regions, idcol = TRUE, use.names = TRUE)
@@ -88,6 +87,35 @@ key_cols <- c("iso3c", "comm_code", "year", "value")
 invisible(lapply(impacts_list, function(impacts) {
   multiply_pressures_impacts(impacts, key_cols)
 }))
+
+
+
+######## CHECKING THE CONSISTENCY OF THE RESULTS #######
+# print(impacts_list[["LC"]][["land_crop"]][iso3c == "IDN" & comm_code == "c051"])
+# print(impacts_list[["LC"]][["ghg_co2"]][iso3c == "IDN" & comm_code == "c051"])
+# print(impacts_list[["LC"]][["luc_forest_to_agric"]][iso3c == "IDN" & comm_code == "c051"])
+# nms <- names(impacts_list[["LC"]])
+# result <- Reduce(
+#   function(a, b) merge(a, b, by = c("iso3c", "comm_code", "year"), all = TRUE),
+#   impacts_list[["LC"]]
+# )
+# 
+# result_IDN_Palm <- result[comm_code == "c051" & iso3c == "IDN",]
+# result_USA_Maize <- result[comm_code == "c004" & iso3c == "USA",]
+# result_BRA_Sugarcane <- result[comm_code == "c023" & iso3c == "BRA",]
+# str(result)
+# result[, lapply(.SD, function(x) c(
+#   mean   = mean(x, na.rm = TRUE),
+#   max    = max(x, na.rm = TRUE)
+# )), .SDcols = is.numeric]
+View(pressures[["luc_forest_to_agric"]])
+# View(pressures[["n_leaching_runoff"]])
+# dt <- impacts_list[["LC"]][["p_runoff_erosion"]]
+# head(dt[order(dt$p_runoff_erosion_freshwater_eutrophication_average, decreasing = TRUE), ], n = 20)
+# dt <- impacts_list[["LC"]][["n_leaching_runoff"]]
+# head(dt[order(dt$n_leaching_runoff_freshwater_eutrophication_average ,decreasing = TRUE), ], n = 20)
+dt <- impacts_list[["LC"]][["land_crop"]]
+head(dt[order(dt$land_crop_terrestrial_land_use_average, decreasing = TRUE), ], n = 20)
 
 rm(LC_climate, LC_with_regions, FD_climate, FD_with_regions, impact_configs,
    fdem_pressures, pressures)

@@ -73,6 +73,14 @@ invasive_species <- LC_list[["invasive_species"]]
 LC_list[["invasive_species"]] <- NULL
 
 
+
+####  CHECKS
+dt <- LC_list[["land_use"]]
+dt$CF <- as.numeric(dt$CF)
+dt <- dt[is.finite(dt$CF), ]
+
+
+
 ## Functional Diversity ---------------------
 # define files
 files <-   c(climate_change = "Climate_change/CF_climate_change.xlsx",    

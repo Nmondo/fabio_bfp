@@ -232,7 +232,7 @@ proc_p124 <- items_supply_bcp %>%
   unique()
 
 new_rows <- items_full_bcp %>%
-  filter(comm_group == "Vegetable oils",
+  filter(comm_group == "Vegetable oils" | item == "Fats, Animals, Raw",
          item != "Oil of castor beans") %>%
   distinct(item, item_code, comm_code) %>%
   mutate(proc_code = "p124",
