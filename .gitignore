@@ -9,6 +9,7 @@ input/
 output/
 data/
 fabio_data_local/
+comtrade_cache/
 own_data/
 intermediate_data/
 inputs_for_final_data/

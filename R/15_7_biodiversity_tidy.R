@@ -39,7 +39,7 @@ fa_extract(path_in = path_lc, files = files, path_out = path_lc,
                     "CF_INVASIVE_SPECIES/EQ_InvasiveSpecies_Terrestrial_gloPDF_Country_Aggregated_2025-10-14.xlsx"),
            col_types = list(NULL, NULL, NULL, NULL, NULL, NULL, NULL, list(sheet = "Average")),
            read_method = rep("read_xlsx", 8),
-           )
+)
 
 # Tidy directory
 dirs <- list.dirs(path_lc, recursive = FALSE)
@@ -73,14 +73,6 @@ invasive_species <- LC_list[["invasive_species"]]
 LC_list[["invasive_species"]] <- NULL
 
 
-
-####  CHECKS
-dt <- LC_list[["land_use"]]
-dt$CF <- as.numeric(dt$CF)
-dt <- dt[is.finite(dt$CF), ]
-
-
-
 ## Functional Diversity ---------------------
 # define files
 files <-   c(climate_change = "Climate_change/CF_climate_change.xlsx",    
@@ -105,20 +97,20 @@ names(FD_list) <-  names(files)
 # Rename, tidy regions --------------------
 # tidy data.tables within the lists
 cols_remove <- c("FLOW_casnumber", "LCIAMethod_spatialResolution", "CF_Uncertainty_Lower",
-                    "CF_Uncertainty_Higher",  "Species", "Matching_Flow_Status",
-                    "Matching_Compartment_Status", "Matching_Compartment",
-                    "LCIAMethod_type", "LCIAMethod_name", "CF_derivation",
-                    "Matching_CF")
+                 "CF_Uncertainty_Higher",  "Species", "Matching_Flow_Status",
+                 "Matching_Compartment_Status", "Matching_Compartment",
+                 "LCIAMethod_type", "LCIAMethod_name", "CF_derivation",
+                 "Matching_CF")
 old_names <- c("FLOW_uuid", "FLOW_name", "LCIAMethod_location",
                "LCIAMethod_location_name", "CF", "CF_unit", 
                "CF_indicatorScale",  "FLOW_class0", "FLOW_class1",
                "FLOW_class2", "LCIAMethod_realm", "LCIAMethod_mathematicalApproach",
                "Scenario", "FD_metric")
 new_names <- c("flow_id", "flow", "iso3c",
-         "area", "cf", "cf_unit", 
-         "cf_indicator_scale",  "flow_class0", "flow_class1",
-         "flow_class2", "realm", "approach",
-         "scenario", "fd_metric")
+               "area", "cf", "cf_unit", 
+               "cf_indicator_scale",  "flow_class0", "flow_class1",
+               "flow_class2", "realm", "approach",
+               "scenario", "fd_metric")
 
 LC_list <- lapply(LC_list, function(dt) tidy_cfs(dt))
 FD_list <- lapply(FD_list, function(dt) tidy_cfs(dt))
@@ -202,6 +194,7 @@ LC_list[["eutrophication_freshwater"]] <- NULL
 acid <- LC_list[["acidification"]]
 acid <- acid[flow_id == "08a91e70-3ddc-11dd-a2a9-0050c2490048" &
                scenario == "Agricult", ..key_cols]
+acid[, `:=` (cf = cf *  1.21589, unit = "global PDF*y/kg N")]
 acid <- acid[, ..key_cols]
 LC_list[["acidification"]] <- acid
 
@@ -262,7 +255,6 @@ saveRDS(FD_climate_list, "data/extensions/tidy/fd_climate_tidy.rds")
 
 rm(list = ls())
 gc()
-
 
 
 

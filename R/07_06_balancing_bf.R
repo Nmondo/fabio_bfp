@@ -53,6 +53,14 @@ neste_regional <- neste_clean$neste_regional
 
 
 
+# peek <- function(df, iso = "FRA", prods = c("Bioethanol","ETBE","Biogasoline")) {
+#   df %>%
+#     filter(iso3c == iso, product %in% prods) %>%
+#     select(any_of(c("iso3c","year","product","total_supply","imports","exports",
+#                     "y","y_Fuel","y_Non_fuel","y_Total","unit_supply","source"))) %>%
+#     arrange(product, year) %>% as.data.frame()
+# }
+
 ###########################################################
 ########### MAKING FUNCTIONS #########
 ###########################################################
@@ -64,89 +72,115 @@ neste_regional <- neste_clean$neste_regional
 setwd("/home/mmondolfo/fabio_bfp/")
 
 rd_trade_balancing <- function(year) {
-    df <- read_xlsx("own_data/rd_trade_balancing.xlsx", 
-                    sheet = paste0("rd_btd_", year),
-                    range = "A35:AD46", col_names = FALSE)
+  
+  step <- function(...) message(sprintf("[rd_trade_balancing %s] %s", year, sprintf(...)))
+  
+  step("1/6 reading main block A35:AD46")
+  df <- read_xlsx("own_data/rd_trade_balancing.xlsx",
+                  sheet = paste0("rd_btd_", year),
+                  range = "A35:AD46", col_names = FALSE)
+  
+  row_iso3 <- as.character(df[-c(1, nrow(df)), 1][[1]])
+  col_iso3 <- as.character(df[1, -c(1, ncol(df))])
+  n_row <- nrow(df) - 2
+  n_col <- ncol(df) - 2
+  
+  mat         <- apply(df[-c(1, nrow(df)), -c(1, ncol(df))], 2, as.numeric)
+  row_margins <- as.numeric(df[-c(1, nrow(df)), ncol(df)][[1]])
+  col_margins <- as.numeric(df[nrow(df), -c(1, ncol(df))])
+  
+  step("2/6 read OK: mat %dx%d | %d row margins | %d col margins",
+       nrow(mat), ncol(mat), length(row_margins), length(col_margins))
+  
+  # input sanity — catches NA coercion / sign / shape problems up front
+  stopifnot(
+    "mat has NAs (non-numeric cells coerced to NA)" = !anyNA(mat),
+    "row_margins has NAs"                           = !anyNA(row_margins),
+    "col_margins has NAs"                           = !anyNA(col_margins),
+    "negative values in mat"                        = all(mat >= 0),
+    "negative row margins"                          = all(row_margins >= 0),
+    "negative col margins"                          = all(col_margins >= 0),
+    "mat dims do not match margins"                 =
+      nrow(mat) == length(row_margins) && ncol(mat) == length(col_margins)
+  )
+  
+  keep_rows <- row_margins > 0
+  keep_cols <- col_margins > 0
+  
+  mat_filt    <- mat[keep_rows, keep_cols, drop = FALSE]
+  r_marg_filt <- row_margins[keep_rows]
+  c_marg_filt <- col_margins[keep_cols]
+  
+  # the three classic RAS non-convergence traps
+  if (nrow(mat_filt) > 0 && ncol(mat_filt) > 0) {
     
-    # iso3 + structure
-    row_iso3 <- as.character(df[-c(1,nrow(df)), 1][[1]])
-    col_iso3 <- as.character(df[1, -c(1, ncol(df))])
-    n_row <- nrow(df) - 2
-    n_col <- ncol(df) - 2
+    zero_rows <- row_iso3[keep_rows][rowSums(mat_filt) == 0]
+    zero_cols <- col_iso3[keep_cols][colSums(mat_filt) == 0]
+    if (length(zero_rows)) step("!! positive margin but ALL-ZERO row data: %s", paste(zero_rows, collapse = ", "))
+    if (length(zero_cols)) step("!! positive margin but ALL-ZERO col data: %s", paste(zero_cols, collapse = ", "))
     
-    mat <- apply(df[-c(1, nrow(df)), -c(1, ncol(df))], 2, as.numeric)
+    step("3/6 margin totals: row=%.4f col=%.4f diff=%.2e",
+         sum(r_marg_filt), sum(c_marg_filt), sum(r_marg_filt) - sum(c_marg_filt))
     
-    row_margins <- as.numeric(df[-c(1, nrow(df)), ncol(df)][[1]])
-    col_margins <- as.numeric(df[nrow(df), -c(1, ncol(df))])
-    keep_rows <- row_margins > 0
-    keep_cols <- col_margins > 0
-    
-    mat_filt <- mat[keep_rows, keep_cols, drop = FALSE]
-    r_marg_filt <- row_margins[keep_rows]
-    c_marg_filt <- col_margins[keep_cols]
-    
-    if (nrow(mat_filt) == 0 || ncol(mat_filt) == 0) {
-      mat_ras_filt <- mat_filt
-    } else if (nrow(mat_filt) == 1 && ncol(mat_filt) > 1) {
-      mat_ras_filt <- matrix(c_marg_filt, nrow = 1)
-    } else if (ncol(mat_filt) == 1 && nrow(mat_filt) > 1) {
-      mat_ras_filt <- matrix(r_marg_filt, ncol = 1)
-    } else {
-      mat_ras_filt <- ras(as.matrix(mat_filt), r_marg_filt, c_marg_filt, tolerance = 1e-6)
-    }  
-    mat_ras <- matrix(0, n_row, n_col)
-    mat_ras[keep_rows, keep_cols] <- mat_ras_filt
-    
-    mat_df <- as_tibble(mat_ras)
-    names(mat_df) <- col_iso3
-    
-    out <- tibble(row_iso3, mat_df) %>%
-      bind_rows(tibble(row_iso3 = "TOTAL", mat_df[nrow(mat_df), ])) %>%
-      mutate(across(-row_iso3, ~ round(.x, 2)))
-    
-    out_long <- out %>%
-      pivot_longer(
-        cols      = -row_iso3,
-        names_to  = "importer_iso3",
-        values_to = "value"
-      ) %>%                                       
-      rename(exporter_iso3 = row_iso3) %>%         
-      mutate(year = year)  
-    
-    df_fix <- read_xlsx("own_data/rd_trade_balancing.xlsx", 
-                        sheet = paste0("rd_btd_", year),
-                        range = "A20:AD31", col_names = FALSE)
-    
-    row_iso3_fix <- as.character(df_fix[-1, 1][[1]])     
-    col_iso3_fix <- as.character(df_fix[1, -1])          
-    
-    mat_fix <- apply(df_fix[-1, -1], 2, as.numeric)
-    
-    mat_fix_df <- as_tibble(mat_fix)
-    names(mat_fix_df) <- col_iso3_fix
-    
-    fix_long <- tibble(exporter_iso3 = row_iso3_fix) %>%
-      bind_cols(mat_fix_df) %>%
-      pivot_longer(
-        cols      = -exporter_iso3,
-        names_to  = "importer_iso3",
-        values_to = "value"
-      ) %>%
-      filter(!is.na(value), value > 0) %>% 
-      mutate(year = year)
-    
-    out_final <- out_long %>%
-      left_join(
-        fix_long %>%
-          rename(value_fix = value),
-        by = c("exporter_iso3", "importer_iso3", "year")
-      ) %>%
-      mutate(
-        value = if_else(!is.na(value_fix), value_fix, value)
-      ) %>%
-      select(-value_fix)
-    
-    assign(paste0("rd_btd_", year), as.data.frame(out_final), envir = .GlobalEnv)
+    stopifnot(
+      "RAS cannot converge: rows with positive margin but all-zero data" = length(zero_rows) == 0,
+      "RAS cannot converge: cols with positive margin but all-zero data" = length(zero_cols) == 0,
+      "RAS cannot converge: row and col margin totals differ"            =
+        isTRUE(all.equal(sum(r_marg_filt), sum(c_marg_filt)))
+    )
+  }
+  
+  step("4/6 entering RAS (%dx%d)", nrow(mat_filt), ncol(mat_filt))
+  if (nrow(mat_filt) == 0 || ncol(mat_filt) == 0) {
+    mat_ras_filt <- mat_filt
+  } else if (nrow(mat_filt) == 1 && ncol(mat_filt) > 1) {
+    mat_ras_filt <- matrix(c_marg_filt, nrow = 1)
+  } else if (ncol(mat_filt) == 1 && nrow(mat_filt) > 1) {
+    mat_ras_filt <- matrix(r_marg_filt, ncol = 1)
+  } else {
+    mat_ras_filt <- ras(as.matrix(mat_filt), r_marg_filt, c_marg_filt, tolerance = 1e-6)
+  }
+  step("5/6 RAS done")
+  
+  mat_ras <- matrix(0, n_row, n_col)
+  mat_ras[keep_rows, keep_cols] <- mat_ras_filt
+  
+  mat_df <- as_tibble(mat_ras)
+  names(mat_df) <- col_iso3
+  
+  out <- tibble(row_iso3, mat_df) %>%
+    bind_rows(tibble(row_iso3 = "TOTAL", mat_df[nrow(mat_df), ])) %>%
+    mutate(across(-row_iso3, ~ round(.x, 2)))
+  
+  out_long <- out %>%
+    pivot_longer(cols = -row_iso3, names_to = "importer_iso3", values_to = "value") %>%
+    rename(exporter_iso3 = row_iso3) %>%
+    mutate(year = year)
+  
+  df_fix <- read_xlsx("own_data/rd_trade_balancing.xlsx",
+                      sheet = paste0("rd_btd_", year),
+                      range = "A20:AD31", col_names = FALSE)
+  
+  row_iso3_fix <- as.character(df_fix[-1, 1][[1]])
+  col_iso3_fix <- as.character(df_fix[1, -1])
+  mat_fix <- apply(df_fix[-1, -1], 2, as.numeric)
+  mat_fix_df <- as_tibble(mat_fix)
+  names(mat_fix_df) <- col_iso3_fix
+  
+  fix_long <- tibble(exporter_iso3 = row_iso3_fix) %>%
+    bind_cols(mat_fix_df) %>%
+    pivot_longer(cols = -exporter_iso3, names_to = "importer_iso3", values_to = "value") %>%
+    filter(!is.na(value), value > 0) %>%
+    mutate(year = year)
+  
+  out_final <- out_long %>%
+    left_join(fix_long %>% rename(value_fix = value),
+              by = c("exporter_iso3", "importer_iso3", "year")) %>%
+    mutate(value = if_else(!is.na(value_fix), value_fix, value)) %>%
+    select(-value_fix)
+  
+  step("6/6 assigned rd_btd_%s", year)
+  assign(paste0("rd_btd_", year), as.data.frame(out_final), envir = .GlobalEnv)
 }
 
 
@@ -516,7 +550,7 @@ rm(list = ls(pattern = "^rd_btd_\\d{4}$"))
 
 ###############################################################################################
 #4. Updating BTD with Renewable diesel trade ###############
-###############################################################################################
+##Z#############################################################################################
 
 btd_intermediate1 <- rows_upsert(
   btd_intermediate,
@@ -880,6 +914,7 @@ full_compile_balanced <- full_compile_balanced %>%
       TRUE                                                                   ~ y_Non_fuel
     )
   )
+
 
 
 

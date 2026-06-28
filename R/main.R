@@ -66,8 +66,11 @@ source("R/07_09_use_bf_coproducts.R"); rm(list = ls()); gc()
 source("R/07_10_compile_bcp.R"); rm(list = ls()); gc()
 
 # Adapting CBS to match biofuels and biopolymers requirements ----------------------------------------------------
-source("R/08_1a_cbs_missing_countries.R"); rm(list = ls()); gc()
-source("R/08_1b_bpc_use_cbs_balancing.R"); rm(list = ls()); gc()
+source("R/08_01_cbs_missing_countries.R"); rm(list = ls()); gc()
+source("R/08_02_bcp_use_first_rebalancing.R"); rm(list = ls()); gc()
+source("R/08_03_rescale_bcp_use_empirical.R"); rm(list = ls()); gc()
+source("R/08_04_bcp_use_cbs_final_balancing.R"); rm(list = ls()); gc()
+
 
 # Creating supply table for CBS ----------------------------------------------------
 source("R/09_1_supply_cbs.R"); rm(list = ls()); gc()

@@ -7,19 +7,9 @@ source("R/00_prep_functions.R")
 items <- fread("inst/sua/items_sua.csv")
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 years <- 2011:2023
-# PATCH: items_sua.csv no longer has a single "vegetal products" group; that
-# category was split into more granular crop groups (cereals, oilcrops, etc.).
-# Define the set of vegetal SUA items by *excluding* known animal/processed
-# groups instead of listing crop groups, so new crop groups are picked up
-# automatically.
-animal_groups <- c("live animals", "meat", "offals", "animal fats",
-                   "milk (excluding butter)", "eggs", "hides and skins",
-                   "aquatic products", "other animal products",
-                   "sweeteners", "vegetable oils", "alcoholic beverages")
-vegetal_items <- items[processed == FALSE & !group %in% animal_groups, item_code]
 
 # Prep production, area and livestock data ------------------------
-prod_land <- readRDS("/home/bruckner2/fabio/data/tidy/prod_trad_full.rds")[year %in% years & element %in%
+prod_land <- readRDS("data/tidy/prod_trad_full.rds")[year %in% years & element %in%
                                                        c("Area harvested", "Production", "Producing Animals/Slaughtered") &
                                                        item_code %in% items$item_code]
 
@@ -34,11 +24,14 @@ prod_land[, iso3c := regions$iso3c[match(area_code, regions$code)]]
 # Biomass extension -----------------------
 # get primary crop production 
 biomass <- prod_land[element == "Production" 
-                     & item_code %in% vegetal_items]    # PATCH: was items[processed == FALSE & group == "vegetal products", item_code]
+                     & item_code %in% items[processed == FALSE & comm_group == "vegetal products", 
+                                            item_code]]
 biomass[,`:=` (element = NULL)] 
 
 # add grazing production from supply table
-sup <- readRDS("/home/bruckner2/fabio/data/sup_final.rds")
+sup <- readRDS("data/sup_final.rds")
+setindex(sup, NULL) 
+
 grass_prod <- sup[item_code == 2001]
 grass_prod[is.na(supply), supply := 0]
 grass_prod <- grass_prod[, .(year, item_code, area, area_code, item, 
@@ -55,15 +48,8 @@ rm(sup)
 ## Land - harvested area ----------------------
 land_harv <- prod_land[element == "Area harvested"][, element := NULL]
 
-# PATCH: prod_trad_full.rds gives numeric year/item_code/area_code, but the
-# CJ() used to build land_crop produces integer keys. Coerce here so the
-# downstream merge in land_crop is type-safe.
-land_harv[, `:=` (year      = as.integer(year),
-                  item_code = as.integer(item_code),
-                  area_code = as.integer(area_code))]
-
 # prep crop area and grassland (only permanent meadows and pastures)
-land_tidy <- readRDS("/home/bruckner2/fabio/data/tidy/land_tidy.rds")[ year %in% years]
+land_tidy <- readRDS("data/tidy/land_tidy.rds")[ year %in% years]
 land_tidy[, `:=` (value = value * 1000, unit = "ha", element = NULL, area_code = 
                     as.integer(area_code))]
 
@@ -79,8 +65,8 @@ land_grass[, `:=` (item = "Grazing", item_code = 2001, comm_code = "c148")]
 ## Land - crop area --------------------------
 # get crop to harv factors from CROPGRIDS
 conc <- fread("inst/NPK/conc_NPK_sua.csv")
-harv_grids <- readRDS("/home/bruckner2/fabio/data/NPK/harvland_area_cropgrids.rds")
-crop_grids <- readRDS("/home/bruckner2/fabio/data/NPK/cropland_area_cropgrids.rds")
+harv_grids <- readRDS("data/NPK/harvland_area_cropgrids.rds")
+crop_grids <- readRDS("data/NPK/cropland_area_cropgrids.rds")
 crop_harv <- merge(crop_grids, harv_grids, by = c("iso_a3", "crop"))
 crop_harv <- crop_harv[!is.na(iso_a3)]
 crop_harv[, item_code := conc$item_code[match(crop, conc$item_npk)]]
@@ -110,7 +96,8 @@ rm(crop_grids, harv_grids)
 
 # create full timeline
 land_crop <- CJ(year = years, area_code = regions$code, 
-                item_code = vegetal_items)    # PATCH: was items[processed == FALSE & group == "vegetal products", item_code]
+                item_code = items[processed == FALSE & comm_group == "vegetal products", 
+                                  item_code])
 
 # add data to full table
 land_crop[, type := items$type[match(item_code, items$item_code)]]
@@ -394,3 +381,4 @@ for (nm in names(E_sua)) {
   saveRDS(E_sua[[nm]], paste0("data/extensions/sua/", nm, ".rds"))
   saveRDS(E_cbs[[nm]], paste0("data/extensions/cbs/", nm, ".rds"))
 }
+

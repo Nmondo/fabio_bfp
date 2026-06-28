@@ -19,7 +19,7 @@ files <- c(
   "use_final.rds",
   "use_fd_final.rds",
   "sup_final.rds",
-  "btd_final.rds",
+  "btd_final_resc.rds",
   "use_final_bcp.rds",
   "use_fd_final_bcp.rds",
   "sup_final_bcp.rds",
@@ -43,6 +43,17 @@ items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_supply_bcp <- read_csv("inst/items_supply_bcp.csv")
 regions <- read_csv("inst/regions_full.csv") %>% filter(current == TRUE)
 source("R/00_system_variables.R")
+
+# # >>>>>>>>>> TEMP BYPASS OF 08_03 RESCALING — DELETE THIS WHOLE BLOCK TO RESTORE <<<<<<<<
+# USE_NONRESCALED <- TRUE
+# if (isTRUE(USE_NONRESCALED)) {
+#   btd_final_resc <- readRDS("/home/mmondolfo/fabio_bfp/data/btd_final.rds") %>%
+#     filter(year %in% 2012:2022)                                              # un-topped-up c145
+#   use_final_bcp  <- readRDS("/home/mmondolfo/fabio_bfp/intermediate_data/use_rebal_bcp.rds") %>%
+#     filter(year %in% 2012:2022)                                              # pre-rescale use table
+#   message(">>> [BYPASS] 11 using non-rescaled btd_final + use_rebal_bcp (08_03 ignored)")
+# }
+# # >>>>>>>>>> END TEMP BYPASS BLOCK <<<<<<<<
 
 ###########################################################
 ########### MAKING VECTORS#########
@@ -122,13 +133,12 @@ sup_full <- bind_rows(sup_final, sup_final_bcp) %>%
 ########### BINDING BTD #########
 ###########################################################
 
-btd_full <- bind_rows(btd_final, btd_final_bcp) %>%
+btd_full <- bind_rows(btd_final_resc, btd_final_bcp) %>%
   select(-importer_iso3, -exporter_iso3, -item, -unit)
 
-rm(btd_final)
+rm(btd_final_resc)
 gc()
 
-print(subset(btd_full, comm_code == "c028" & from_code != to_code & value > 0))
 
 
 ###########################################################

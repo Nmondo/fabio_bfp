@@ -11,6 +11,7 @@ library(magrittr)
 library(janitor)
 library(zoo)
 library(httr2)
+library(xml2)
 library(comtradr)
 library(censusapi)
 library(purrr)
@@ -39,6 +40,68 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 ### Combined Eurostat API request: biofuels + biopolymers ###
 
+fetch_comext <- function(url_data,
+                         poll_every = 15,    # seconds between status checks
+                         max_wait   = 1800,  # give up after 30 min
+                         verbose    = TRUE) {
+  
+  is_async <- function(txt) str_detect(txt, "syncResponse|asyncResponse|<env:Envelope")
+  
+  # Derive the async base from the data URL.
+  # .../comext/dissemination/sdmx/3.0/...  ->  .../comext/dissemination
+  async_base <- str_replace(url_data, "/sdmx/.*$", "")
+  
+  # --- Step 1: initial request -------------------------------------------
+  body <- request(url_data) |>
+    req_timeout(120) |>
+    req_retry(max_tries = 5) |>          # only helps with 429/5xx, NOT the async case
+    req_perform() |>
+    resp_body_string()
+  
+  # Fast path: a cached/synchronous CSV came straight back
+  if (!is_async(body)) return(read_csv(I(body), show_col_types = FALSE))
+  
+  # --- Async path: parse the request id ----------------------------------
+  id <- read_xml(body) |> xml_ns_strip() |>
+    xml_find_first(".//queued/id") |> xml_text()
+  if (is.na(id) || !nzchar(id))
+    stop("Async envelope received but no request id found:\n", body)
+  if (verbose) message("Queued async extraction, id = ", id)
+  
+  status_url <- sprintf("%s/1.0/async/status/%s", async_base, id)
+  data_url   <- sprintf("%s/1.0/async/data/%s",   async_base, id)
+  
+  # --- Step 2: poll until AVAILABLE --------------------------------------
+  waited <- 0
+  repeat {
+    status <- request(status_url) |>
+      req_timeout(60) |> req_retry(max_tries = 5) |>
+      req_perform() |> resp_body_string() |>
+      read_xml() |> xml_ns_strip() |>
+      xml_find_first(".//status/status") |> xml_text()
+    
+    if (verbose) message(sprintf("[%5ds] %s", waited, status))
+    
+    if (identical(status, "AVAILABLE")) break
+    if (status %in% c("EXPIRED", "UNKNOWN_REQUEST", "ERROR"))
+      stop("Async request ended with status: ", status)
+    if (waited >= max_wait)
+      stop("Timed out after ", max_wait, "s waiting for the extraction.")
+    
+    Sys.sleep(poll_every); waited <- waited + poll_every
+  }
+  
+  # --- Step 3: download the prepared data --------------------------------
+  out <- request(data_url) |>
+    req_timeout(300) |> req_retry(max_tries = 5) |>
+    req_perform() |> resp_body_string()
+  
+  if (is_async(out) || str_detect(out, "<S:Fault"))
+    stop("Data endpoint returned a fault instead of CSV:\n", substr(out, 1, 500))
+  
+  read_csv(I(out), show_col_types = FALSE)
+}
+
 url_data <- paste0(
   "https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/3.0/",
   "data/dataflow/ESTAT/ds-045409/1.0/*.*.*.*.*.*",
@@ -53,14 +116,7 @@ url_data <- paste0(
   "&c[TIME_PERIOD]=2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010",
   "&compress=false&format=csvdata&formatVersion=1.0&lang=en&labels=both")
 
-bilateral_bf_bp_eu <- request(url_data) %>%
-  req_timeout(120) %>%
-  req_retry(max_tries = 100) %>%
-  req_perform() %>%
-  resp_body_string() %>%
-  read_csv(show_col_types = FALSE)
-
-bilateral_bf_bp_eu %<>%
+bilateral_bf_bp_eu <- fetch_comext(url_data) %>%
   mutate(across(c(reporter, partner, product, indicators), ~ sub(":.*", "", .x)),
          across(c(freq, flow),                             ~ sub(".*:", "", .x))) %>%
   rename(FLOW = flow)
@@ -90,28 +146,28 @@ set_primary_comtrade_key("ec6b584d5b364bc39580ac71f1cd438f")
 #######################################################
 
 
-# hs_codes <- c("152000","271020","290531","291030","291811","382490","390770","391211","391212")
-# safe_get <- possibly(
-#   \(yr) ct_get_data(
-#     type                     = "goods",
-#     frequency                = "A",
-#     commodity_classification = "HS",
-#     commodity_code           = hs_codes,
-#     reporter                 = "all_countries",
-#     partner                  = "all_countries",
-#     flow_direction           = c("import", "export"),
-#     start_date               = as.character(yr),
-#     end_date                 = as.character(yr),
-#     extra_params             = list(customsCode = "C00", motCode = "0")
-#   ),
-#   otherwise = NULL
-# )
-# 
-# 
-# raw_list <- map(2012:2022, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
-# 
-# bilateral_comtrade <- bind_rows(raw_list)
-# 
+hs_codes <- c("152000","271020","290531","291030","291811","382490","390770","391211","391212")
+safe_get <- possibly(
+  \(yr) ct_get_data(
+    type                     = "goods",
+    frequency                = "A",
+    commodity_classification = "HS",
+    commodity_code           = hs_codes,
+    reporter                 = "all_countries",
+    partner                  = "all_countries",
+    flow_direction           = c("import", "export"),
+    start_date               = as.character(yr),
+    end_date                 = as.character(yr),
+    extra_params             = list(customsCode = "C00", motCode = "0")
+  ),
+  otherwise = NULL
+)
+
+
+raw_list <- map(2012:2022, \(yr) { message("Fetching ", yr, " ..."); safe_get(yr) })
+
+bilateral_comtrade <- bind_rows(raw_list)
+
 
 reporter_codes <- iso_regions
 

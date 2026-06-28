@@ -1,5 +1,3 @@
-rm(list = ls())
-
 ###########################################################
 ########### LOADING PACKAGES #########
 ###########################################################
@@ -17,7 +15,7 @@ source("R/00_system_variables.R")
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 cbs_sua_full <- readRDS("data/cbs_sua_full.rds")
-use_final_bcp <- readRDS("data/use_final_bcp.rds")
+use_rebal_bcp <- readRDS("intermediate_data/use_compiled_bcp.rds")
 sup_final_bcp <- readRDS("data/sup_final_bcp.rds")
 tcf_table <- readRDS("intermediate_data/tcf_table_final.rds")
 
@@ -33,7 +31,7 @@ bf_feedstocks <- c("Wheat and products","Rice and products","Barley and products
                    "Cottonseed Oil","Palmkernel Oil","Palm Oil","Coconut Oil","Maize Germ Oil","Fats, Animals, Raw",
                    "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils")
 
-biogasoline_proc_code <- use_final_bcp %>%
+biogasoline_proc_code <- use_rebal_bcp %>%
   filter(proc == "Biogasoline production") %>%
   distinct(proc, proc_code)
 
@@ -74,9 +72,9 @@ new_rows <- sup_final_bcp %>%
     use  = supply / tcf
   ) %>%
   left_join(biogasoline_proc_code, by = "proc") %>%
-  select(any_of(names(use_final_bcp)))
+  select(any_of(names(use_rebal_bcp)))
 
-use_final_bcp <- use_final_bcp %>%
+use_rebal_bcp <- use_rebal_bcp %>%
   filter(!(area %in% swaps$area & proc == "Biogasoline production")) %>%
   bind_rows(new_rows)
 
@@ -85,7 +83,7 @@ use_final_bcp <- use_final_bcp %>%
 # Creating new supply rows for "Other, Waste" to match feedstock requirements.
 ###########################################################
 
-waste_sup_rows <- use_final_bcp %>%
+waste_sup_rows <- use_rebal_bcp %>%
   filter(area %in% c("Iceland", "Finland"),
          proc == "Biogasoline production",
          item == "Other, Waste") %>%
@@ -109,7 +107,7 @@ sup_final_bcp <- sup_final_bcp %>%
 ########### REBALANCING USE IN FINAL DEMAND BASED ON USE AS BIOCHEMICALS FEEDSTOCK #########
 ###########################################################
 
-to_subtract <- use_final_bcp %>%
+to_subtract <- use_rebal_bcp %>%
   filter(proc %in% c("Biodiesel production", "Renewable diesel production", "Biogasoline production")) %>%
   mutate(proc_label = case_when(
     proc == "Biodiesel production"        ~ "biodiesel",
@@ -156,10 +154,10 @@ cbs_sua_adjusted <- cbs_sua_full %>%
 cbs_sua_adjusted <- cbs_sua_adjusted %>%
   mutate(
     prelim_gap = pmax(0, biogasoline + biodiesel + ren_diesel - (replace_na(feed, 0) +
-                                        replace_na(processing, 0) +
-                                        replace_na(other, 0) +
-                                        replace_na(stock_addition, 0) +
-                                        replace_na(tourist, 0))),
+                                                                   replace_na(processing, 0) +
+                                                                   replace_na(other, 0) +
+                                                                   replace_na(stock_addition, 0) +
+                                                                   replace_na(tourist, 0))),
     production = if_else(item_code == 1274 & prelim_gap > 0,
                          production + prelim_gap, production),
     other      = if_else(item_code == 1274 & prelim_gap > 0,
@@ -396,7 +394,7 @@ sup_final_bcp <- sup_final_bcp %>%
   select(-add_supply)
 
 ###########################################################
-# Step C: Build matching new rows for use_final_bcp
+# Step C: Build matching new rows for use_rebal_bcp
 ###########################################################
 
 new_use_rows <- maize_sweden_gaps %>%
@@ -411,9 +409,9 @@ new_use_rows <- maize_sweden_gaps %>%
   ) %>%
   left_join(other_waste_lookup, by = "item") %>%
   left_join(biogasoline_proc_code, by = "proc") %>%
-  select(any_of(names(use_final_bcp)))
+  select(any_of(names(use_rebal_bcp)))
 
-use_final_bcp <- bind_rows(use_final_bcp, new_use_rows)
+use_rebal_bcp <- bind_rows(use_rebal_bcp, new_use_rows)
 
 ###########################################################
 # Step D: Reset gap_use_remaining_total to 0 for the
@@ -428,88 +426,6 @@ cbs_sua_adjusted <- cbs_sua_adjusted %>%
       gap_use_remaining_total
     )
   ) 
-
-
-
-
-###########################################################
-####### ADJUSTING USES IN FINAL DEMAND FROM INPUT USE ######
-###########################################################
-
-###########################################################
-#1. Sequence of adjustments from the best-corresponding use to the worst-corresponding use, then increase production if necessary (last resort) ######
-###########################################################
-
-cbs_sua_adjusted <- cbs_sua_adjusted %>%
-  mutate(
-    # Safe copies (NA -> 0) to work with
-    other_f          = replace_na(other, 0),
-    stock_addition_f = replace_na(stock_addition, 0),
-    tourist_f        = replace_na(tourist, 0),
-    processing_f     = replace_na(processing, 0),
-    feed_f           = replace_na(feed, 0),
-    food_f           = replace_na(food, 0),
-    production_f     = replace_na(production, 0),
-    # --- Step 1: draw from "other" ---
-    to_remove_1   = replace_na(input_use_adj, 0),
-    red_other     = pmin(to_remove_1, other_f),
-    other_adj     = other_f - red_other,
-    to_remove_2   = to_remove_1 - red_other,
-    # --- Step 2: draw from "stock_addition" ---
-    red_stock          = pmin(to_remove_2, stock_addition_f),
-    stock_addition_adj = stock_addition_f - red_stock,
-    to_remove_3        = to_remove_2 - red_stock,
-    # --- Step 3: draw from "tourist" ---
-    red_tourist   = pmin(to_remove_3, tourist_f),
-    tourist_adj   = tourist_f - red_tourist,
-    to_remove_4   = to_remove_3 - red_tourist,
-    # --- Step 4: draw from "processing" ---
-    red_processing = pmin(to_remove_4, processing_f),
-    processing_adj = processing_f - red_processing,
-    to_remove_5    = to_remove_4 - red_processing,
-    # --- Step 5: draw from "feed" ---
-    red_feed      = pmin(to_remove_5, feed_f),
-    feed_adj      = feed_f - red_feed,
-    to_remove_6   = to_remove_5 - red_feed,
-    # --- Step 6: draw from "food" ---
-    red_food      = pmin(to_remove_6, food_f),
-    food_adj      = food_f - red_food,
-    to_remove_7   = to_remove_6 - red_food,
-    # --- Step 7: top up "production" with the residual ---
-    production_adj = production_f + to_remove_7
-  ) %>%
-  # Overwrite originals with adjusted values, then drop helpers
-  mutate(
-    other          = other_adj,
-    stock_addition = stock_addition_adj,
-    tourist        = tourist_adj,
-    processing     = processing_adj,
-    feed           = feed_adj,
-    food           = food_adj,
-    production     = production_adj,
-    input_use = input_use_adj
-  ) %>%
-  select(
-    -ends_with("_f"),
-    -ends_with("_adj"),
-    -starts_with("to_remove_"),
-    -starts_with("red_")
-  ) %>% select(year:use, input_use) 
-
-###########################################################
-#2. Recalculate supply & use ######
-###########################################################
-
-cbs_sua_adjusted[, `:=`(domestic_supply = production)]
-cbs_sua_adjusted[, `:=`(supply = na_sum(domestic_supply, imports))]
-cbs_sua_adjusted[, `:=`(domestic_use = na_sum(food, feed, other, tourist, seed, losses, processing, stock_addition, -stock_withdrawal))]
-cbs_sua_adjusted[, `:=`(use = na_sum(domestic_use, exports))]
-
-cbs_sua_full <- cbs_sua_full %>% mutate(input_use = 0)
-cbs_sua_bal <- rows_update(cbs_sua_full, cbs_sua_adjusted, by = c("item_code", "year", "area_code") ) %>%
-  relocate(input_use, .after = balancing)
-
-
 
 
 ###########################################################
@@ -534,15 +450,11 @@ adj_long <- realloc_output %>%
   )) %>%
   select(area_code, year, item, proc, use_adj)
 
-# Update use_final_bcp
-use_final_bcp <- use_final_bcp %>%
+# Update use_rebal_bcp
+use_rebal_bcp <- use_rebal_bcp %>%
   left_join(adj_long, by = c("area_code", "year", "item", "proc")) %>%
   mutate(use = if_else(!is.na(use_adj), use_adj, use)) %>%
   select(-use_adj)
-
-
-
-
 
 
 ###########################################################
@@ -551,8 +463,11 @@ use_final_bcp <- use_final_bcp %>%
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-saveRDS(cbs_sua_bal, "data/cbs_sua_bal.rds")
-saveRDS(use_final_bcp, "data/use_final_bcp.rds")
-saveRDS(sup_final_bcp, "data/sup_final_bcp.rds")
+# Finished
+saveRDS(sup_final_bcp,  "data/sup_final_bcp.rds")
+
+# Intermediate
+saveRDS(use_rebal_bcp,  "intermediate_data/use_rebal_bcp.rds")
+saveRDS(cbs_sua_adjusted, "intermediate_data/cbs_sua_adjusted.rds")
 
 rm(list = ls())

@@ -23,7 +23,7 @@ cbs <- readRDS("data/cbs_full.rds")
 
 # Use for BCP production -----------------------------------------------------------------
 
-use_bcp <- readRDS("data/use_final_bcp.rds")
+use_bcp <- readRDS("intermediate_data/use_compiled_bcp.rds")
 
 # SUA for shares in use ------------------------------------------------------------------
 
@@ -62,7 +62,7 @@ setcolorder(missing_rows, names(cbs_sua_ext))
 btd <- subset(btd, item_code %in% unique(missing_rows$item_code) & 
                 (from_code %in% unique(missing_rows$area_code) | to_code %in% unique(missing_rows$area_code)) &
                 to_code != from_code
-              )
+)
 
 ex_join <- btd %>%
   group_by(from_code, year, item_code) %>%
@@ -82,7 +82,7 @@ missing_rows <- missing_rows %>%
   rows_patch(im_join, by = c("area_code", "item_code", "year"), unmatched = "ignore") %>%
   mutate(item = as.character(item),
          area = as.character(area))
-  
+
 missing_rows <- missing_rows %>%
   left_join(items %>% select(item, item_code) %>% distinct(item_code, .keep_all = TRUE),
             by = "item_code", suffix = c("", "_new")) %>%
@@ -166,4 +166,3 @@ setwd("/home/mmondolfo/fabio_bfp/")
 saveRDS(cbs, "data/cbs_sua_full.rds")
 
 rm(list = ls())
-

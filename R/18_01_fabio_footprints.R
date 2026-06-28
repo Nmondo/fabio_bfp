@@ -926,9 +926,9 @@ fp_trade_breakdown_feedstock <- function(year,
 
 ## 2012-2022, saving impacts embodied in each year's bilateral trade, with feedstock breakdown
 ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
-FD_EQ_terrestrial_stressors <- unique(ex[grepl("^FD_EQ.*terrestrial", Stressor), Stressor])
+# FD_EQ_terrestrial_stressors <- unique(ex[grepl("^FD_EQ.*terrestrial", Stressor), Stressor])
 extensions_choice <- as.list(c(ibif_stressors,
-                               "LCIM_EQ_terrestrial",
+                               "LCIM_EQ_terrestrial_climate","LCIM_EQ_terrestrial_acidification",
                                "land_harv")
                        )
 
@@ -1157,6 +1157,190 @@ dt_Z_long <- extract_Z_long(Z)
 
 fwrite(dt_Z_long, file.path("output", "Z_summary_c146_c147_c149.csv"))
 
+
+
+
+
+
+
+######################################################################################################################
+############################## DIRECT BIOFUEL SUPPLY-CHAIN FLOWS (3-TIER, CONTINENT) ##################################
+######################################################################################################################
+# Builds the two DIRECT linkages of the biofuel supply chain while keeping the
+# biofuel PRODUCER as an explicit middle node (this is what fp_trade_breakdown_feedstock
+# cannot give you: it multiplies feedstock by X_comm_norm and integrates the producer out,
+# so feedstock lands on the *final consumer*). Here the producer is preserved:
+#
+#   Stage 1  feedstock_to_producer : 1st-degree feedstock m, origin i  -> producer p
+#            direct tier-1 input, straight from Z[ m-rows , cc-cols ].  Unit: feedstock tonnes.
+#   Stage 2  producer_to_consumer  : biofuel cc,             producer p -> consumer k
+#            "final_demand" -> Y_country[cc,] (same basis as y_sourcing_shares, fully direct)
+#            "consumption"  -> (L %*% Y_masked)[cc,]  (L-allocated, captures biofuel used indirectly)
+#            Unit: biofuel output.
+#
+# The producer is the SHARED node, so the two legs connect into one chain.
+#
+# Domestic vs intra-regional is resolved at COUNTRY level BEFORE continent aggregation,
+# so a within-continent flow keeps its split:
+#   domestic       : same iso3c
+#   intra_regional : same continent, different iso3c
+#   inter_regional : different continent
+#
+# Output is long & flow-chart ready (source_node / target_node carry the tier so the three
+# tiers stay distinct in a left->right Sankey; producer-tier nodes are shared across stages).
+#
+# NB on units: stage-1 (feedstock tonnes) and stage-2 (biofuel output) do NOT balance at the
+# producer node. Keep them as two stacked sub-flows, or normalise per stage, when you draw it.
+
+bf_supply_chain_flows <- function(years,
+                                  biofuel,                         # cc codes, e.g. c("c146","c147","c149")
+                                  feedstock_codes = NULL,          # restrict stage-1 inputs; NULL = all tier-1 inputs
+                                  stage2_basis    = "final_demand",# "final_demand" (Y, direct) | "consumption" (L-allocated)
+                                  level           = "continent",   # "continent" | "country" (no aggregation)
+                                  clamp_neg       = FALSE,         # set negative flows (e.g. stock changes in Y) to 0
+                                  drop_zero       = TRUE,
+                                  input_path      = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                                  losses          = TRUE,
+                                  allocation      = "value",
+                                  save            = FALSE,
+                                  output_dir      = "output",
+                                  regions, io, fd,
+                                  X = NULL, Y = NULL, Z = NULL, L = NULL) {
+  
+  sub <- if (losses) "losses/" else ""
+  if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
+  if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
+  if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
+  
+  biofuel <- intersect(biofuel, unique(io$comm_code))
+  if (length(biofuel) == 0) stop("No valid biofuel comm_codes supplied.")
+  
+  # iso3c -> continent (works whether `regions` is data.table or data.frame)
+  cont_vec <- setNames(as.character(regions$continent), regions$iso3c)
+  feedstock_map <- unique(as.data.table(io)[, .(comm_code, item)])
+  
+  per_year <- lapply(years, function(yr) {
+    yc <- as.character(yr)
+    Yi <- Y[[yc]]; colnames(Yi) <- fd$iso3c
+    Y_country <- agg(Yi)                              # RN x R, FD collapsed within consumer
+    countries <- colnames(Y_country)
+    Zi <- Z[[yc]]
+    
+    Li <- NULL
+    if (stage2_basis == "consumption") {
+      Li <- if (is.null(L)) readRDS(paste0(input_path, sub, yr, "_L_", allocation, ".rds")) else L[[yc]]
+    }
+    
+    rbindlist(lapply(biofuel, function(cc) {
+      
+      cc_idx    <- which(io$comm_code == cc)          # one row/col per producer country
+      producers <- io$iso3c[cc_idx]
+      
+      ## ---- STAGE 1 : feedstock origin -> producer (direct, from Z) ----------------------
+      Zcc <- Zi[, cc_idx, drop = FALSE]               # RN x P
+      active   <- which(Matrix::rowSums(Zcc) != 0)
+      active_m <- unique(io$comm_code[active])
+      if (!is.null(feedstock_codes)) active_m <- intersect(active_m, feedstock_codes)
+      
+      s1 <- if (length(active_m)) rbindlist(lapply(active_m, function(m) {
+        rows_m <- which(io$comm_code == m)
+        M      <- as.matrix(Zcc[rows_m, , drop = FALSE])          # origin_i x producer_p
+        data.table(
+          origin_iso = rep(io$iso3c[rows_m], times = ncol(M)),    # varies fastest (as.vector col-major)
+          dest_iso   = rep(producers,        each  = nrow(M)),
+          value      = as.vector(M),
+          feedstock  = feedstock_map$item[match(m, feedstock_map$comm_code)]
+        )
+      }), use.names = TRUE) else NULL
+      
+      if (!is.null(s1)) s1[, `:=`(stage = "feedstock_to_producer",
+                                  tier_from = "origin", tier_to = "producer",
+                                  unit = "feedstock_tonnes")]
+      
+      ## ---- STAGE 2 : producer -> consumer (biofuel) -------------------------------------
+      if (stage2_basis == "final_demand") {
+        B <- as.matrix(Y_country[cc_idx, , drop = FALSE])         # producer_p x consumer_k
+      } else {                                                    # "consumption" (L-allocated)
+        Y_masked <- Y_country; Y_masked[-cc_idx, ] <- 0
+        B <- as.matrix((Li %*% Y_masked)[cc_idx, , drop = FALSE]) # producer_p x consumer_k
+      }
+      s2 <- data.table(
+        origin_iso = rep(producers, times = ncol(B)),
+        dest_iso   = rep(countries, each  = nrow(B)),
+        value      = as.vector(B),
+        feedstock  = NA_character_,
+        stage      = "producer_to_consumer",
+        tier_from  = "producer", tier_to = "consumer",
+        unit       = "biofuel_output"
+      )
+      
+      out <- rbindlist(list(s1, s2), use.names = TRUE, fill = TRUE)
+      out[, `:=`(biofuel = cc, year = yr)]
+      out
+    }), use.names = TRUE, fill = TRUE)
+  })
+  
+  dt <- rbindlist(per_year, use.names = TRUE, fill = TRUE)
+  if (clamp_neg) dt[value < 0, value := 0]
+  if (drop_zero) dt <- dt[value != 0]
+  if (nrow(dt) == 0) { warning("No flows produced."); return(dt[]) }
+  
+  # ---- classify at COUNTRY level (before any continent aggregation) ----------------------
+  dt[, `:=`(source_continent = cont_vec[origin_iso],
+            target_continent = cont_vec[dest_iso])]
+  if (anyNA(dt$source_continent) || anyNA(dt$target_continent))
+    warning("Some iso3c had no continent in `regions`; check NA source/target_continent.")
+  
+  dt[, flow_class := fcase(
+    origin_iso == dest_iso,                "domestic",
+    source_continent == target_continent,  "intra_regional",
+    default =                              "inter_regional")]
+  
+  if (level == "continent") {
+    keys <- c("stage", "tier_from", "tier_to", "year", "biofuel", "feedstock", "unit",
+              "source_continent", "target_continent", "flow_class")
+    dt <- dt[, .(value = sum(value)), by = keys]
+    # tier-tagged node ids so the 3 tiers stay distinct in a left->right flow chart;
+    # producer-tier nodes are identical across the two stages -> they connect.
+    dt[, `:=`(source_node = paste(source_continent, tier_from, sep = " | "),
+              target_node = paste(target_continent, tier_to,   sep = " | "))]
+    setcolorder(dt, c("stage", "year", "biofuel", "feedstock",
+                      "source_continent", "target_continent",
+                      "source_node", "target_node", "flow_class", "unit", "value"))
+    setorderv(dt, c("year", "biofuel", "stage", "source_continent", "target_continent", "flow_class"))
+  } else {
+    setnames(dt, c("origin_iso", "dest_iso"), c("source_iso", "target_iso"))
+    setcolorder(dt, c("stage", "year", "biofuel", "feedstock",
+                      "source_iso", "target_iso",
+                      "source_continent", "target_continent", "flow_class", "unit", "value"))
+    setorderv(dt, c("year", "biofuel", "stage", "source_iso", "target_iso"))
+  }
+  
+  if (save) {
+    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+    yr_slug <- if (length(years) == 1) as.character(years) else paste0(min(years), "-", max(years))
+    fname <- build_filename("FABIO_bfChain",
+                            year  = yr_slug,
+                            comm  = biofuel,
+                            basis = stage2_basis,
+                            level = level)
+    fwrite(dt, file.path(output_dir, fname))
+    message("Wrote ", file.path(output_dir, fname))
+  }
+  dt[]
+}
+
+
+# --- Call -------------------------------------------------------------------------
+bf_supply_chain_flows(
+  years        = 2012:2022,
+  biofuel      = c("c146", "c147", "c149"),
+  stage2_basis = "final_demand",
+  level        = "continent",
+  regions = regions, io = io, fd = fd,
+  X = X, Y = Y, Z = Z,          
+  save = TRUE
+)
 
 
 
@@ -1472,27 +1656,4 @@ y_sourcing_shares(years = 2012:2022,
 
 
 
-
-
-
-
-
-
-
-##### Sanity check of the extension values ##### 
-# E_bar_rowsums <- lapply(E_bar, rowSums)
-# E_bar_table <- do.call(cbind, E_bar_rowsums)
-# colnames(E_bar_table) <- names(E_bar)  # year names as column headers
-# 
-# # Global PDF.yr (LC impact)
-# E_bar_LCIM <- E_bar_table[grepl("^LCIM", rownames(E_bar_table)), ]
-# print(E_bar_LCIM)
-# 
-# # Uncharacterized land use pressure (hectares)
-# E_bar_land <- E_bar_table[grepl("^land", rownames(E_bar_table)), ]
-# print(E_bar_land)
-# 
-# # Uncharacterized eutrophication pressure (kgs of P/N)
-# E_bar_eutrophi <- E_bar_table[grepl("^n_|^p_", rownames(E_bar_table)), ]
-# print(E_bar_eutrophi)
 

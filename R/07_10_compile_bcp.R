@@ -35,18 +35,18 @@ invisible(lapply(files, function(f) {
 
 ############# Loading lists of items, processes, regions ##################
 
-setwd("/home/mmondolfo/fabio_bfp/inst")
-regions <- read.csv("regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
-items_supply_bcp <- read.csv("items_supply_bcp.csv")
-items_full_bcp <- read.csv("items_full_bcp.csv")
-items_use_bcp <- read.csv("items_use_bcp.csv")
+setwd("/home/mmondolfo/fabio_bfp/")
+regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
+items_supply_bcp <- read.csv("inst/items_supply_bcp.csv")
+items_full_bcp <- read.csv("inst/items_full_bcp.csv")
+items_use_bcp <- read.csv("inst/items_use_bcp.csv")
 
 
 ###########################################################
 ########### FORMATTING USE TABLES #########
 ###########################################################
 
-use_final_bcp <- bind_rows(use_final_bf, use_final_bp) %>%
+use_compiled_bcp <- bind_rows(use_final_bf, use_final_bp) %>%
   # converting all liquid fuels to liters
   mutate(use = case_when(item == "Bionaphtha" ~ (1/0.71)*use,
                          item == "Biopropane" ~ (1/0.51)*use,
@@ -67,7 +67,7 @@ use_final_bcp <- bind_rows(use_final_bf, use_final_bp) %>%
          !is.na(area)) %>%
   select(-iso3c) 
 
-subset(use_final_bcp, area == "Italy" & proc == "Biogasoline production")
+subset(use_compiled_bcp, area == "Italy" & proc == "Biogasoline production")
 
 
 
@@ -85,25 +85,25 @@ use_fd_final_bcp <- bind_rows(y_final_bf, y_final_bf_coproducts, y_bp_complete_r
   mutate(across(c(fuel, non_fuel, unknown_use, other_industry_use), 
                 ~ case_when(unit %in% c("kt","Ml") ~ .x*1000,
                             TRUE ~ .x)),
-  unit = case_when(unit == "kt" ~ "tonnes",
+         unit = case_when(unit == "kt" ~ "tonnes",
                           unit == "Ml" ~ "1000 liters", 
                           TRUE ~ unit),
-  item = case_when(item == "Castor oil" ~ "Oil of castor beans",
-                   item == "Used cooking oil" ~ "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",
-                   TRUE ~ item),
-  other_industrial = coalesce(non_fuel, other_industry_use)) %>%
+         item = case_when(item == "Castor oil" ~ "Oil of castor beans",
+                          item == "Used cooking oil" ~ "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",
+                          TRUE ~ item),
+         other_industrial = coalesce(non_fuel, other_industry_use)) %>%
   select(-non_fuel, -other_industry_use) %>%
   left_join(items_full_bcp %>% select(comm_code, item_code, item), by = c("item")) %>%
   left_join(regions %>% select(iso3c, area_code = code, area = name), by = "iso3c")
 
-  
+
 
 ###########################################################
 #1. Subtracting Bioethanol use as a BP feedstock from "Non-fuel use" #########
 ###########################################################
 
 use_fd_final_bcp <- use_fd_final_bcp %>% 
-  left_join(use_final_bcp %>% 
+  left_join(use_compiled_bcp %>% 
               filter(item=="Biogasoline") %>%
               select(item, year, to_subtract = use, area), by = c("item", "year", "area")) %>%
   mutate(other_industrial = ifelse(!is.na(to_subtract), other_industrial - to_subtract, other_industrial)) %>%
@@ -146,8 +146,8 @@ supply_final_bcp <- bind_rows(supply_final_bf, supply_final_bp) %>%
 
 # Adding supply of "Other, Unknown" and "Other, Waste" (own supply)
 
-# 1. Aggregate supply from use_final_bcp
-supply_sums <- use_final_bcp %>%
+# 1. Aggregate supply from use_compiled_bcp
+supply_sums <- use_compiled_bcp %>%
   filter(comm_code %in% c("c901", "c999")) %>%
   group_by(year, comm_code, area_code) %>%
   summarise(supply = sum(use, na.rm = TRUE), .groups = "drop")
@@ -211,10 +211,10 @@ btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts) %>%
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-write_rds(use_final_bcp, "data/use_final_bcp.rds")
+write_rds(use_compiled_bcp, "intermediate_data/use_compiled_bcp.rds")
+
 write_rds(use_fd_final_bcp, "data/use_fd_final_bcp.rds")
 write_rds(supply_final_bcp, "data/sup_final_bcp.rds")
 write_rds(btd_final_bcp, "data/btd_final_bcp.rds")
 
 rm(list = ls())
-

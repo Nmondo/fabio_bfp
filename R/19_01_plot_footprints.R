@@ -125,6 +125,8 @@ fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"), dir = "output") 
 Y_summary <- fread("output/Y_summary_c146_c147_c149.csv")
 Y_summary_BP <- fread("output/Y_summary_BP.csv")
 Z_summary <- fread("output/Z_summary_c146_c147_c149.csv")
+dt_ysrc <- fread("output/FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv")
+sankey_flows <- fread("output/FABIO_bfChain_2012-2022_BF_final_demand_continent.csv")
 
 files_tradeFeed_BF <- fabio_files("FABIO_tradeFeed", "BF")
 files_tradeFeed_BP <- fabio_files("FABIO_tradeFeed", "BP")
@@ -133,10 +135,29 @@ files_totalreq_BF  <- fabio_files("FABIO_totalreq",  "BF")
 # files_totalreq_BP  <- fabio_files("FABIO_totalreq",  "BP")
 
 dt_tradeFeed    <- rbindlist(lapply(files_tradeFeed_BF, fread))
+dt_material     <- subset(dt_tradeFeed, indicator == "material")
 dt_tradeFeed_BP <- rbindlist(lapply(files_tradeFeed_BP, fread))
 dt_feedstock    <- rbindlist(lapply(files_feedstock_BF, fread))
 dt_totalreq     <- rbindlist(lapply(files_totalreq_BF,  fread))
 
+
+
+# Build combined LC Impact terrestrial indicator (climate + acidification; ruling out "land use") ----------------
+
+id_cols <- c("country_origin", "country_consumer", "flow_type", "year",
+             "allocation", "feedstock", "commodity")
+
+lcim_terr <- dt_tradeFeed[
+  indicator %in% c("LCIM_EQ_terrestrial_climate", "LCIM_EQ_terrestrial_acidification"),
+  .(value = sum(value, na.rm = TRUE)),
+  by = id_cols
+][, indicator := "LCIM_EQ_terrestrial"]
+
+# Drop any pre-existing LCIM_EQ_terrestrial rows, bind in the recomputed ones
+dt_tradeFeed <- rbindlist(
+  list(dt_tradeFeed[indicator != "LCIM_EQ_terrestrial"], lcim_terr),
+  use.names = TRUE
+)
 
 
 
@@ -1085,6 +1106,14 @@ p_ibif <- plot_commodity_feedstock_grid(
   top_n_feedstock = 7
 )
 
+p_lcim <- plot_commodity_feedstock_grid(
+  dt_tradeFeed,
+  commodities = c("c146", "c147", "c149"),
+  indicators  = "LCIM_EQ_terrestrial",
+  Y_summary = Y_summary,
+  top_n_feedstock = 7
+)
+
 p_grid <- plot_commodity_feedstock_grid(
   dt_tradeFeed,
   commodities = c("c146", "c147", "c149"),
@@ -1140,6 +1169,10 @@ ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif.pdf"),
        device = cairo_pdf,
        width = 7, height = 12 , dpi = 300)
 
+ggsave(filename = file.path("output", "plot", "feedstock_impact_lcim.pdf"), 
+       plot = p_lcim,
+       device = cairo_pdf,
+       width = 7, height = 12 , dpi = 300)
 
 
 # ggsave(filename = file.path("output", "plot", "c146_feedstock.pdf"),
@@ -2042,7 +2075,8 @@ sourcing_colors <- c(
       panel.grid.minor   = element_blank(),
       panel.spacing.x    = unit(0.3, "lines"),
       panel.spacing.y    = unit(1.6, "lines"),
-      strip.text         = element_text(face = "bold"),
+      strip.text.x = element_text(face = "bold"),               
+      strip.text.y = element_text(face = "bold", size = 15),
       legend.position    = "bottom"
     )
 }
@@ -2126,12 +2160,6 @@ plot_sourcing_product <- function(data, regions,
 ######################################################################################################################
 
 # --- (1) feedstock embodied (bilateral) -------------------------------------
-files_material <- list.files(
-  "output",
-  pattern = "^FABIO_tradeFeed_(201[2-9]|202[0-2])_material_value_BF_byComm_byFeed_direct_bilat\\.csv$",
-  full.names = TRUE)
-dt_material <- rbindlist(lapply(files_material, fread))
-
 p_feed_src <- plot_sourcing_feedstock(
   dt_material, regions,
   commodities    = c("c146", "c147", "c149"),
@@ -2143,7 +2171,7 @@ ggsave(file.path("output", "plot", "sourcing_feedstock_BF.pdf"),
        p_feed_src, width = 11, height = 6, dpi = 300, device = cairo_pdf)
 
 # --- (2) final product origin -----------------------------------------------
-dt_ysrc <- fread("output/FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv")
+
 
 p_prod_src <- plot_sourcing_product(
   dt_ysrc, regions,
@@ -2157,210 +2185,497 @@ ggsave(file.path("output", "plot", "sourcing_product_BF.pdf"),
 
 
 
+######################################################################################################################
+################################# FLOW CHART #################################
+######################################################################################################################
 
 
-plot_consumption_vs_impact_by_continent <- function(
-    Y_data, impact_data, regions,
-    target_comm_in, indicator_select,
-    meta      = indicator_meta,
-    y_label   = "Biofuel consumption (M liters)",
-    grid_nrow = NULL,
-    grid_ncol = NULL) {
+
+
+bf_sankey_gg <- function(sankey_flows,
+                         year_sel    = NULL,
+                         window      = 1L,
+                         aggregate   = "mean",
+                         biofuel_sel = NULL,
+                         commodity_label = NULL,
+                         normalize   = "per_stage",
+                         class_cols  = c(domestic       = "#08519C",
+                                         intra_regional = "#6BAED6",
+                                         inter_regional = "#FD8D3C"),
+                         cont_order  = NULL,
+                         node_w      = 0.04,
+                         gap_frac    = 0.04,
+                         curv_n      = 60,
+                         alpha       = 0.8,
+                         share_min   = 0.02,   # NEW: hide labels below this share
+                         share_size  = 2.3) {  # NEW: font size for share labels
   
-  # ── grid path: vectorised target_comm_in ───────────────────────────
-  if (length(target_comm_in) > 1) {
-    plots <- lapply(target_comm_in, function(cc) {
-      plot_consumption_vs_impact_by_continent(
-        Y_data           = Y_data,
-        impact_data      = impact_data,
-        regions          = regions,
-        target_comm_in   = cc,
-        indicator_select = indicator_select,
-        meta             = meta,
-        y_label          = y_label
-      )
-    })
-    if (is.null(grid_nrow) && is.null(grid_ncol)) grid_nrow <- 1
+  req <- c("stage","source_node","target_node","flow_class","value",
+           "source_continent","target_continent")
+  stopifnot(all(req %in% names(sankey_flows)))
+  aggregate <- match.arg(aggregate, c("mean","sum"))
+  d <- copy(as.data.table(sankey_flows))
+  if (!is.null(biofuel_sel) && "biofuel" %in% names(d)) d <- d[biofuel %in% biofuel_sel]
+  
+  # --- year selection / averaging window ---------------------------------------------------
+  if ("year" %in% names(d)) {
+    if (!is.null(year_sel)) {
+      yrs <- if (length(year_sel) == 1L && window > 1L) {
+        half <- (window - 1L) %/% 2L
+        (year_sel - half):(year_sel + half)
+      } else year_sel
+      avail <- sort(intersect(yrs, unique(d$year)))
+      if (!length(avail)) stop("None of the requested years are present in `chain`.")
+      if (length(avail) < length(yrs))
+        warning("Window trimmed to available years: ", paste(avail, collapse = ", "))
+      d <- d[year %in% avail]
+    } else avail <- sort(unique(d$year))
+  } else avail <- NA_integer_
+  n_years <- if (anyNA(avail)) 1L else length(avail)
+  if (!nrow(d)) stop("No rows after filtering.")
+  
+  link <- d[, .(value = sum(value)),
+            by = .(stage, source_node, target_node, flow_class,
+                   source_continent, target_continent)]
+  if (aggregate == "mean") link[, value := value / n_years]
+  
+  # --- per-stage normalisation -------------------------------------------------------------
+  if (normalize == "per_stage") {
+    link[, w := value / sum(value), by = stage]
+  } else if (normalize == "match_stage1") {
+    tot <- link[, .(s = sum(value)), by = stage]
+    s1  <- tot[stage == "feedstock_to_producer", s]
+    link <- merge(link, tot, by = "stage"); link[, w := value * (s1 / s)][, s := NULL]
+  } else link[, w := value]
+  link <- link[is.finite(w) & w > 0]
+  link[, lid := .I]
+  
+  # --- tiers / columns ---------------------------------------------------------------------
+  tier_of <- function(n) sub("^.*\\| ", "", n)
+  col_x   <- c(origin = 0, producer = 1, consumer = 2)
+  link[, `:=`(s_tier = tier_of(source_node), t_tier = tier_of(target_node))]
+  
+  # --- node table --------------------------------------------------------------------------
+  nodes <- unique(rbindlist(list(
+    link[, .(node = source_node, tier = s_tier, continent = source_continent)],
+    link[, .(node = target_node, tier = t_tier, continent = target_continent)]
+  )))
+  if (is.null(cont_order)) cont_order <- sort(unique(nodes$continent))
+  nodes[, col := col_x[tier]]
+  nodes <- merge(nodes, link[, .(ins  = sum(w)), by = .(node = target_node)], by = "node", all.x = TRUE)
+  nodes <- merge(nodes, link[, .(outs = sum(w)), by = .(node = source_node)], by = "node", all.x = TRUE)
+  nodes[is.na(ins), ins := 0][is.na(outs), outs := 0]
+  nodes[, `:=`(val = pmax(ins, outs), ord = match(continent, cont_order))]
+  setorder(nodes, col, ord)
+  
+  cs    <- nodes[, .(need = sum(val) + (.N - 1) * gap_frac), by = col]
+  scale <- 1 / max(cs$need)
+  g     <- gap_frac * scale
+  nodes[, h := val * scale]
+  nodes[, ytop := {
+    colH <- sum(h) + (.N - 1) * g
+    (1 - colH) / 2 + cumsum(c(0, head(h, -1) + g))
+  }, by = col]
+  nodes[, `:=`(ybot = ytop + h, ymid = ytop + h / 2,
+               xl = col - node_w / 2, xr = col + node_w / 2)]
+  setkey(nodes, node)
+  
+  # --- ribbon endpoints --------------------------------------------------------------------
+  link[, h := w * scale]
+  link[, `:=`(s_mid = nodes[source_node, ymid], t_mid = nodes[target_node, ymid])]
+  
+  # Source side: sort by target midpoint (unchanged — keeps source-side visually smooth)
+  setorder(link, source_node, t_mid)
+  link[, sy_top := nodes[source_node, ytop] + cumsum(c(0, head(h, -1))), by = source_node]
+  
+  # Target side: sort by flow_class FIRST (keeps same-class ribbons contiguous),
+  # then by s_mid within each class (minimises crossing within a class band).
+  # flow_class is factored by class_cols order so the colour bands are always in
+  # the same top-to-bottom sequence across all nodes.
+  link[, flow_class_f := factor(flow_class, levels = names(class_cols))]
+  setorder(link, target_node, flow_class_f, s_mid)
+  link[, ty_top := nodes[target_node, ytop] + cumsum(c(0, head(h, -1))), by = target_node]
+  link[, `:=`(sx = nodes[source_node, xr], tx = nodes[target_node, xl])]
+  
+  # --- ribbon polygons ---------------------------------------------------------------------
+  smooth <- function(t) 3 * t^2 - 2 * t^3
+  tt     <- seq(0, 1, length.out = curv_n)
+  polys  <- link[, {
+    x    <- sx + (tx - sx) * tt
+    ftop <- sy_top + (ty_top - sy_top) * smooth(tt)
+    fbot <- (sy_top + h) + ((ty_top + h) - (sy_top + h)) * smooth(tt)
+    data.table(x = c(x, rev(x)), y = c(ftop, rev(fbot)), flow_class = flow_class)
+  }, by = lid]
+
+  # --- flow-class shares per RECEPTOR node -------------------------------------------------
+  # Aggregate w and the ACTUAL rendered ribbon top-positions from the Sankey layout.
+  # ty_top is already sorted by t_mid (the Sankey stacking order), so summing h per
+  # (target_node, flow_class) gives the real pixel band — no assumptions about cls_order.
+  
+  shares_raw <- link[, .(
+    w_cls    = sum(w),
+    ty_top   = min(ty_top),   # topmost ribbon edge for this (node × flow_class) band
+    band_h_r = sum(h)         # total rendered height of this band at the target node
+  ), by = .(node = target_node, flow_class, stage)]
+  
+  # Stage total for threshold
+  stage_totals <- link[, .(w_stage = sum(w)), by = stage]
+  shares_raw   <- merge(shares_raw, stage_totals, by = "stage")
+  
+  shares_raw[, share_of_stage := w_cls / w_stage]
+  shares_raw[, share          := w_cls / sum(w_cls), by = node]
+  
+  # Filter: only show labels >= share_min of stage total
+  shares_raw <- shares_raw[share_of_stage >= share_min]
+  
+  if (nrow(shares_raw) > 0) {
+    shares_raw <- merge(shares_raw,
+                        nodes[, .(node, col, ytop, h, xr, xl)],
+                        by = "node")
     
-    return(
-      patchwork::wrap_plots(plots, nrow = grid_nrow, ncol = grid_ncol) +
-        patchwork::plot_layout(guides = "collect") &
-        ggplot2::theme(
-          legend.position      = "bottom",
-          legend.box           = "horizontal",
-          legend.justification = "center",
-          legend.box.just      = "center"
-        )
-    )
+    # Label y: midpoint of the ACTUAL rendered band (from Sankey geometry, not cls_order)
+    shares_raw[, label_y   := ty_top + band_h_r / 2]
+    shares_raw[, label_txt := paste0(round(share * 100), "%")]
+    shares_raw[, label_x   := xl - node_w * 0.6]
+    shares_raw[, label_hjust := 1]
+    
+    shares_raw <- shares_raw[col > 0]
   }
   
-  # ── single-commodity path ──────────────────────────────────────────
-  cons <- Y_data %>%
-    filter(comm_code == target_comm_in) %>%
-    group_by(year, target_continent) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
-  if (nrow(cons) == 0) stop("No Y rows for that comm_code.")
+  # --- self-documenting year label ---------------------------------------------------------
+  agg_word <- if (aggregate == "mean") "mean" else "sum"
+  # yr_label <- if (anyNA(avail)) NULL
+  # else if (n_years > 1) paste0(min(avail), "\u2013", max(avail),
+  #                              " ", agg_word, " (", n_years, "-yr)")
+  # else as.character(avail)
   
-  item_name <- Y_data %>%
-    filter(comm_code == target_comm_in) %>%
-    pull(item) %>% unique() %>% paste(collapse = "/")
+  # Darken class colours for label text (blend 45% toward black)
+  darken_col <- function(hex, amount = 0.45) {
+    rgb_vals <- col2rgb(hex) / 255
+    rgb(rgb_vals[1] * (1 - amount),
+        rgb_vals[2] * (1 - amount),
+        rgb_vals[3] * (1 - amount))
+  }
+  label_cols <- setNames(sapply(class_cols, darken_col), names(class_cols))
   
-  m <- meta[indicator == indicator_select]
-  if (nrow(m) == 0) {
-    m <- data.table(indicator    = indicator_select,
-                    scale_factor = 1,
-                    y_label      = indicator_select,
-                    short_label  = indicator_select)
+  # --- plot --------------------------------------------------------------------------------
+  p <- ggplot() +
+    geom_polygon(data = polys, aes(x, y, group = lid, fill = flow_class),
+                 alpha = alpha, colour = NA) +
+    geom_rect(data = nodes, aes(xmin = xl, xmax = xr, ymin = ytop, ymax = ybot),
+              fill = "grey60", colour = "grey30", linewidth = 0.2) +
+    geom_text(data = nodes[col == 0], aes(xl - node_w, ymid, label = continent),
+              hjust = 1, size = 3) +
+    geom_text(data = nodes[col > 0],  aes(xr + node_w, ymid, label = continent),
+              hjust = 0, size = 3) +
+    annotate("text", x = c(0, 1, 2), y = 1.06, fontface = 2, size = 3.4,
+             label = c("Feedstock origin", "Biofuel producer", "Biofuel consumer")) +
+    scale_fill_manual(values = class_cols, name = "flow class") +
+    # labs(subtitle = yr_label) +
+    coord_cartesian(xlim = c(-0.55, 2.55), ylim = c(-0.02, 1.10), clip = "off") +
+    theme_void() +
+    theme(legend.position = "bottom", plot.margin = margin(0, 0, 0, 0))
+  
+  # Overlay share labels (only when there is something to show)
+  if (nrow(shares_raw) > 0) {
+    p <- p +
+      geom_text(data = shares_raw,
+                aes(x = label_x, y = label_y, label = label_txt, colour = flow_class),
+                hjust    = shares_raw$label_hjust,
+                size     = share_size * 0.87,   # ~2.0 when default share_size = 2.3
+                fontface = "bold",
+                show.legend = FALSE) +
+      scale_colour_manual(values = label_cols)  # darkened palette
   }
   
-  imp <- impact_data %>%
-    left_join(regions %>% select(iso3c, continent),
-              by = c("country_consumer" = "iso3c")) %>%
-    rename(target_continent = continent) %>%
-    filter(commodity == target_comm_in,
-           indicator == indicator_select) %>%
-    group_by(year, target_continent) %>%
-    summarize(value = sum(value, na.rm = TRUE) / m$scale_factor,
-              .groups = "drop")
-  
-  common <- intersect(cons$target_continent, imp$target_continent)
-  cons <- cons %>% filter(target_continent %in% common)
-  imp  <- imp  %>% filter(target_continent %in% common)
-  
-  cons_max <- max(cons$value, na.rm = TRUE)
-  imp_max  <- if (nrow(imp)) max(imp$value, na.rm = TRUE) else 1
-  k <- if (is.finite(imp_max) && imp_max > 0) cons_max / imp_max else 1
-  
-  flow_imp <- m$short_label
-  plot_df <- bind_rows(
-    cons %>% mutate(flow = "Consumption", y = value),
-    imp  %>% mutate(flow = flow_imp,      y = value * k)
-  ) %>%
-    mutate(flow = factor(flow, levels = c("Consumption", flow_imp)),
-           target_continent = factor(target_continent,
-                                     levels = names(continent_palette)))
-  
-  ggplot(plot_df, aes(year, y,
-                      colour   = target_continent,
-                      linetype = flow,
-                      group    = interaction(target_continent, flow))) +
-    geom_line(linewidth = 0.7) +
-    scale_x_continuous(breaks = scales::pretty_breaks()) +
-    scale_y_continuous(
-      name     = y_label,
-      sec.axis = sec_axis(~ . / k, name = m$y_label)
-    ) +
-    scale_linetype_manual(values = setNames(c("solid", "longdash"),
-                                            c("Consumption", flow_imp))) +
-    scale_colour_manual(values   = continent_palette,
-                        name     = "Continent",
-                        na.value = "grey60",
-                        drop     = FALSE) +
-    labs(title    = paste0(item_name, " · ", m$short_label),
-         x        = NULL,
-         colour   = "Continent",
-         linetype = "Flow") +
-    theme_minimal(base_size = 11) +
-    theme(panel.grid.minor = element_blank(),
-          legend.key.size  = unit(0.6, "cm"))
+  p
 }
 
 
 
-plot_consumption_vs_impact_by_continent(
-  Y_data           = Y_per_year_continent,
-  impact_data      = dt_tradeFeed,
-  regions          = regions,
-  target_comm_in   = c("c146", "c147", "c149"),
-  indicator_select = "ibif_total"
-)
+codes <- commodity_meta$comm_code   # c146, c147, c149
 
-
-
-
-
-
-
-plot_decoupling_indexed <- function(
-    Y_data, impact_data, regions,
-    target_comm_in, indicator_select,
-    meta = indicator_meta,
-    base_year = NULL) {
-  
-  cons <- Y_data %>%
-    filter(comm_code %in% target_comm_in) %>%
-    group_by(year, target_continent, comm_code, item) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(flow = "Consumption")
-  
-  imp <- impact_data %>%
-    left_join(regions %>% select(iso3c, continent),
-              by = c("country_consumer" = "iso3c")) %>%
-    rename(target_continent = continent) %>%
-    filter(commodity %in% target_comm_in,
-           indicator == indicator_select) %>%
-    group_by(year, target_continent, commodity) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    rename(comm_code = commodity) %>%
-    left_join(distinct(cons, comm_code, item), by = "comm_code") %>%
-    mutate(flow = meta[indicator == indicator_select, short_label])
-  
-  df <- bind_rows(cons, imp)
-  if (is.null(base_year)) base_year <- min(df$year)
-  
-  df <- df %>%
-    group_by(flow, target_continent, comm_code, item) %>%
-    arrange(year) %>%
-    mutate(
-      base_val = value[year == base_year][1],
-      index    = ifelse(is.finite(base_val) & base_val > 0,
-                        100 * value / base_val, NA_real_)
-    ) %>%
-    ungroup() %>%
-    filter(is.finite(index))
-  
-  # Wide form for ribbon between the two flows
-  df_w <- df %>%
-    select(year, target_continent, item, flow, index) %>%
-    tidyr::pivot_wider(names_from = flow, values_from = index) %>%
-    rename(cons_idx = Consumption,
-           imp_idx  = !!meta[indicator == indicator_select, short_label])
-  
-  ggplot() +
-    geom_hline(yintercept = 100, colour = "grey80", linewidth = 0.3) +
-    geom_ribbon(data = df_w,
-                aes(x = year, ymin = pmin(cons_idx, imp_idx),
-                    ymax = pmax(cons_idx, imp_idx),
-                    fill = cons_idx > imp_idx),
-                alpha = 0.15) +
-    geom_line(data = df,
-              aes(year, index, colour = flow, linetype = flow),
-              linewidth = 0.7) +
-    facet_grid(rows = vars(target_continent), cols = vars(item),
-               scales = "free_y") +
-    scale_colour_manual(values = setNames(c("#444444", "#D55E00"),
-                                          c("Consumption",
-                                            meta[indicator == indicator_select, short_label]))) +
-    scale_linetype_manual(values = setNames(c("solid", "longdash"),
-                                            c("Consumption",
-                                              meta[indicator == indicator_select, short_label]))) +
-    scale_fill_manual(values = c(`TRUE` = "#0072B2", `FALSE` = "#D55E00"),
-                      labels = c(`TRUE` = "Decoupling gap", `FALSE` = "Recoupling gap"),
-                      name   = NULL) +
-    labs(title = paste0("Decoupling: consumption vs ",
-                        meta[indicator == indicator_select, short_label]),
-         subtitle = paste0("Indexed to ", base_year, " = 100"),
-         x = NULL, y = paste0("Index (", base_year, " = 100)"),
-         colour = NULL, linetype = NULL) +
-    theme_minimal(base_size = 11) +
-    theme(panel.grid.minor = element_blank(),
-          legend.position  = "bottom")
+# Helper: wrap a rotated title as a patchwork-compatible grob panel
+make_title_strip <- function(label, font_size = 10) {
+  wrap_elements(
+    grid::textGrob(
+      label,
+      rot    = 90,
+      gp     = grid::gpar(fontface = "bold", fontsize = font_size),
+      hjust  = 0.5,
+      vjust  = 0.5
+    ) 
+  ) &
+    theme(plot.margin = margin(0, 0, 0, 0))
 }
 
-plot_decoupling_indexed(
-  Y_data           = Y_per_year_continent,
-  impact_data      = dt_tradeFeed,
-  regions          = regions,
-  target_comm_in   = c("c146", "c147"),
-  indicator_select = "ibif_total"
+# Build the two Sankey plots (NO ggtitle)
+p1 <- bf_sankey_gg(
+  sankey_flows,
+  year_sel    = 2020:2022,
+  biofuel_sel = "c146",
+  cont_order  = c("LAM", "NAM", "ASI", "EU")
 )
+
+p2 <- bf_sankey_gg(
+  sankey_flows,
+  year_sel    = 2020:2022,
+  biofuel_sel = c("c147", "c149"),
+  cont_order  = c("LAM", "NAM", "ASI", "EU")
+)
+
+# Build vertical title strips
+t1 <- make_title_strip(commodity_meta[comm_code == "c146", item])
+
+t2 <- make_title_strip(
+  paste(commodity_meta[comm_code %in% c("c147", "c149"), item], collapse = " + ")
+)
+
+# Compose: [title strip | sankey] stacked twice
+row1 <- t1 + p1 + plot_layout(widths = c(0.04, 1))   # strip ~4% of width
+row2 <- t2 + p2 + plot_layout(widths = c(0.04, 1))
+
+grid <- (row1 / row2) +
+  plot_layout(
+    guides = "collect",
+    heights = c(1, 1)  # equal rows — adjust ratio here if panels differ in content height
+  ) &
+  theme(
+    legend.position = "bottom",
+    plot.margin     = margin(2, 2, 2, 2)  # 2 pt on all sides — tweak downward to taste
+  )
+
+cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022.pdf",
+          width = 6, height = 10); print(grid); dev.off()
+
+
+
+
+
+
+
+
+# 
+# plot_consumption_vs_impact_by_continent <- function(
+#     Y_data, impact_data, regions,
+#     target_comm_in, indicator_select,
+#     meta      = indicator_meta,
+#     y_label   = "Biofuel consumption (M liters)",
+#     grid_nrow = NULL,
+#     grid_ncol = NULL) {
+#   
+#   # ── grid path: vectorised target_comm_in ───────────────────────────
+#   if (length(target_comm_in) > 1) {
+#     plots <- lapply(target_comm_in, function(cc) {
+#       plot_consumption_vs_impact_by_continent(
+#         Y_data           = Y_data,
+#         impact_data      = impact_data,
+#         regions          = regions,
+#         target_comm_in   = cc,
+#         indicator_select = indicator_select,
+#         meta             = meta,
+#         y_label          = y_label
+#       )
+#     })
+#     if (is.null(grid_nrow) && is.null(grid_ncol)) grid_nrow <- 1
+#     
+#     return(
+#       patchwork::wrap_plots(plots, nrow = grid_nrow, ncol = grid_ncol) +
+#         patchwork::plot_layout(guides = "collect") &
+#         ggplot2::theme(
+#           legend.position      = "bottom",
+#           legend.box           = "horizontal",
+#           legend.justification = "center",
+#           legend.box.just      = "center"
+#         )
+#     )
+#   }
+#   
+#   # ── single-commodity path ──────────────────────────────────────────
+#   cons <- Y_data %>%
+#     filter(comm_code == target_comm_in) %>%
+#     group_by(year, target_continent) %>%
+#     summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+#   if (nrow(cons) == 0) stop("No Y rows for that comm_code.")
+#   
+#   item_name <- Y_data %>%
+#     filter(comm_code == target_comm_in) %>%
+#     pull(item) %>% unique() %>% paste(collapse = "/")
+#   
+#   m <- meta[indicator == indicator_select]
+#   if (nrow(m) == 0) {
+#     m <- data.table(indicator    = indicator_select,
+#                     scale_factor = 1,
+#                     y_label      = indicator_select,
+#                     short_label  = indicator_select)
+#   }
+#   
+#   imp <- impact_data %>%
+#     left_join(regions %>% select(iso3c, continent),
+#               by = c("country_consumer" = "iso3c")) %>%
+#     rename(target_continent = continent) %>%
+#     filter(commodity == target_comm_in,
+#            indicator == indicator_select) %>%
+#     group_by(year, target_continent) %>%
+#     summarize(value = sum(value, na.rm = TRUE) / m$scale_factor,
+#               .groups = "drop")
+#   
+#   common <- intersect(cons$target_continent, imp$target_continent)
+#   cons <- cons %>% filter(target_continent %in% common)
+#   imp  <- imp  %>% filter(target_continent %in% common)
+#   
+#   cons_max <- max(cons$value, na.rm = TRUE)
+#   imp_max  <- if (nrow(imp)) max(imp$value, na.rm = TRUE) else 1
+#   k <- if (is.finite(imp_max) && imp_max > 0) cons_max / imp_max else 1
+#   
+#   flow_imp <- m$short_label
+#   plot_df <- bind_rows(
+#     cons %>% mutate(flow = "Consumption", y = value),
+#     imp  %>% mutate(flow = flow_imp,      y = value * k)
+#   ) %>%
+#     mutate(flow = factor(flow, levels = c("Consumption", flow_imp)),
+#            target_continent = factor(target_continent,
+#                                      levels = names(continent_palette)))
+#   
+#   ggplot(plot_df, aes(year, y,
+#                       colour   = target_continent,
+#                       linetype = flow,
+#                       group    = interaction(target_continent, flow))) +
+#     geom_line(linewidth = 0.7) +
+#     scale_x_continuous(breaks = scales::pretty_breaks()) +
+#     scale_y_continuous(
+#       name     = y_label,
+#       sec.axis = sec_axis(~ . / k, name = m$y_label)
+#     ) +
+#     scale_linetype_manual(values = setNames(c("solid", "longdash"),
+#                                             c("Consumption", flow_imp))) +
+#     scale_colour_manual(values   = continent_palette,
+#                         name     = "Continent",
+#                         na.value = "grey60",
+#                         drop     = FALSE) +
+#     labs(title    = paste0(item_name, " · ", m$short_label),
+#          x        = NULL,
+#          colour   = "Continent",
+#          linetype = "Flow") +
+#     theme_minimal(base_size = 11) +
+#     theme(panel.grid.minor = element_blank(),
+#           legend.key.size  = unit(0.6, "cm"))
+# }
+# 
+# 
+# 
+# plot_consumption_vs_impact_by_continent(
+#   Y_data           = Y_per_year_continent,
+#   impact_data      = dt_tradeFeed,
+#   regions          = regions,
+#   target_comm_in   = c("c146", "c147", "c149"),
+#   indicator_select = "ibif_total"
+# )
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# plot_decoupling_indexed <- function(
+#     Y_data, impact_data, regions,
+#     target_comm_in, indicator_select,
+#     meta = indicator_meta,
+#     base_year = NULL) {
+#   
+#   cons <- Y_data %>%
+#     filter(comm_code %in% target_comm_in) %>%
+#     group_by(year, target_continent, comm_code, item) %>%
+#     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(flow = "Consumption")
+#   
+#   imp <- impact_data %>%
+#     left_join(regions %>% select(iso3c, continent),
+#               by = c("country_consumer" = "iso3c")) %>%
+#     rename(target_continent = continent) %>%
+#     filter(commodity %in% target_comm_in,
+#            indicator == indicator_select) %>%
+#     group_by(year, target_continent, commodity) %>%
+#     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+#     rename(comm_code = commodity) %>%
+#     left_join(distinct(cons, comm_code, item), by = "comm_code") %>%
+#     mutate(flow = meta[indicator == indicator_select, short_label])
+#   
+#   df <- bind_rows(cons, imp)
+#   if (is.null(base_year)) base_year <- min(df$year)
+#   
+#   df <- df %>%
+#     group_by(flow, target_continent, comm_code, item) %>%
+#     arrange(year) %>%
+#     mutate(
+#       base_val = value[year == base_year][1],
+#       index    = ifelse(is.finite(base_val) & base_val > 0,
+#                         100 * value / base_val, NA_real_)
+#     ) %>%
+#     ungroup() %>%
+#     filter(is.finite(index))
+#   
+#   # Wide form for ribbon between the two flows
+#   df_w <- df %>%
+#     select(year, target_continent, item, flow, index) %>%
+#     tidyr::pivot_wider(names_from = flow, values_from = index) %>%
+#     rename(cons_idx = Consumption,
+#            imp_idx  = !!meta[indicator == indicator_select, short_label])
+#   
+#   ggplot() +
+#     geom_hline(yintercept = 100, colour = "grey80", linewidth = 0.3) +
+#     geom_ribbon(data = df_w,
+#                 aes(x = year, ymin = pmin(cons_idx, imp_idx),
+#                     ymax = pmax(cons_idx, imp_idx),
+#                     fill = cons_idx > imp_idx),
+#                 alpha = 0.15) +
+#     geom_line(data = df,
+#               aes(year, index, colour = flow, linetype = flow),
+#               linewidth = 0.7) +
+#     facet_grid(rows = vars(target_continent), cols = vars(item),
+#                scales = "free_y") +
+#     scale_colour_manual(values = setNames(c("#444444", "#D55E00"),
+#                                           c("Consumption",
+#                                             meta[indicator == indicator_select, short_label]))) +
+#     scale_linetype_manual(values = setNames(c("solid", "longdash"),
+#                                             c("Consumption",
+#                                               meta[indicator == indicator_select, short_label]))) +
+#     scale_fill_manual(values = c(`TRUE` = "#0072B2", `FALSE` = "#D55E00"),
+#                       labels = c(`TRUE` = "Decoupling gap", `FALSE` = "Recoupling gap"),
+#                       name   = NULL) +
+#     labs(title = paste0("Decoupling: consumption vs ",
+#                         meta[indicator == indicator_select, short_label]),
+#          subtitle = paste0("Indexed to ", base_year, " = 100"),
+#          x = NULL, y = paste0("Index (", base_year, " = 100)"),
+#          colour = NULL, linetype = NULL) +
+#     theme_minimal(base_size = 11) +
+#     theme(panel.grid.minor = element_blank(),
+#           legend.position  = "bottom")
+# }
+# 
+# plot_decoupling_indexed(
+#   Y_data           = Y_per_year_continent,
+#   impact_data      = dt_tradeFeed,
+#   regions          = regions,
+#   target_comm_in   = c("c146", "c147"),
+#   indicator_select = "ibif_total"
+# )
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+
+
+
+
+
+
+

@@ -18,6 +18,12 @@ areas <- fread("inst/regions_full.csv")[current==TRUE, code]
 items <- fread("inst/items_full_bcp.csv")[!is.na(item_code), item_code]
 n <- length(areas)
 
+# Items kept as RAW btd_bal (no re-export reallocation, no domestic_use rescaling).
+# 1274 = Used Cooking Oil (-> c145): CBS domestic_use ~ 0, so the standard
+# magnitude-pinning would zero almost every destination. Preserve the input
+# bilateral flows here; the supply-use imbalance is reconciled downstream.
+RAW_ITEMS <- c(1274L)
+
 # Prepare reallocation of re-exports --------------------------------------
 # Create a structure to map importers to exporters per item (+ targets)
 # Prepare reallocation of re-exports --------------------------------------
@@ -64,6 +70,24 @@ for(i in seq_along(years)) {
   
   # Run re-export reallocation per item
   for(j in as.character(items)) {
+    
+    # --- EXCEPTION: RAW_ITEMS (e.g. 1274 UCO -> c145) ------------------------
+    # Keep the raw btd_bal bilateral matrix: NO re-export reallocation and NO
+    # rescaling to domestic_use. Column sums therefore equal input imports, not
+    # domestic_use; the resulting supply-use imbalance is handled later.
+    if (as.integer(j) %in% RAW_ITEMS) {
+      raw <- as.matrix(mapping_reex[[j]])                 # raw btd_bal flows (n x n)
+      final_result <- Matrix::Matrix(round(raw), sparse = TRUE)  # drop round() to keep exact
+      cs <- colSums(raw)
+      S  <- sweep(raw, 2, pmax(cs, 1), FUN = "/")          # origin shares per destination
+      S[, cs == 0] <- 0
+      S[!is.finite(S)] <- 0
+      S  <- Matrix::Matrix(S, sparse = TRUE)
+      mapping_reex[[j]]   <- final_result
+      mapping_shares[[j]] <- S
+      next
+    }
+    
     data_item <- cbs_slice[.(as.integer(j), areas)]
     
     # domestic supply vector (same order as 'areas' because `data` was merged by area_code)
@@ -181,4 +205,3 @@ sup_shares[, comm_code := items$comm_code[match(sup_shares$item_code, items$item
 # Store the balanced sheets -----------------------------------------------
 saveRDS(btd_final, "data/btd_final.rds")
 saveRDS(sup_shares, "data/sup_shares.rds")
-

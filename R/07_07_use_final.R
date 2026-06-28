@@ -340,6 +340,7 @@ saveRDS(use_table_final, "inputs_for_final_data/use_final_bf.rds")
 
 
 
+
 ###########################################################################################
 ########### FINAL CLEANING AND SAVING OF TCF TABLE IF NEEDED LATER #########
 ###########################################################################################
@@ -351,9 +352,10 @@ tcf_table_clean <- tcf_table_clean %>%
                           input == "Cereals, Other" ~ " Triticale",
                           input == "Castor oil" ~ "Oil of castor beans",
                           TRUE ~ input)
-         ) %>%
+  ) %>%
   select(-input)
 
 saveRDS(tcf_table_clean, "intermediate_data/tcf_table_final.rds")
 
 rm(list = ls())
+
