@@ -1080,7 +1080,7 @@ plot_continent_heatmap <- function(dt_feedstock,
   # Add a new indicator here = supported everywhere downstream.
   cfg_all <- list(
     ibif_total = list(
-      div          = 1e-3,
+      div          = 1e3,
       legend_title = "Means species abundance loss (1000 MSA·km²·yr, annual mean)",
       file_suffix  = "IBIF_flows_continent",
       trans        = "log1p"
