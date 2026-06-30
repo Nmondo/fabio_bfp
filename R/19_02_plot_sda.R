@@ -57,68 +57,68 @@ indicator_meta <- data.table(
 
 SDA_chain_ibif <- fread("output/FABIO_SDA_chained_2012_2022_ibif_total_value_BF.csv")
 SDA_chain_ibif_drivers <- fread("output/FABIO_SDA_chained_2012_2022_ibif_total_value_BF_drivers.csv")
-SDA_chain_lcim <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF.csv")
-SDA_chain_lcim_drivers <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF_drivers.csv")
+# SDA_chain_lcim <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF.csv")
+# SDA_chain_lcim_drivers <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF_drivers.csv")
 # SDA_smooth <- fread("output/FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF.csv")
 # SDA_smooth_drivers <- fread("output/FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF_drivers.csv")
 
 
-View(SDA_chain_ibif_drivers[effect == "feedstock_mix"])
-View(SDA_chain_ibif_drivers[effect == "composition"])
+# View(SDA_chain_ibif_drivers[effect == "feedstock_mix"])
+# View(SDA_chain_ibif_drivers[effect == "composition"])
 
 
 ######################################################################################################################
 ############################## PLOTS / PLOT FUNCTIONS #######################
 ######################################################################################################################
 
-######################################################################################################################
-#1. Plotting drivers by continent
-######################################################################################################################
-
-# --- Aggregate by continent ------------------------------------------------
-plot_dt <- SDA_smooth[
-  effect %in% c("intensity", "feedstock_mix", "sourcing",
-                "scale", "composition", "origin")
-][regions[, .(iso3c, continent)],
-  on = c(country_consumer = "iso3c"),
-  nomatch = NULL
-][, .(value = sum(value, na.rm = TRUE)),
-  by = .(continent, effect)]
-
-# Order continents by total Δ footprint, descending
-continent_order <- plot_dt[, .(total = sum(value, na.rm = TRUE)),
-                           by = continent][order(-total), continent]
-
-plot_dt[, continent := factor(continent, levels = continent_order)]
-plot_dt[, effect    := factor(effect,
-                              levels = c("intensity", "feedstock_mix", "sourcing",
-                                         "scale", "composition", "origin"))]
-
-# --- Plot ------------------------------------------------------------------
-plot_sda_continent <- ggplot(plot_dt, aes(x = continent, y = value, fill = effect)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.75) +
-  geom_hline(yintercept = 0, linewidth = 0.3) +
-  scale_fill_brewer(palette = "Set2") +
-  labs(
-    title    = "SDA effects, 2012-2014 average versus 2020–2022 average — by continent",
-    subtitle = "Continents ordered left-to-right by total change",
-    x        = NULL,
-    y        = "Contribution to Δ footprint",
-    fill     = "Effect"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x        = element_text(angle = 30, hjust = 1),
-    panel.grid.major.x = element_blank(),
-    legend.position    = "bottom"
-  )
-
-ggsave(filename = file.path("output", "plot", "2012_2022_SDA_continent.pdf"),
-       device = cairo_pdf,
-       plot   = plot_sda_continent,
-       width  = 10, height = 6, dpi = 300)
-
-
+# ######################################################################################################################
+# #1. Plotting drivers by continent
+# ######################################################################################################################
+# 
+# # --- Aggregate by continent ------------------------------------------------
+# plot_dt <- SDA_smooth[
+#   effect %in% c("intensity", "feedstock_mix", "sourcing",
+#                 "scale", "composition", "origin")
+# ][regions[, .(iso3c, continent)],
+#   on = c(country_consumer = "iso3c"),
+#   nomatch = NULL
+# ][, .(value = sum(value, na.rm = TRUE)),
+#   by = .(continent, effect)]
+# 
+# # Order continents by total Δ footprint, descending
+# continent_order <- plot_dt[, .(total = sum(value, na.rm = TRUE)),
+#                            by = continent][order(-total), continent]
+# 
+# plot_dt[, continent := factor(continent, levels = continent_order)]
+# plot_dt[, effect    := factor(effect,
+#                               levels = c("intensity", "feedstock_mix", "sourcing",
+#                                          "scale", "composition", "origin"))]
+# 
+# # --- Plot ------------------------------------------------------------------
+# plot_sda_continent <- ggplot(plot_dt, aes(x = continent, y = value, fill = effect)) +
+#   geom_col(position = position_dodge(width = 0.8), width = 0.75) +
+#   geom_hline(yintercept = 0, linewidth = 0.3) +
+#   scale_fill_brewer(palette = "Set2") +
+#   labs(
+#     title    = "SDA effects, 2012-2014 average versus 2020–2022 average — by continent",
+#     subtitle = "Continents ordered left-to-right by total change",
+#     x        = NULL,
+#     y        = "Contribution to Δ footprint",
+#     fill     = "Effect"
+#   ) +
+#   theme_minimal(base_size = 12) +
+#   theme(
+#     axis.text.x        = element_text(angle = 30, hjust = 1),
+#     panel.grid.major.x = element_blank(),
+#     legend.position    = "bottom"
+#   )
+# 
+# ggsave(filename = file.path("output", "plot", "2012_2022_SDA_continent.pdf"),
+#        device = cairo_pdf,
+#        plot   = plot_sda_continent,
+#        width  = 10, height = 6, dpi = 300)
+# 
+# 
 
 
 ######################################################################################################################
@@ -219,7 +219,7 @@ plot_SDA_chain <- function(first_year,
 ########### Plotting for various extensions
 
 plot_SDA_chain(2012, 2022, "ibif_total")
-plot_SDA_chain(2012, 2022, "LCIM_EQ_terrestrial")
+# plot_SDA_chain(2012, 2022, "LCIM_EQ_terrestrial")
 
 
 
@@ -407,23 +407,11 @@ plot_SDA_chained_drivers <- function(indicator,
     )
   }
   
-  invisible(plots)
+  invisible(list(plots = plots, plot_base = plot_base))
 }
 
 
 # --- Usage -----------------------------------------------------------------
 plot_SDA_chained_drivers("ibif_total")
-plot_SDA_chained_drivers("LCIM_EQ_terrestrial")
+# plot_SDA_chained_drivers("LCIM_EQ_terrestrial")
 
-
-
-
-
-
-
-
-sub_fb <- plot_base[effect == "feedstock_mix"]
-top10  <- sub_fb[, .(tot = sum(abs(value), na.rm = TRUE)), by = item_origin][
-  order(-tot)][1:10, item_origin]
-top10                          # what's actually showing up
-setdiff(top10, item_order)     # the ones that become NA

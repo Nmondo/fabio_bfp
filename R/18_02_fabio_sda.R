@@ -1018,7 +1018,7 @@ fp_sda_smoothed <- function(years_base      = 2012:2014,
 
 SDA_chain <- fp_sda_chained(
   years        = 2012:2022,
-  extension    = "LCIM_EQ_terrestrial",
+  extension    = "ibif_total",
   commodity    = c("c146", "c147", "c149"),
   breakdown    = TRUE,
   save         = TRUE,
@@ -1050,8 +1050,10 @@ SDA_chain <- fp_sda_chained(
 # 
 
 
+
+
 ###########################################################
-########### SANITY CHECKS
+########### SANITY CHECKS ########### 
 ###########################################################
 
 # 1) Per-country, per year-pair: scalar effects sum to delta

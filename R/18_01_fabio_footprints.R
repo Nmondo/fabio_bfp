@@ -138,7 +138,9 @@ fp_feedstock <- function(country       = NULL,
   
   # --- Extension intensity ---------------------------------------------------
   if (!is.null(extension)) {
-    ext <- as.numeric(Ei[ex$Stressor == extension, ]) / as.vector(Xi)
+    if (!extension %in% rownames(Ei))
+      stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
+    ext <- as.numeric(Ei[extension, ]) / as.vector(Xi)
     ext[!is.finite(ext)] <- 0
   } else {
     ext <- rep(1, length(Xi))
@@ -146,8 +148,8 @@ fp_feedstock <- function(country       = NULL,
   MP <- ext * L
   
   # --- Resolve country list -------------------------------------------------
-  if (is.null(country)) country <- c(unique(fd$iso3c), "EU27")
-  unknown <- setdiff(setdiff(country, "EU27"), fd$iso3c)
+  if (is.null(country)) country <- unique(fd$iso3c)
+  unknown <- setdiff(country, fd$iso3c)
   if (length(unknown) > 0) {
     warning("Unknown countries dropped: ", paste(unknown, collapse = ", "))
     country <- setdiff(country, unknown)
@@ -167,11 +169,7 @@ fp_feedstock <- function(country       = NULL,
   # --- Helper: per-country, per-commodity footprint -------------------------
   compute_for <- function(ctry, cc) {
     # Country final demand
-    if (ctry == "EU27") {
-      Y_country <- Yi[, fd$continent == "EU", drop = FALSE]
-    } else {
-      Y_country <- Yi[, fd$iso3c == ctry, drop = FALSE]
-    }
+    Y_country <- Yi[, fd$iso3c == ctry, drop = FALSE]
     y_full <- as.vector(rowSums(as.matrix(Y_country)))
     
     comm_idx <- io$comm_code == cc
@@ -286,199 +284,6 @@ fp_feedstock <- function(country       = NULL,
 
 
 
-
-###########################################################
-########### CONSUMPTION-BASED IMPACT
-########### OF SELECTED COMMODITIES
-########### TRADE BREAKDOWN OR BILATERAL FLOWS
-########### FOR ALL REPORTING COUNTRIES
-###########################################################
-
-fp_trade_breakdown <- function(year,
-                               extension    = NULL,        # NULL = material flows
-                               commodity    = NULL,        # NULL = all commodities
-                               allocation   = "value",
-                               input_path   = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
-                               losses       = TRUE,
-                               by_commodity = FALSE,
-                               bilateral    = FALSE,
-                               drop_zero    = TRUE,
-                               save         = FALSE,
-                               output_dir   = "output",
-                               regions, io, fd, ex,
-                               X = NULL, Y = NULL, E = NULL, L = NULL,
-                               return_full  = FALSE) {
-  
-  sub <- if (losses) "losses/" else ""
-  
-  # --- Load only what wasn't passed in ---------------------------------------
-  if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
-  if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
-  if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(input_path, "E.rds"))
-  if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
-  
-  Xi <- X[, as.character(year)]
-  Yi <- Y[[as.character(year)]]
-  Ei <- if (!is.null(extension)) E[[as.character(year)]] else NULL
-  
-  # --- Extension intensity ---------------------------------------------------
-  if (!is.null(extension)) {
-    ext <- as.numeric(Ei[ex$Stressor == extension, ]) / as.vector(Xi)
-    ext[!is.finite(ext)] <- 0
-  } else {
-    ext <- NULL                           # signals material mode to compute_oc
-  }
-  
-  # --- Final demand collapsed to one column per consumer country ------------
-  colnames(Yi) <- fd$iso3c
-  Y_country    <- agg(Yi)
-  countries    <- colnames(Y_country)
-  
-  # --- Validate commodity input ---------------------------------------------
-  if (is.null(commodity)) commodity <- unique(io$comm_code)
-  unknown <- setdiff(commodity, io$comm_code)
-  if (length(unknown) > 0) {
-    warning("Unknown comm_codes dropped: ", paste(unknown, collapse = ", "))
-    commodity <- intersect(commodity, io$comm_code)
-  }
-  if (length(commodity) == 0) stop("No valid comm_codes supplied.")
-  
-  # --- Sparse row aggregator: (R·N) → R, by country of origin ---------------
-  row_agg <- sparseMatrix(
-    i    = seq_len(nrow(io)),
-    j    = match(io$iso3c, countries),
-    x    = 1,
-    dims = c(nrow(io), length(countries))
-  )
-  
-  # --- Origin × consumer impact matrix for a commodity set ------------------
-  compute_oc <- function(cc_set) {
-    mask <- io$comm_code %in% cc_set
-    Y_masked <- Y_country
-    Y_masked[!mask, ] <- 0
-    
-    x_triggered <- L %*% Y_masked
-    # skip identity multiply in material mode
-    impact <- if (!is.null(ext)) {
-      Diagonal(x = ext) %*% x_triggered
-    } else {
-      x_triggered
-    }
-    
-    impact_oc <- as.matrix(t(row_agg) %*% impact)
-    dimnames(impact_oc) <- list(countries, countries)
-    impact_oc
-  }
-  
-  # --- self / exports / imports breakdown -----------------------------------
-  build_breakdown <- function(impact_oc, label_commodity = NA_character_) {
-    d  <- diag(impact_oc)
-    rs <- rowSums(impact_oc)
-    cs <- colSums(impact_oc)
-    
-    data.table(
-      country          = rownames(impact_oc),
-      self_consumption = d,
-      exports          = rs - d,
-      imports          = cs - d,
-      commodity        = label_commodity
-    )
-  }
-  
-  # --- bilateral long-format from R x R matrix -----------------------------
-  build_bilateral <- function(impact_oc, label_commodity = NA_character_) {
-    n <- nrow(impact_oc)
-    out <- data.table(
-      country_origin   = rep(rownames(impact_oc), times = n),
-      country_consumer = rep(colnames(impact_oc), each  = n),
-      value            = as.vector(impact_oc),
-      commodity        = label_commodity
-    )
-    if (drop_zero) out <- out[value != 0]
-    out[, flow_type := fifelse(country_origin == country_consumer, "self", "trade")]
-    out
-  }
-  
-  # --- Compute and assemble -------------------------------------------------
-  indicator_label <- if (!is.null(extension)) extension else "material"
-  
-  if (bilateral) {
-    matrices <- if (by_commodity) {
-      setNames(lapply(commodity, compute_oc), commodity)
-    } else {
-      list(compute_oc(commodity))
-    }
-    
-    long <- if (by_commodity) {
-      rbindlist(lapply(commodity, function(cc) {
-        build_bilateral(matrices[[cc]], label_commodity = cc)
-      }), use.names = TRUE)
-    } else {
-      tmp <- build_bilateral(matrices[[1]])
-      tmp[, commodity := NULL][]
-    }
-    
-    long[, `:=`(year = year, indicator = indicator_label, allocation = allocation)]
-    id_vars <- c("country_origin", "country_consumer", "flow_type",
-                 "year", "indicator", "allocation")
-    if (by_commodity) id_vars <- c(id_vars, "commodity")
-    setcolorder(long, c(id_vars, "value"))
-    
-    out_to_save <- long
-    
-  } else {
-    # --- Non-bilateral: trade breakdown ------------------------------------
-    if (by_commodity) {
-      wide <- rbindlist(lapply(commodity, function(cc) {
-        build_breakdown(compute_oc(cc), label_commodity = cc)
-      }), use.names = TRUE)
-    } else {
-      wide <- build_breakdown(compute_oc(commodity))
-      wide[, commodity := NULL]
-    }
-    
-    wide[, `:=`(year = year, indicator = indicator_label, allocation = allocation)]
-    
-    id_vars <- c("country", "year", "indicator", "allocation")
-    if (by_commodity) id_vars <- c(id_vars, "commodity")
-    
-    long <- melt(wide,
-                 id.vars       = id_vars,
-                 measure.vars  = c("self_consumption", "exports", "imports"),
-                 variable.name = "category",
-                 value.name    = "value")
-    long[, category := as.character(category)]
-    
-    setcolorder(wide, c(id_vars, "self_consumption", "exports", "imports"))
-    setcolorder(long, c(id_vars, "category", "value"))
-    
-    out_to_save <- long
-  }
-  
-  if (save) {
-    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-    fname <- build_filename("FABIO_trade",
-                            year      = year,
-                            indicator = indicator_label,
-                            alloc     = allocation,
-                            comm      = commodity,
-                            byComm    = by_commodity,
-                            bilat     = bilateral)
-    fwrite(out_to_save, file.path(output_dir, fname))
-    message("Wrote ", file.path(output_dir, fname))
-  }
-  
-  if (return_full) {
-    if (bilateral) return(list(matrices = matrices, long = long))
-    return(list(wide = wide, long = long))
-  }
-  out_to_save
-}
-
-
-
-
 ###########################################################
 ########### CONSUMPTION-BASED IMPACT
 ########### OF SELECTED COUNTRIES (default: all)
@@ -491,21 +296,21 @@ fp_trade_breakdown <- function(year,
 # L, this function uses the full Leontief inverse directly:
 
 fp_indirect <- function(country       = NULL,
-                      year,
-                      extension     = NULL,
-                      commodity,
-                      allocation    = "value",
-                      input_path    = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
-                      losses        = TRUE,
-                      by_commodity  = TRUE,
-                      by_country    = TRUE,
-                      top_n         = NULL,        # keep top-N origin sectors per (country, commodity)
-                      drop_zero     = TRUE,
-                      save          = FALSE,
-                      output_dir    = "output",
-                      regions, io, fd, ex,
-                      X = NULL, Y = NULL, E = NULL, L = NULL,
-                      return_full   = FALSE) {
+                        year,
+                        extension     = NULL,
+                        commodity,
+                        allocation    = "value",
+                        input_path    = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                        losses        = TRUE,
+                        by_commodity  = TRUE,
+                        by_country    = TRUE,
+                        top_n         = NULL,        # keep top-N origin sectors per (country, commodity)
+                        drop_zero     = TRUE,
+                        save          = FALSE,
+                        output_dir    = "output",
+                        regions, io, fd, ex,
+                        X = NULL, Y = NULL, E = NULL, L = NULL,
+                        return_full   = FALSE) {
   
   sub <- if (losses) "losses/" else ""
   
@@ -525,7 +330,9 @@ fp_indirect <- function(country       = NULL,
   
   # --- Extension intensity ---------------------------------------------------
   if (!is.null(extension)) {
-    ext <- as.numeric(Ei[ex$Stressor == extension, ]) / as.vector(Xi)
+    if (!extension %in% rownames(Ei))
+      stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
+    ext <- as.numeric(Ei[extension, ]) / as.vector(Xi)
     ext[!is.finite(ext)] <- 0
   } else {
     ext <- rep(1, length(Xi))
@@ -533,8 +340,8 @@ fp_indirect <- function(country       = NULL,
   MP <- ext * L
   
   # --- Resolve country list -------------------------------------------------
-  if (is.null(country)) country <- c(unique(fd$iso3c), "EU27")
-  unknown <- setdiff(setdiff(country, "EU27"), fd$iso3c)
+  if (is.null(country)) country <- unique(fd$iso3c)
+  unknown <- setdiff(country, fd$iso3c)
   if (length(unknown) > 0) {
     warning("Unknown countries dropped: ", paste(unknown, collapse = ", "))
     country <- setdiff(country, unknown)
@@ -553,11 +360,7 @@ fp_indirect <- function(country       = NULL,
   
   # --- Helper: per-country, per-commodity footprint -------------------------
   compute_for <- function(ctry, cc) {
-    if (ctry == "EU27") {
-      Y_country <- Yi[, fd$continent == "EU", drop = FALSE]
-    } else {
-      Y_country <- Yi[, fd$iso3c == ctry, drop = FALSE]
-    }
+    Y_country <- Yi[, fd$iso3c == ctry, drop = FALSE]
     y_full <- as.vector(rowSums(as.matrix(Y_country)))
     
     comm_idx <- io$comm_code == cc
@@ -930,7 +733,7 @@ ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
 extensions_choice <- as.list(c(ibif_stressors,
                                "LCIM_EQ_terrestrial_climate","LCIM_EQ_terrestrial_acidification",
                                "land_harv")
-                       )
+)
 
 
 
@@ -944,22 +747,22 @@ extensions_choice <- as.list(c(ibif_stressors,
 for (yr in 2012:2022) {
   for (ext in extensions_choice) {
     ext_val <- ext
-  message("--- ", yr, " | ext: ", ext, " ---")
-  fp_trade_breakdown_feedstock(
-    year         = yr,
-    extension    = ext_val,
-    commodity    = c("c146", "c147", "c149"),
-    by_commodity = TRUE,
-    by_feedstock = TRUE,
-    bilateral    = TRUE,
-    save         = TRUE,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, Z = Z, E = E_bar
-  )
+    message("--- ", yr, " | ext: ", ext, " ---")
+    fp_trade_breakdown_feedstock(
+      year         = yr,
+      extension    = ext_val,
+      commodity    = c("c146", "c147", "c149"),
+      by_commodity = TRUE,
+      by_feedstock = TRUE,
+      bilateral    = TRUE,
+      save         = TRUE,
+      regions = regions, io = io, fd = fd, ex = ex,
+      X = X, Y = Y, Z = Z, E = E_bar
+    )
   }
 }
 
-extensions_choice <- as.list(c("ibif_total", "LCIM_EQ_terrestrial"))
+extensions_choice <- as.list(c("ibif_total", "LCIM_EQ_terrestrial", "land_harv"))
 
 for (yr in 2012:2022) {
   for (ext in extensions_choice) {
@@ -974,7 +777,7 @@ for (yr in 2012:2022) {
       save = TRUE,
       regions = regions, io = io, fd = fd, ex = ex,
       X = X, Y = Y, Z = Z, E = E_bar
-)
+    )
   }
 }
 
@@ -994,7 +797,7 @@ for (yr in 2012:2022) {
     regions = regions, io = io, fd = fd, ex = ex,
     X = X, Y = Y, E = E_bar
   )
-  }
+}
 
 
 
@@ -1015,8 +818,8 @@ for (yr in 2012:2022) {
     X = X, Y = Y, Z = Z,
     E = E_bar,                    
     L = NULL                       
-)
-  }
+  )
+}
 
 
 
@@ -1026,18 +829,18 @@ for (yr in 2012:2022) {
 ########## Biopolymers ##########
 
 for (yr in 2012:2022) {
-    message("--- ", yr, " ---")
-    fp_trade_breakdown_feedstock(
-      year         = yr,
-      extension    = "ibif_total",
-      commodity    = bp_set,
-      by_commodity = TRUE,
-      by_feedstock = TRUE,
-      bilateral    = TRUE,
-      save         = TRUE,
-      regions = regions, io = io, fd = fd, ex = ex,
-      X = X, Y = Y, Z = Z, E = E_bar
-    )
+  message("--- ", yr, " ---")
+  fp_trade_breakdown_feedstock(
+    year         = yr,
+    extension    = "ibif_total",
+    commodity    = bp_set,
+    by_commodity = TRUE,
+    by_feedstock = TRUE,
+    bilateral    = TRUE,
+    save         = TRUE,
+    regions = regions, io = io, fd = fd, ex = ex,
+    X = X, Y = Y, Z = Z, E = E_bar
+  )
 }
 
 
@@ -1096,7 +899,7 @@ dt_Y_BP <- extract_Y_long(Y, commodities = c("c060", "c146", "c148", c(paste0("c
 
 fwrite(dt_Y_long, file.path("output", "Y_summary_c146_c147_c149.csv"))
 fwrite(dt_Y_BP, file.path("output", "Y_summary_BP.csv"))
-       
+
 
 
 extract_Z_long <- function(Z, commodities = c("c146", "c147", "c149")) {
@@ -1506,12 +1309,14 @@ y_sourcing_shares(years = 2012:2022,
 #   Ei <- if (!is.null(extension)) E[[as.character(year)]] else NULL
 #   
 #   # --- Direct extension intensity (per unit output) -------------------------
-#   if (!is.null(extension)) {
-#     ext <- as.numeric(Ei[ex$Stressor == extension, ]) / as.vector(Xi)
-#     ext[!is.finite(ext)] <- 0
-#   } else {
-#     ext <- rep(1, length(Xi))
-#   }
+# if (!is.null(extension)) {
+#   if (!extension %in% rownames(Ei))
+#     stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
+#   ext <- as.numeric(Ei[extension, ]) / as.vector(Xi)
+#   ext[!is.finite(ext)] <- 0
+# } else {
+#   ext <- rep(1, length(Xi))
+# }
 #   MP <- ext * L                        # MP[origin, sector] = total ext per unit FD of sector
 #   
 #   # --- Validate commodity input ---------------------------------------------
@@ -1650,10 +1455,3 @@ y_sourcing_shares(years = 2012:2022,
 # )
 # fwrite(intensity_land_bcp, file.path("output", fname))
 # message("Wrote ", file.path("output", fname))
-
-
-
-
-
-
-

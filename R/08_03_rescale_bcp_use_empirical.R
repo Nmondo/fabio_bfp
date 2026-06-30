@@ -270,24 +270,42 @@ rescale_block <- function(yr, bf) {
       P[, C901] <- C901_SEED_LAMBDA * pat + (1 - C901_SEED_LAMBDA) * cur
     }
     
-    # column targets aligned to P
+    # column targets aligned to P  (UNCHANGED — already correct)
     col_t <- setNames(numeric(ncol(P)), colnames(P))
     hit   <- intersect(colnames(P), red$comm_code)
     col_t[hit] <- red[match(hit, comm_code), share_red] * total_mass
-    if (!ZERO_NONGAP_FEEDSTOCKS) {                    # hold non-RED feedstocks at prior level
+    if (!ZERO_NONGAP_FEEDSTOCKS) {
       keep <- setdiff(colnames(P), red$comm_code)
       col_t[keep] <- colSums(P)[keep]
-      # renorm RED feedstocks onto the remaining mass
       rem <- total_mass - sum(col_t[keep])
       col_t[hit] <- red[match(hit, comm_code), share_red] /
         sum(red[match(hit, comm_code), share_red]) * rem
     }
-    # rescale row targets so grand totals match the column-target total (defensive)
-    if (abs(sum(col_t) - sum(row_t)) > 1e-6 * total_mass)
-      message("  [", yr, " ", bf, "] grand-total mismatch row/col: ",
-              signif(sum(row_t), 6), " vs ", signif(sum(col_t), 6))
+    
+    # ---- NO net-of-fixed subtraction --------------------------------------------
+    # `supply_fixed` is the capped countries' NON-EU-export mass. compute_AY_origin
+    # never routes it to EU final demand, so it must NOT offset the EU-facing column
+    # target. The capped countries' EU-EXPORT feedstock is already a set of rows in
+    # P (supply_resc = supply*eu_share), so the residual target share_red — built on
+    # red_resid = red_value - fabio_nonS — is reproduced by the pool directly.
+    # supply_fixed is still carried through reassembly below for IDN/CHN output
+    # conservation; it just never touches col_t. (Replaces the old block that pinned
+    # colSums(M)+fixed == share_red*grand_total, which balanced combined SUPPLY space
+    # instead of the consumption-trace space the comparison actually measures.)
+    
+    # (optional) guardrail: when a capped country's EU-export of a feedstock exceeds
+    # that feedstock's residual target, the RAS can't fit it (post-2018 IDN/CHN palm
+    # rebound vs collapsing RED palm). enforce_row_totals absorbs it as a logged gap.
+    cap_exp <- s[iso3c %in% CAP_COUNTRIES,
+                 .(cx = sum(supply_resc) * resid_frac), by = comm_code]
+    cx <- setNames(numeric(ncol(P)), colnames(P)); cx[cap_exp$comm_code] <- cap_exp$cx
+    tight <- names(which(cx > col_t + 1e-6 * total_mass))
+    if (length(tight))
+      message("  [", yr, " ", bf, "] capped EU-export exceeds residual target {",
+              paste(tight, collapse = ", "), "} -> RED/FABIO export mismatch; gap logged.")
     
     M <- ras_balance(P, row_t, col_t)
+    
     if (length(attr(M, "inf_cols")))
       message("  [", yr, " ", bf, "] INFEASIBLE feedstocks (zero FABIO prior, RED>0): ",
               paste(attr(M, "inf_cols"), collapse = ", "), " -> need seeding strategy.")
@@ -296,7 +314,7 @@ rescale_block <- function(yr, bf) {
     if (max(abs(rowSums(M) - row_t)) > 1e-6 * max(total_mass, 1)) {
       M <- enforce_row_totals(M, row_t, col_t, yr, bf)
     }
-  }  # end if (!direct)
+  } 
   
   # reassemble + add back fixed (non-EU IDN/CHN) supply
   # reassemble + add back fixed (non-EU IDN/CHN) supply + held-back (1-resid_frac) mass
@@ -461,12 +479,8 @@ tcf_rev <- tcf_join
 # metadata lookups to rebuild use_final_bcp columns (each unique on its join key)
 proc_map <- unique(sup[, .(biofuel_code, proc, proc_code)], by = "biofuel_code")  # bf -> proc/code
 item_map <- unique(use_raw[, .(comm_code, item, item_code)], by = "comm_code")    # comm -> item/code
-area_map <- unique(merge(regions[, .(area_code = code, iso3c)],
-                         unique(use_raw[, .(area_code, area)]),
-                         by = "area_code", all.x = TRUE), by = "iso3c")           # iso3c -> code/area
-if (anyNA(area_map$area))
-  message(">>> ", sum(is.na(area_map$area)),
-          " selected iso3c have no area name in use_final_bcp -> check area_map.")
+area_map <- unique(regions[, .(iso3c, area_code = code, area = name)], by = "iso3c")
+
 
 # rescaled supply -> use --------------------------------------------------------
 use_resc <- merge(res[, .(year, biofuel_code, iso3c, comm_code, supply_new)],
@@ -624,8 +638,6 @@ allocate_c145_origin <- function(btd145, c145_dest, gap_ctry) {
 c145_origin <- allocate_c145_origin(btd145, c145_dest, gap_ctry)
 
 
-
-
 ###########################################################
 ########### MAKING UPDATED TABLES #########
 ###########################################################
@@ -715,6 +727,6 @@ setwd("/home/mmondolfo/fabio_bfp/")
 saveRDS(use_final_bcp,  "data/use_final_bcp.rds")
 saveRDS(btd_final, "data/btd_final_resc.rds")     # NB new name; btd_final.rds untouched
 saveRDS(cbs_sua_adjusted, "intermediate_data/cbs_sua_adjusted_resc.rds")   # NB new name; original untouched
-saveRDS(waste_flows, "intermediate_data/waste_flows.rds")
+saveRDS(waste_flows, "data/waste_flows.rds")
 
 rm(list = ls())

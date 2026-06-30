@@ -108,14 +108,14 @@ invisible(lapply(impacts_list, function(impacts) {
 #   mean   = mean(x, na.rm = TRUE),
 #   max    = max(x, na.rm = TRUE)
 # )), .SDcols = is.numeric]
-View(pressures[["luc_forest_to_agric"]])
+# View(pressures[["luc_forest_to_agric"]])
 # View(pressures[["n_leaching_runoff"]])
 # dt <- impacts_list[["LC"]][["p_runoff_erosion"]]
 # head(dt[order(dt$p_runoff_erosion_freshwater_eutrophication_average, decreasing = TRUE), ], n = 20)
 # dt <- impacts_list[["LC"]][["n_leaching_runoff"]]
 # head(dt[order(dt$n_leaching_runoff_freshwater_eutrophication_average ,decreasing = TRUE), ], n = 20)
-dt <- impacts_list[["LC"]][["land_crop"]]
-head(dt[order(dt$land_crop_terrestrial_land_use_average, decreasing = TRUE), ], n = 20)
+# dt <- impacts_list[["LC"]][["land_crop"]]
+# head(dt[order(dt$land_crop_terrestrial_land_use_average, decreasing = TRUE), ], n = 20)
 
 rm(LC_climate, LC_with_regions, FD_climate, FD_with_regions, impact_configs,
    fdem_pressures, pressures)

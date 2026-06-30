@@ -11,88 +11,14 @@ library(scales)
 library(paletteer)
 library(RColorBrewer)
 library(gridExtra)
+library(patchwork)
 
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
 regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
 
-
-######################################################################################################################
-############################## Making general vectors #######################
-######################################################################################################################
-
-# Colors for biofuels
-fuel_colors <- c(
-  "Biogasoline"       = "#D4A017",
-  "Biodiesel"        = "#5B2C6F",
-  "Renewable diesel" = "#9B59B6"
-)
-
-
-continent_palette <- c(
-  AFR = "#D55E00",  # vermillion
-  ASI = "#E69F00",  # orange
-  EU  = "#0072B2",  # blue
-  EUR = "#56B4E9",  # sky blue
-  LAM = "#009E73",  # green
-  NAM = "#CC79A7",  # pink
-  OCE = "#F0E442",  # yellow
-  ROW = "#000000"   # black
-)
-
-
-# List of commodities by category
-bf_set <- c("c146", "c147", "c149", "c150", "c151")
-bp_set <- paste0("c", 152:170)
-
-######################################################################################################################
-############################## Setting indicator-specific labels #######################
-######################################################################################################################
-
-indicator_meta <- data.table(
-  indicator    = c("land_harv", "ibif_total",
-                   "LCIM_EQ_freshwater", "LCIM_EQ_marine", "LCIM_EQ_terrestrial"),
-  scale_factor = c(1e3, 1, 1, 1, 1),
-  y_label      = c("Land use (1000 ha)",
-                   "Species abundance loss (MSA·km²·yr)",
-                   "Freshwater ecotoxicity (PDF·yr)",
-                   "Marine ecotoxicity (PDF·yr)",
-                   "Terrestrial ecotoxicity (PDF·yr)"),
-  short_label  = c("Land use", "IBIF",
-                   "Freshwater ecotoxicity",
-                   "Marine ecotoxicity",
-                   "Terrestrial ecotoxicity")
-)
-
-commodity_meta <- data.table(
-  item = c("Biogasoline", "Biodiesel", "Renewable diesel"), 
-  comm_code = c("c146", "c147", "c149")
-)
-
-feedstock_meta <- data.table(
-  feedstock = c(
-    # Oils & fats (biodiesel / HVO feedstocks)
-    "Palm Oil", "Palmkernel Oil", "Coconut Oil",
-    "Soyabean Oil", "Rape and Mustard Oil", "Sunflowerseed Oil",
-    "Cottonseed Oil", "Maize Germ Oil",
-    "Used Cooking Oil", "Fats, Animals, Raw",
-    # Sugar / starch (bioethanol feedstocks)
-    "Sugar cane", "Sugar beet", "Molasses",
-    "Maize and products", "Wheat and products", "Rice and products",
-    "Barley and products", "Rye and products", "Triticale",
-    "Sorghum and products", "Cassava and products",
-    # Residual
-    "Other, Waste"
-  ),
-  category = c(
-    rep("Oilcrops",   10),
-    rep("Starchy / Sugar crops", 11),
-    "Other"
-  )
-)
-
-
+source("R/19_plot_definitions.R")
 
 
 
@@ -140,7 +66,8 @@ dt_tradeFeed_BP <- rbindlist(lapply(files_tradeFeed_BP, fread))
 dt_feedstock    <- rbindlist(lapply(files_feedstock_BF, fread))
 dt_totalreq     <- rbindlist(lapply(files_totalreq_BF,  fread))
 
-
+saveRDS(dt_feedstock, "dt_feedstock.rds")
+saveRDS(dt_tradeFeed, "dt_tradefeed.rds")
 
 # Build combined LC Impact terrestrial indicator (climate + acidification; ruling out "land use") ----------------
 
@@ -373,51 +300,9 @@ plot_feedstock_desc <- function(data,
     group_by(year, target_comm, target_continent, feedstock) %>%
     summarize(value = sum(value), .groups = "drop")
   
-  # category-aware palette (no greens), ordered for within-group contrast
-  pal_by_cat <- list(
-    # Cool jewel tones — alternating blues ↔ purples, dark ↔ light
-    "Oilcrops"              = c("#08306b",  # deep navy
-                                "#c994c7",  # orchid
-                                "#2171b5",  # steel blue
-                                "#4a1486",  # dark violet
-                                "#9ecae1",  # light sky
-                                "#807dba",  # medium purple
-                                "#08519c",  # royal blue
-                                "#d8b4f8",  # lavender (light)
-                                "#54278f",  # deep purple
-                                "#6baed6",  # sky blue
-                                "#3f007d",  # indigo
-                                "#bcbddc"), # lavender
-    
-    # Warm earth / sunset tones — alternating red ↔ orange ↔ brown ↔ gold
-    "Starchy / Sugar crops" = c("#67000d",  # deep wine
-                                "#fdae6b",  # peach
-                                "#cb181d",  # vermillion
-                                "#543005",  # espresso
-                                "#fb6a4a",  # coral
-                                "#bf812d",  # tan
-                                "#d94801",  # burnt orange
-                                "#fcae91",  # salmon
-                                "#8c510a",  # sienna
-                                "#fd8d3c",  # tangerine
-                                "#b8860b",  # dark goldenrod
-                                "#fee5d9"), # peach cream
-    
-    # Neutrals — stays grey, but with more steps for differentiation
-    "Other"                 = c("#525252")
-  )
-  
-  cats <- feed_cat(top_feedstocks)
-  
-  # fill data-row palette
-  pal <- character(length(top_feedstocks))
-  for (k in unique(cats)) {
-    pos <- which(cats == k)
-    if (length(pos) > length(pal_by_cat[[k]]))
-      warning("More '", k, "' feedstocks than palette colours; recycling.")
-    pal[pos] <- rep_len(pal_by_cat[[k]], length(pos))
-  }
-  names(pal) <- top_feedstocks
+  # fixed, one-feedstock = one-colour palette (see R/feedstock_palette.R).
+  cats <- feed_cat(top_feedstocks)                      
+  pal  <- get_feedstock_palette(top_feedstocks, feedstock_meta)
   
   # legend breaks/labels: insert header pseudo-entries above each group
   legend_breaks <- character()
@@ -747,53 +632,29 @@ build_feedstock_palette <- function(data,
                                     commodities     = NULL,
                                     indicators      = NULL,
                                     top_n_feedstock = 10,
-                                    other_color     = "grey70",
-                                    palette_fn      = NULL,
-                                    override_colors = c(
-                                      "Fats, Animals, Raw" = "#762A83",
-                                      "Maize Germ Oil"     = "#F1A340"
-                                    )) {
-  
+                                    other_color     = unname(feedstock_color_map[["Other"]])) {
+
   dt <- as.data.table(data)
   if (!is.null(commodities)) dt <- dt[commodity %in% commodities]
   if (!is.null(indicators))  dt <- dt[indicator %in% indicators]
-  
+
   dt[grepl("^Animal or vegetable fats and oils", feedstock),
      feedstock := "Used Cooking Oil"]
-  
+
+  # which feedstocks make each commodity x indicator top-N (union)
   top_by_combo <- dt[, {
     rk <- .SD[, .(total = sum(value, na.rm = TRUE)), by = feedstock][order(-total)]
     list(feedstock = head(rk$feedstock, top_n_feedstock))
   }, by = .(commodity, indicator)]
-  
+
+  # order the union by overall magnitude (preserves prior stacking order)
   feedstocks <- dt[feedstock %in% unique(top_by_combo$feedstock),
                    .(total = sum(value, na.rm = TRUE)),
                    by = feedstock][order(-total), feedstock]
-  
-  n <- length(feedstocks)
-  if (is.null(palette_fn)) {
-    palette_fn <- function(k) {
-      pool <- unique(c(
-        RColorBrewer::brewer.pal(8, "Dark2"),
-        setdiff(RColorBrewer::brewer.pal(9, "Set1"), c("#ffff33", "#999999")),
-        RColorBrewer::brewer.pal(12, "Paired")
-      ))
-      if (k <= length(pool)) pool[seq_len(k)]
-      else scales::hue_pal(l = 55, c = 90)(k)
-    }
-  }
-  
-  base <- setNames(palette_fn(n), feedstocks)
-  
-  # Pin specific feedstocks to chosen hues. Default forces
-  # "Fats, Animals, Raw" (deep purple) and "Maize Germ Oil" (warm orange)
-  # to clearly different colours.
-  if (length(override_colors)) {
-    ovr <- intersect(names(override_colors), names(base))
-    base[ovr] <- override_colors[ovr]
-  }
-  
-  c(base, Other = other_color)
+
+  # COLOURS come from the fixed map, not a generator/override
+  pal <- get_feedstock_palette(feedstocks, feedstock_meta, other_color = other_color)
+  c(pal, Other = other_color)
 }
 
 # ─── Main plotting function ────────────────────────────────────────────
@@ -1219,15 +1080,21 @@ plot_continent_heatmap <- function(dt_feedstock,
   # Add a new indicator here = supported everywhere downstream.
   cfg_all <- list(
     ibif_total = list(
-      div          = 1e3,
+      div          = 1e-3,
       legend_title = "Means species abundance loss (1000 MSA·km²·yr, annual mean)",
       file_suffix  = "IBIF_flows_continent",
       trans        = "log1p"
     ),
     LCIM_EQ_terrestrial = list(
-      div          = 1e-2,
+      div          = 1e6,
       legend_title = "Terrestrial ecosystem damage (PDF·yr, annual mean)",
       file_suffix  = "LCIM_terrestrial_flows_continent",
+      trans        = "log1p"
+    ),
+    land_harv = list(
+      div          = 1e3, 
+      legend_title = "Land use (1000 ha, annual mean)",
+      file_suffix  = "LU_flows_continent",
       trans        = "log1p"
     )
   )
@@ -1371,6 +1238,7 @@ plot_continent_heatmap <- function(dt_feedstock,
 
 plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "ibif_total")
 plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "LCIM_EQ_terrestrial")
+plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv")
 
 
 
@@ -1690,108 +1558,109 @@ ggsave(plot = p_indicator_BRA_IDN_USA,
        height = 9,
        dpi = 300)
 
-######## ######## ######## ######## ######## ######## ######## 
-######## Correlations between main biodiv indicators ######## 
-######## ######## ######## ######## ######## ######## ######## 
-# global totals per indicator × year
-dt_global <- dt_tradeFeed[indicator %in% indicators_sel,
-                          .(value = sum(value, na.rm = TRUE)),
-                          by = .(indicator, year)]
 
-# wide format: one column per indicator
-dt_wide <- dcast(dt_global, year ~ indicator, value.var = "value")
-
-# correlation matrix (across years, i.e. each row = one year)
-cor_mat <- cor(dt_wide[, -"year"], use = "pairwise.complete.obs")
-
-######## ######## ######## ######## ######## ######## ######## 
-######## Correlations between subindicators ######## 
-######## ######## ######## ######## ######## ######## ######## 
-
-# ── 0. Helper: expand each indicator to its sub-indicators ──────────────────
-# Indicators absent from sub_map$parent are their own sub-indicator
-indicator_subs <- lapply(setNames(indicators_sel, indicators_sel), function(ind) {
-  subs <- sub_map[parent == ind, indicator]
-  if (length(subs) == 0L) ind else subs          # self if no children
-})
-
-all_subs <- unique(unlist(indicator_subs))        # every leaf we need
-
-# ── 1. Global totals for sub-indicators ─────────────────────────────────────
-dt_sub_global <- dt_tradeFeed[
-  indicator %in% all_subs,
-  .(value = sum(value, na.rm = TRUE)),
-  by = .(indicator, year)
-]
-
-dt_sub_wide <- dcast(dt_sub_global, year ~ indicator, value.var = "value")
-sub_cols    <- setdiff(names(dt_sub_wide), "year")
-
-# ── 2. Correlation matrix between sub-indicators ─────────────────────────────
-cor_sub <- cor(dt_sub_wide[, ..sub_cols],
-               use = "pairwise.complete.obs")   # or "complete.obs"
-# ── 3. SD of each parent indicator (for normalisation) ──────────────────────
-# Re-use dt_wide already computed from your snippet above
-sd_parent <- sapply(indicators_sel, function(ind) {
-  sd(dt_wide[[ind]], na.rm = TRUE)
-})
-
-# ── 4. Build pairwise sub-indicator decomposition table ─────────────────────
-decomp <- rbindlist(lapply(indicators_sel, function(ind_a) {
-  rbindlist(lapply(indicators_sel, function(ind_b) {
-    subs_a <- indicator_subs[[ind_a]]
-    subs_b <- indicator_subs[[ind_b]]
-    CJ(sub_a = subs_a, sub_b = subs_b)[,
-                                       `:=`(
-                                         indicator_a  = ind_a,
-                                         indicator_b  = ind_b,
-                                         cor_sub      = mapply(function(sa, sb) cor_sub[sa, sb], sub_a, sub_b),
-                                         contribution = mapply(function(sa, sb)
-                                           cor_sub[sa, sb] / (length(subs_a) * length(subs_b)),   # see note
-                                           sub_a, sub_b)
-                                       )]
-  }))
-}))
-
-setcolorder(decomp, c("indicator_a", "indicator_b", "sub_a", "sub_b",
-                      "cor_sub", "contribution"))
-
-
-
-
-library(corrplot)
-
-# Build ordered index: ibif_ first, then LCIM_EQ_, then FD_EQ_
-parent_order <- c(
-  indicator_subs[["ibif_total"]],
-  indicator_subs[["LCIM_EQ_terrestrial"]],
-  indicator_subs[["FD_EQ_ric_terrestrial"]]
-)
-
-# Subset & reorder the matrix
-cor_sub_ord <- cor_sub[parent_order, parent_order]
-
-pdf("output/plot/cor_indicators.pdf", width = 10, height = 9)
-
-cor_subindicators <- corrplot(
-  cor_sub_ord,
-  method      = "color",
-  type        = "upper",
-  order       = "original",        # ← respect our manual ordering
-  addCoef.col = "black",
-  number.cex  = 0.7,
-  tl.cex      = 0.8,
-  tl.col      = "black",
-  tl.srt      = 45,
-  col         = colorRampPalette(c("#d73027", "#f7f7f7", "#1a9850"))(200),
-  title       = "Sub-indicator correlation matrix",
-  mar         = c(0, 0, 2, 0)
-)
-
-dev.off() 
-
-
-
+# ######## ######## ######## ######## ######## ######## ######## 
+# ######## Correlations between main biodiv indicators ######## 
+# ######## ######## ######## ######## ######## ######## ######## 
+# # global totals per indicator × year
+# dt_global <- dt_tradeFeed[indicator %in% indicators_sel,
+#                           .(value = sum(value, na.rm = TRUE)),
+#                           by = .(indicator, year)]
+# 
+# # wide format: one column per indicator
+# dt_wide <- dcast(dt_global, year ~ indicator, value.var = "value")
+# 
+# # correlation matrix (across years, i.e. each row = one year)
+# cor_mat <- cor(dt_wide[, -"year"], use = "pairwise.complete.obs")
+# 
+# ######## ######## ######## ######## ######## ######## ######## 
+# ######## Correlations between subindicators ######## 
+# ######## ######## ######## ######## ######## ######## ######## 
+# 
+# # ── 0. Helper: expand each indicator to its sub-indicators ──────────────────
+# # Indicators absent from sub_map$parent are their own sub-indicator
+# indicator_subs <- lapply(setNames(indicators_sel, indicators_sel), function(ind) {
+#   subs <- sub_map[parent == ind, indicator]
+#   if (length(subs) == 0L) ind else subs          # self if no children
+# })
+# 
+# all_subs <- unique(unlist(indicator_subs))        # every leaf we need
+# 
+# # ── 1. Global totals for sub-indicators ─────────────────────────────────────
+# dt_sub_global <- dt_tradeFeed[
+#   indicator %in% all_subs,
+#   .(value = sum(value, na.rm = TRUE)),
+#   by = .(indicator, year)
+# ]
+# 
+# dt_sub_wide <- dcast(dt_sub_global, year ~ indicator, value.var = "value")
+# sub_cols    <- setdiff(names(dt_sub_wide), "year")
+# 
+# # ── 2. Correlation matrix between sub-indicators ─────────────────────────────
+# cor_sub <- cor(dt_sub_wide[, ..sub_cols],
+#                use = "pairwise.complete.obs")   # or "complete.obs"
+# # ── 3. SD of each parent indicator (for normalisation) ──────────────────────
+# # Re-use dt_wide already computed from your snippet above
+# sd_parent <- sapply(indicators_sel, function(ind) {
+#   sd(dt_wide[[ind]], na.rm = TRUE)
+# })
+# 
+# # ── 4. Build pairwise sub-indicator decomposition table ─────────────────────
+# decomp <- rbindlist(lapply(indicators_sel, function(ind_a) {
+#   rbindlist(lapply(indicators_sel, function(ind_b) {
+#     subs_a <- indicator_subs[[ind_a]]
+#     subs_b <- indicator_subs[[ind_b]]
+#     CJ(sub_a = subs_a, sub_b = subs_b)[,
+#                                        `:=`(
+#                                          indicator_a  = ind_a,
+#                                          indicator_b  = ind_b,
+#                                          cor_sub      = mapply(function(sa, sb) cor_sub[sa, sb], sub_a, sub_b),
+#                                          contribution = mapply(function(sa, sb)
+#                                            cor_sub[sa, sb] / (length(subs_a) * length(subs_b)),   # see note
+#                                            sub_a, sub_b)
+#                                        )]
+#   }))
+# }))
+# 
+# setcolorder(decomp, c("indicator_a", "indicator_b", "sub_a", "sub_b",
+#                       "cor_sub", "contribution"))
+# 
+# 
+# 
+# 
+# library(corrplot)
+# 
+# # Build ordered index: ibif_ first, then LCIM_EQ_, then FD_EQ_
+# parent_order <- c(
+#   indicator_subs[["ibif_total"]],
+#   indicator_subs[["LCIM_EQ_terrestrial"]],
+#   indicator_subs[["FD_EQ_ric_terrestrial"]]
+# )
+# 
+# # Subset & reorder the matrix
+# cor_sub_ord <- cor_sub[parent_order, parent_order]
+# 
+# pdf("output/plot/cor_indicators.pdf", width = 10, height = 9)
+# 
+# cor_subindicators <- corrplot(
+#   cor_sub_ord,
+#   method      = "color",
+#   type        = "upper",
+#   order       = "original",        # ← respect our manual ordering
+#   addCoef.col = "black",
+#   number.cex  = 0.7,
+#   tl.cex      = 0.8,
+#   tl.col      = "black",
+#   tl.srt      = 45,
+#   col         = colorRampPalette(c("#d73027", "#f7f7f7", "#1a9850"))(200),
+#   title       = "Sub-indicator correlation matrix",
+#   mar         = c(0, 0, 2, 0)
+# )
+# 
+# dev.off() 
+# 
+# 
+# 
 
 
 
@@ -2445,7 +2314,7 @@ grid <- (row1 / row2) +
     plot.margin     = margin(2, 2, 2, 2)  # 2 pt on all sides — tweak downward to taste
   )
 
-cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022.pdf",
+cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.pdf",
           width = 6, height = 10); print(grid); dev.off()
 
 
@@ -2661,17 +2530,17 @@ cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022.pdf",
 #   target_comm_in   = c("c146", "c147"),
 #   indicator_select = "ibif_total"
 # )
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
+
+
+
+
+
+
+
+
+
+
+
 
 
 

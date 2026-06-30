@@ -44,6 +44,15 @@ items_supply_bcp <- read_csv("inst/items_supply_bcp.csv")
 regions <- read_csv("inst/regions_full.csv") %>% filter(current == TRUE)
 source("R/00_system_variables.R")
 
+# ---- c901 waste trade flows from 08_03 (source for btd + supply of c901) ----
+waste_flows <- as.data.frame(readRDS("data/waste_flows.rds"))
+waste_flows <- waste_flows[waste_flows$year %in% 2012:2022, ]
+# 08_03 may store item_code = NA for c901; use the items_full_bcp code (as the FD rows do)
+c901_item_code <- items_full_bcp %>% filter(comm_code == "c901") %>% pull(item_code) %>% unique()
+stopifnot(length(c901_item_code) == 1)
+waste_flows$item_code <- c901_item_code
+
+
 # # >>>>>>>>>> TEMP BYPASS OF 08_03 RESCALING — DELETE THIS WHOLE BLOCK TO RESTORE <<<<<<<<
 # USE_NONRESCALED <- TRUE
 # if (isTRUE(USE_NONRESCALED)) {
@@ -69,6 +78,28 @@ current_codes <- regions$code
 use_full <- bind_rows(use_final, use_final_bcp) %>%
   select(-unit) %>%
   filter(area_code %in% current_codes)
+
+
+# self-source c901 use that waste_flows doesn't cover (placed right after edit 1)
+c901_use <- as.data.table(as.data.frame(use_full))[comm_code == "c901",
+                                                   .(use = sum(use)), by = .(area_code, year)]
+c901_in   <- as.data.table(as.data.frame(waste_flows))[, .(inflow = sum(value)),
+                                                       by = .(area_code = to_code, year)]
+short <- merge(c901_use, c901_in, by = c("area_code", "year"), all.x = TRUE)
+short[is.na(inflow), inflow := 0][, short := use - inflow]
+
+# sanity: confirm there are no inflow > use cells (self-flows can't fix those)
+if (nrow(short[short < -1])) warning("c901: ", nrow(short[short < -1]),
+                                     " cells have inflow > use (over-allocated) — inspect before trusting the close")
+
+self_add <- short[short > 1, .(from_code = area_code, to_code = area_code,
+                               value = short, year,
+                               item_code = c901_item_code, comm_code = "c901")]
+waste_flows <- rbind(as.data.frame(waste_flows), as.data.frame(self_add))
+
+# collapse any duplicate diagonal (a partial-inflow country getting a 2nd self-row)
+waste_flows <- as.data.frame(as.data.table(waste_flows)[,
+                                                        .(value = sum(value)), by = .(from_code, to_code, year, item_code, comm_code)])
 
 
 
@@ -186,7 +217,10 @@ balance_check <- balance_check %>%
            tourist, fuel, other_industrial, unknown_use),
          imbalance  = tot_supply - tot_use)
 
-
+# ---- c901 is pinned by waste_flows (trade) + biofuel use; keep it OUT of the
+#      imbalance redistribution AND the self-flow loop (commodities_vec/self_flows
+#      derive from balance_check_adj). Its tables are set explicitly below. ----
+balance_check <- balance_check %>% filter(comm_code != "c901")
 
 
 ###########################################################
@@ -228,6 +262,11 @@ use_fd_full <- use_fd_full %>%
     by = c("comm_code", "area_code", "year")
   )
 
+# ---- c901 carries NO final demand (input to biofuels only) ----
+fd_zero_cols <- c("food", "losses", "other", "stock_addition", "stock_withdrawal",
+                  "tourist", "fuel", "other_industrial", "unknown_use")
+use_fd_full <- use_fd_full %>%
+  mutate(across(any_of(fd_zero_cols), ~ if_else(comm_code == "c901", 0, .x)))
 
 ###########################################################
 #3. Updating supply with readjusted values
@@ -270,6 +309,25 @@ patch_tbl <- items_supply_bcp %>%
 sup_full <- sup_full %>% 
   rows_patch(patch_tbl, by = "item") %>%
   mutate(price = ifelse(grepl("^p(12[5-9]|13[0-9]|14[0-6]|901|999)$", proc_code), 1, price))
+
+# ---- c901 production by country = sum of its outgoing trade flows (self-flows
+#      included). Reuse existing c901 supply metadata, rebuild for every producer. ----
+c901_meta <- sup_full %>%
+  filter(comm_code == "c901") %>%
+  distinct(across(any_of(c("item", "item_code", "comm_code", "proc", "proc_code"))))
+stopifnot(nrow(c901_meta) == 1)
+c901_meta$item_code <- c901_item_code          # keep item_code consistent across tables
+
+c901_sup <- waste_flows %>%
+  group_by(area_code = from_code, year) %>%
+  summarise(supply = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  filter(supply > 0) %>%
+  mutate(!!!as.list(c901_meta[1, ]), price = 1) %>%
+  left_join(regions %>% select(area_code = code, area = name), by = "area_code")
+
+sup_full <- sup_full %>%
+  filter(comm_code != "c901") %>%
+  bind_rows(c901_sup %>% select(any_of(names(sup_full))))
 
 
 
@@ -387,6 +445,13 @@ self_flows <- self_flows[, .(comm_code, item_code, from_code, to_code, year, val
 # Updating btd_full with the updated flows. 
 btd_full <- rows_upsert(btd_full, self_flows,
                         by = c("from_code", "to_code", "comm_code", "year"))
+
+# ---- c901 bilateral flows = waste_flows (off-diagonal trade + self-flows). c901
+#      was excluded from the self-flow loop, so nothing else here touches it. ----
+btd_full <- btd_full %>%
+  filter(comm_code != "c901") %>%
+  bind_rows(waste_flows %>% select(any_of(names(btd_full))))
+
 
 
 
