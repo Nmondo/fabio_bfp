@@ -1,3 +1,9 @@
+# libraries first, so this runs as a standalone `Rscript` (read_csv used below is
+# from readr/tidyverse and would otherwise not be loaded yet).
+suppressPackageStartupMessages({
+  library(data.table)
+  library(tidyverse)
+})
 
 ###########################################################
 ########### LOADING INITIAL LABELS - TO COPY THOSE UNCHANGED #######################
@@ -11,7 +17,7 @@ io_labels    <- read_csv("io_labels.csv")
 items        <- read_csv("items.csv")
 regions      <- read_csv("regions.csv")
 su_labels    <- read_csv("su_labels.csv")
- 
+
 # setwd("/mnt/nfs_fineprint/tmp/fabio/v2_bcp/")
 
 
@@ -27,9 +33,11 @@ library(data.table)
 library(tidyverse)
 source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
+source("R/00_run_config.R")                 # RUN_MODE / tag() / mode_dir()
+output_dir_mode <- mode_dir(output_dir_bcp) # rescaled -> base dir; bypass -> base/bypass/
 
 # Read dims emitted by 12_mrsut.R -------------------------------------------
-dims <- readRDS(file.path(output_dir_bcp, "mrsut_dims_bcp.rds"))
+dims <- readRDS(file.path(output_dir_mode, "mrsut_dims_bcp.rds"))
 areas_vec       <- dims$areas
 processes_vec   <- dims$processes
 commodities_vec <- dims$commodities
@@ -52,8 +60,8 @@ stopifnot(!anyNA(items$comm_code))                  # catches missing metadata
 nrcom <- nrow(items)
 
 # Processes ------------------------------------------------------------------
-use <- readRDS("data/use_final_merged.rds")
-sup <- readRDS("data/sup_final_merged.rds")
+use <- readRDS(tag("data/use_final_merged.rds"))
+sup <- readRDS(tag("data/sup_final_merged.rds"))
 sup <- setDT(sup)
 proc_ref <- unique(rbindlist(list(
   use[, .(proc_code, proc)],
@@ -95,8 +103,8 @@ fd_labels <- data.table(
   fd        = rep(fd, nrreg))
 
 # Sanity-check dims against the actual mrsut outputs ------------------------
-mr_use    <- readRDS(file.path(output_dir_bcp, "mr_use.rds"))
-mr_use_fd <- readRDS(file.path(output_dir_bcp, "mr_use_fd.rds"))
+mr_use    <- readRDS(file.path(output_dir_mode, "mr_use.rds"))
+mr_use_fd <- readRDS(file.path(output_dir_mode, "mr_use_fd.rds"))
 stopifnot(nrow(io_labels) == nrow(mr_use[[1]]))
 stopifnot(nrow(su_labels) == ncol(mr_use[[1]]))
 stopifnot(nrow(fd_labels) == ncol(mr_use_fd[[1]]))
@@ -108,23 +116,23 @@ stopifnot(nrow(fd_labels) == ncol(mr_use_fd[[1]]))
 ########### WRITING UPDATED LABELS #######################
 ###########################################################
 
-dir.create(file.path(output_dir_bcp, "losses"),
+dir.create(file.path(output_dir_mode, "losses"),
            recursive = TRUE, showWarnings = FALSE)
 
-fwrite(io_labels, file = file.path(output_dir_bcp, "io_labels.csv"))
-fwrite(su_labels, file = file.path(output_dir_bcp, "su_labels.csv"))
-fwrite(fd_labels, file = file.path(output_dir_bcp, "fd_labels.csv"))
+fwrite(io_labels, file = file.path(output_dir_mode, "io_labels.csv"))
+fwrite(su_labels, file = file.path(output_dir_mode, "su_labels.csv"))
+fwrite(fd_labels, file = file.path(output_dir_mode, "fd_labels.csv"))
 fwrite(fd_labels[!fd %in% "losses"],
-       file = file.path(output_dir_bcp, "losses/fd_labels.csv"))
+       file = file.path(output_dir_mode, "losses/fd_labels.csv"))
 fwrite(items[, .(comm_code, item_code, item, unit, group, comm_group)],
-       file = file.path(output_dir_bcp, "items.csv"))
-fwrite(regions, file = file.path(output_dir_bcp, "regions.csv"))
+       file = file.path(output_dir_mode, "items.csv"))
+fwrite(regions, file = file.path(output_dir_mode, "regions.csv"))
 
 # Copying the unchanged ones 
 file.copy(
   from      = file.path("/mnt/nfs_fineprint/tmp/fabio/v2/",
                         c("ex_fd_labels.csv", "ex_labels.csv")),
-  to        = output_dir_bcp,
+  to        = output_dir_mode,
   overwrite = TRUE
 )
 

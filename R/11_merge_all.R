@@ -9,30 +9,36 @@ library("data.table")
 library(Matrix)
 library(dplyr)
 
+source("/home/mmondolfo/fabio_bfp/R/00_run_config.R")  # RUN_MODE / BYPASS_RESCALE / tag()
+
 ###########################################################
 ########### LOADING DATA #########
 ###########################################################
 
 setwd("/home/mmondolfo/fabio_bfp/data/")
 
-files <- c(
-  "use_final.rds",
-  "use_fd_final.rds",
-  "sup_final.rds",
-  "btd_final_resc.rds",
-  "use_final_bcp.rds",
-  "use_fd_final_bcp.rds",
-  "sup_final_bcp.rds",
-  "btd_final_bcp.rds"
-)
+yr_keep <- function(x) dplyr::filter(x, year %in% 2012:2022)
 
-invisible(lapply(files, function(f) {
-  assign(
-    tools::file_path_sans_ext(f),
-    readRDS(f) %>% filter(year %in% 2012:2022),
-    envir = .GlobalEnv
-  )
-}))
+# --- mode-INDEPENDENT BCP-extension tables (never rescaled) -------------------
+use_fd_final_bcp <- yr_keep(readRDS("use_fd_final_bcp.rds"))
+sup_final_bcp    <- yr_keep(readRDS("sup_final_bcp.rds"))
+btd_final_bcp    <- yr_keep(readRDS("btd_final_bcp.rds"))
+
+# --- mode-DEPENDENT CBS-side tables from 10_1a (tag() -> *_noresc in bypass) ---
+use_final    <- yr_keep(readRDS(tag("use_final.rds")))
+use_fd_final <- yr_keep(readRDS(tag("use_fd_final.rds")))
+sup_final    <- yr_keep(readRDS(tag("sup_final.rds")))
+
+# --- mode-DEPENDENT biofuel use + btd from 08_03 (bypass -> pre-rescale sources)
+#     object names are kept identical so the binding code below is untouched.
+if (BYPASS_RESCALE) {
+  btd_final_resc <- yr_keep(readRDS("btd_final.rds"))                            # un-topped-up c145
+  use_final_bcp  <- yr_keep(readRDS("../intermediate_data/use_rebal_bcp.rds"))   # pre-rescale use
+  message(">>> [BYPASS] 11 using non-rescaled btd_final + use_rebal_bcp (08_03 ignored)")
+} else {
+  btd_final_resc <- yr_keep(readRDS("btd_final_resc.rds"))
+  use_final_bcp  <- yr_keep(readRDS("use_final_bcp.rds"))
+}
 
 
 setwd("/home/mmondolfo/fabio_bfp/")
@@ -52,17 +58,13 @@ c901_item_code <- items_full_bcp %>% filter(comm_code == "c901") %>% pull(item_c
 stopifnot(length(c901_item_code) == 1)
 waste_flows$item_code <- c901_item_code
 
-
-# # >>>>>>>>>> TEMP BYPASS OF 08_03 RESCALING — DELETE THIS WHOLE BLOCK TO RESTORE <<<<<<<<
-# USE_NONRESCALED <- TRUE
-# if (isTRUE(USE_NONRESCALED)) {
-#   btd_final_resc <- readRDS("/home/mmondolfo/fabio_bfp/data/btd_final.rds") %>%
-#     filter(year %in% 2012:2022)                                              # un-topped-up c145
-#   use_final_bcp  <- readRDS("/home/mmondolfo/fabio_bfp/intermediate_data/use_rebal_bcp.rds") %>%
-#     filter(year %in% 2012:2022)                                              # pre-rescale use table
-#   message(">>> [BYPASS] 11 using non-rescaled btd_final + use_rebal_bcp (08_03 ignored)")
-# }
-# # >>>>>>>>>> END TEMP BYPASS BLOCK <<<<<<<<
+# In the no-rescale counterfactual the RED-driven c901 channel does not exist:
+# drop the waste_flows rows (schema preserved) so c901 is self-sourced from the
+# pre-rescale use table only. Flip BYPASS_KEEP_WASTE in 00_run_config.R to retain.
+if (BYPASS_RESCALE && !BYPASS_KEEP_WASTE) {
+  waste_flows <- waste_flows[0, , drop = FALSE]
+  message(">>> [BYPASS] 11 dropped RED waste_flows; c901 self-sourced from pre-rescale use only")
+}
 
 ###########################################################
 ########### MAKING VECTORS#########
@@ -462,7 +464,7 @@ btd_full <- btd_full %>%
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-saveRDS(sup_full, "data/sup_final_merged.rds")
-saveRDS(use_full, "data/use_final_merged.rds")
-saveRDS(use_fd_full, "data/use_fd_final_merged.rds")
-saveRDS(btd_full, "data/btd_final_merged.rds")
+saveRDS(sup_full, tag("data/sup_final_merged.rds"))
+saveRDS(use_full, tag("data/use_final_merged.rds"))
+saveRDS(use_fd_full, tag("data/use_fd_final_merged.rds"))
+saveRDS(btd_full, tag("data/btd_final_merged.rds"))

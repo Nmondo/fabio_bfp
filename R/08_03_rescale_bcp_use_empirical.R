@@ -54,7 +54,7 @@ ZERO_NONGAP_FEEDSTOCKS <- TRUE # TODO feedstocks used in FABIO but absent from R
 # Blocks where RAS is structurally infeasible (orthogonal structure / tightness>1):
 # fall back to imposing the RED global-average mix on EVERY country directly.
 # Keyed "year biofuel_code". Add others (e.g. divergent c146 blocks) as needed.
-DIRECT_RED_BLOCKS <- c("2014 c149")
+DIRECT_RED_BLOCKS <- c("2012 c149", "2013 c149", "2014 c149")
 
 CAP_COUNTRIES <- c("IDN", "CHN")
 RAS_MAX_ITER  <- 5000L
@@ -90,11 +90,11 @@ tcf <- tcf %>% mutate(biofuel_code = case_when(
 setDT(tcf)
 
 # -----------------------------------------------------------------------------
-# 2. EU MEMBERSHIP
+# 2. SELECTION OF THE SET OF COUNTRIES FOR RESCALING
 # -----------------------------------------------------------------------------
 # Confirmed: filter regions$continent == "EU" (member states). "EUR" is the
 # separate bucket for non-EU European countries (Albania, Norway, ...), excluded.
-EU_ISO3 <- regions[continent == "EU", iso3c]
+EU_ISO3 <- regions[continent %in% c("EU", "EUR"), iso3c]
 
 selected_iso3 <- function(bf) switch(bf,
                                      "c146" = EU_ISO3,

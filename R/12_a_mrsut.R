@@ -16,14 +16,16 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 source("R/01_tidy_functions.R")
 source("R/00_system_variables.R")
+source("R/00_run_config.R")                 # RUN_MODE / tag() / mode_dir()
+output_dir_mode <- mode_dir(output_dir_bcp) # rescaled -> base dir; bypass -> base/bypass/
 
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 items <- fread("inst/items_full_bcp.csv")
 
-btd <- readRDS("data/btd_final_merged.rds")
-sup <- readRDS("data/sup_final_merged.rds")
-use <- readRDS("data/use_final_merged.rds")
-use_fd <- readRDS("data/use_fd_final_merged.rds")
+btd <- readRDS(tag("data/btd_final_merged.rds"))
+sup <- readRDS(tag("data/sup_final_merged.rds"))
+use <- readRDS(tag("data/use_final_merged.rds"))
+use_fd <- readRDS(tag("data/use_fd_final_merged.rds"))
 
 areas <- regions$code
 commodities <- sort(unique(c(use$comm_code, sup$comm_code,
@@ -34,7 +36,7 @@ fd_vars <- sort(c("food", "losses", "other", "stock_addition", "tourist",
                   "fuel", "other_industrial", "unknown_use"))
 
 saveRDS(list(areas = areas, processes = processes, commodities = commodities, fd_vars = fd_vars),
-        file.path(output_dir_bcp, "mrsut_dims_bcp.rds"))
+        file.path(output_dir_mode, "mrsut_dims_bcp.rds"))
 
 
 
@@ -115,7 +117,7 @@ mr_sup_value <- mclapply(years, function(x) {
 names(mr_sup_value) <- years
 
 # saveRDS(mr_sup_mass, file.path(output_dir_bcp,"mr_sup_mass.rds"))
-saveRDS(mr_sup_value, file.path(output_dir_bcp,"mr_sup_value.rds"))
+saveRDS(mr_sup_value, file.path(output_dir_mode,"mr_sup_value.rds"))
 
 
 # Bilateral supply shares ---
@@ -331,7 +333,7 @@ mr_use <- mcmapply(function(x, y) {
 # })
 
 names(mr_use) <- years
-saveRDS(mr_use, file.path(output_dir_bcp,"mr_use.rds"))
+saveRDS(mr_use, file.path(output_dir_mode,"mr_use.rds"))
 
 
 # Final Demand ---
@@ -391,4 +393,4 @@ mr_use_fd <- mcmapply(function(x, y) {
 
 mr_use_fd <- lapply(mr_use_fd, round)
 names(mr_use_fd) <- years
-saveRDS(mr_use_fd, file.path(output_dir_bcp,"mr_use_fd.rds"))
+saveRDS(mr_use_fd, file.path(output_dir_mode,"mr_use_fd.rds"))

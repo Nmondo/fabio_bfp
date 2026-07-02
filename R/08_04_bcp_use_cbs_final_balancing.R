@@ -9,25 +9,24 @@ library("tidyverse")
 library("data.table")
 library(dplyr)
 source("R/00_system_variables.R")   # needed for na_sum()
+source("R/00_run_config.R")          # RUN_MODE / BYPASS_RESCALE / tag()
 
 ###########################################################
 ########### LOADING DATA #########
 ###########################################################
 
-cbs_sua_full     <- readRDS("data/cbs_sua_full.rds")
-cbs_sua_adjusted <- readRDS("intermediate_data/cbs_sua_adjusted_resc.rds")
-use_final_bcp <- readRDS("data/use_final_bcp.rds")
-setDT(use_final_bcp)
+cbs_sua_full <- readRDS("data/cbs_sua_full.rds")
 
-# # >>>>>>>>>> TEMP BYPASS OF 08_03 RESCALING — DELETE THIS WHOLE BLOCK TO RESTORE <<<<<<<<
-# USE_NONRESCALED <- TRUE
-# if (isTRUE(USE_NONRESCALED)) {
-#   cbs_sua_adjusted <- readRDS("intermediate_data/cbs_sua_adjusted.rds")  # 08_02 output, pre-rescale
-#   use_final_bcp    <- readRDS("intermediate_data/use_rebal_bcp.rds")     # pre-rescale use table
-#   setDT(use_final_bcp)
-#   message(">>> [BYPASS] 08_04 using NON-rescaled cbs_sua_adjusted + use_rebal_bcp (08_03 ignored)")
-# }
-# # >>>>>>>>>> END TEMP BYPASS BLOCK <<<<<<<<
+if (BYPASS_RESCALE) {
+  # ---- non-rescaled run: take the 08_02 pre-rescale inputs (08_03 ignored) ----
+  cbs_sua_adjusted <- readRDS("intermediate_data/cbs_sua_adjusted.rds")
+  use_final_bcp    <- readRDS("intermediate_data/use_rebal_bcp.rds")
+} else {
+  # ---- rescaled run: take the 08_03 RED-aligned inputs ----
+  cbs_sua_adjusted <- readRDS("intermediate_data/cbs_sua_adjusted_resc.rds")
+  use_final_bcp    <- readRDS("data/use_final_bcp.rds")
+}
+setDT(use_final_bcp)
 
 ###########################################################
 ####### Updating adjusted input use after rescaling in 08_03 ######
@@ -137,7 +136,7 @@ cbs_sua_bal <- rows_update(cbs_sua_full, cbs_sua_adjusted, by = c("item_code", "
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
-saveRDS(cbs_sua_bal,   "data/cbs_sua_bal.rds")
+saveRDS(cbs_sua_bal,   tag("data/cbs_sua_bal.rds"))
 
 
 rm(list = ls())

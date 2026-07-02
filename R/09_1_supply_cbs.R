@@ -2,6 +2,7 @@ setwd("/home/mmondolfo/fabio_bfp/")
 
 library("data.table")
 source("R/00_system_variables.R")
+source("R/00_run_config.R")          # RUN_MODE / tag()
 
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 items <- fread("inst/items_full_bcp.csv")
@@ -10,7 +11,7 @@ items <- fread("inst/items_full_bcp.csv")
 # Supply ------------------------------------------------------------------
 
 btd <- readRDS("data/btd_full.rds")
-cbs <- readRDS("data/cbs_sua_bal.rds")
+cbs <- readRDS(tag("data/cbs_sua_bal.rds"))
 sup <- fread("inst/items_supply_bcp.csv")
 
 
@@ -241,4 +242,4 @@ sup <- sup[! proc_code %in% c("p079","p084") & ! item %in% c("Oilcrops, Other", 
 
 # Store results -----------------------------------------------------------
 
-saveRDS(sup, "data/sup.rds")
+saveRDS(sup, tag("data/sup.rds"))

@@ -10,6 +10,8 @@ library(data.table)
 library(readr)
 
 source("R/00_system_variables.R")
+source("R/00_run_config.R")                 # RUN_MODE / mode_dir()
+output_dir_mode <- mode_dir(output_dir_bcp) # rescaled -> base dir; bypass -> base/bypass/
 agg <- function(x) { as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x)) }
 
 
@@ -21,9 +23,9 @@ agg <- function(x) { as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x
 
 
 # Load multi-regional supply and use tables ---
-# mr_sup_m <- readRDS(file.path(output_dir_bcp,"mr_sup_mass.rds"))  # list of industry × product in mass units
-mr_sup_v <- readRDS(file.path(output_dir_bcp,"mr_sup_value.rds")) # list of industry × product in monetary units
-mr_use <- readRDS(file.path(output_dir_bcp,"mr_use.rds"))         # list of product × industry in mass units
+# mr_sup_m <- readRDS(file.path(output_dir_mode,"mr_sup_mass.rds"))  # list of industry × product in mass units
+mr_sup_v <- readRDS(file.path(output_dir_mode,"mr_sup_value.rds")) # list of industry × product in monetary units
+mr_use <- readRDS(file.path(output_dir_mode,"mr_use.rds"))         # list of product × industry in mass units
 
 
 
@@ -83,7 +85,7 @@ Z_v <- lapply(Z_v, round)
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 items <- fread("inst/items_full_bcp.csv")
 nrcom <- nrow(items)
-Y <- readRDS(file.path(output_dir_bcp,"mr_use_fd.rds"))
+Y <- readRDS(file.path(output_dir_mode,"mr_use_fd.rds"))
 
 
 
@@ -134,8 +136,8 @@ X <- do.call(cbind, X)
 # this is mainly due to reporting issues in FAOSTAT, where some countries report seed = production
 # SOLUTION: We move 80% of the value to final demand, equally spreading over all fd-categories
 
-fd_labels <- fread(file.path(output_dir_bcp,"fd_labels.csv"))
-io_labels <- read_csv(file.path(output_dir_bcp,"io_labels.csv"))
+fd_labels <- fread(file.path(output_dir_mode,"fd_labels.csv"))
+io_labels <- read_csv(file.path(output_dir_mode,"io_labels.csv"))
 
 # year <- 2020
 for(year in years){
@@ -221,10 +223,10 @@ for(year in years){
 
 
 # Store X, Y, Z variables
-# saveRDS(Z_m, file.path(output_dir_bcp,"Z_mass.rds"))
-saveRDS(Z_v, file.path(output_dir_bcp,"Z_value.rds"))
-saveRDS(Y, file.path(output_dir_bcp,"Y.rds"))
-saveRDS(X, file.path(output_dir_bcp,"X.rds"))
+# saveRDS(Z_m, file.path(output_dir_mode,"Z_mass.rds"))
+saveRDS(Z_v, file.path(output_dir_mode,"Z_value.rds"))
+saveRDS(Y, file.path(output_dir_mode,"Y.rds"))
+saveRDS(X, file.path(output_dir_mode,"X.rds"))
 
 
 
@@ -284,7 +286,7 @@ for(year in years){
 # this is mainly due to reporting issues in FAOSTAT, where some countries report seed = production
 # SOLUTION: We move 80% of the value to final demand, equally spreading over all fd-categories
 
-fd_labels <- fread(file.path(output_dir_bcp,"losses/fd_labels.csv"))
+fd_labels <- fread(file.path(output_dir_mode,"losses/fd_labels.csv"))
 
 # year <- 2019
 for(year in years){
@@ -342,10 +344,10 @@ for(year in years){
 }
 
 
-saveRDS(X, file.path(output_dir_bcp,"losses/X.rds"))
-saveRDS(Y, file.path(output_dir_bcp,"losses/Y.rds"))
-# saveRDS(Z_m, file.path(output_dir_bcp,"losses/Z_mass.rds"))
-saveRDS(Z_v, file.path(output_dir_bcp,"losses/Z_value.rds"))
+saveRDS(X, file.path(output_dir_mode,"losses/X.rds"))
+saveRDS(Y, file.path(output_dir_mode,"losses/Y.rds"))
+# saveRDS(Z_m, file.path(output_dir_mode,"losses/Z_mass.rds"))
+saveRDS(Z_v, file.path(output_dir_mode,"losses/Z_value.rds"))
 
 
 
@@ -354,12 +356,12 @@ saveRDS(Z_v, file.path(output_dir_bcp,"losses/Z_value.rds"))
 
 # Correction of Other vs. Food use of Chinese veg. oils --------------------------------------------------------------
 # FAO overstates other and understates food use. We use official Chinese data and USDA data to correct this.
-io <- fread(file.path(output_dir_bcp,"io_labels.csv"))
-su <- fread(file.path(output_dir_bcp,"su_labels.csv"))
-fd <- fread(file.path(output_dir_bcp,"fd_labels.csv"))
-Y <- readRDS(file.path(output_dir_bcp,"Y.rds"))
-fd_l <- fread(file.path(output_dir_bcp,"losses/fd_labels.csv"))
-Y_l <- readRDS(file.path(output_dir_bcp,"losses/Y.rds"))
+io <- fread(file.path(output_dir_mode,"io_labels.csv"))
+su <- fread(file.path(output_dir_mode,"su_labels.csv"))
+fd <- fread(file.path(output_dir_mode,"fd_labels.csv"))
+Y <- readRDS(file.path(output_dir_mode,"Y.rds"))
+fd_l <- fread(file.path(output_dir_mode,"losses/fd_labels.csv"))
+Y_l <- readRDS(file.path(output_dir_mode,"losses/Y.rds"))
 
 # Chinese edible oil statistics
 # Sources: 
@@ -404,8 +406,8 @@ for(i in seq_along(Y)){
                round(food_new/1000000), "/", round(other_new/1000000), " Mt, ", round(share_new*100), "%"))
 }
 
-saveRDS(Y_new, file.path(output_dir_bcp,"Y.rds"))
-saveRDS(Y_l_new, file.path(output_dir_bcp,"losses/Y.rds"))
+saveRDS(Y_new, file.path(output_dir_mode,"Y.rds"))
+saveRDS(Y_l_new, file.path(output_dir_mode,"losses/Y.rds"))
 
 
 

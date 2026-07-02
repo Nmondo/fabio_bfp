@@ -17,10 +17,23 @@ library(patchwork)
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
 regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
+tcf <- readRDS("intermediate_data/tcf_table_final.rds")
 
 source("R/19_plot_definitions.R")
 
 
+
+
+
+## Clean TCF
+
+setDT(tcf)
+tcf[, biofuel_code := fcase(
+  grepl("Biogasoline",      proc), "c146",
+  grepl("Biodiesel",        proc), "c147",
+  grepl("Renewable diesel", proc), "c149",
+  default = NA_character_)]
+tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
 
 ######################################################################################################################
 ############################## HELPER FUNCTION TO EXTRACTS RESULTS FILES FROM SPECIFIC PATTERN #######################
@@ -2061,6 +2074,22 @@ ggsave(file.path("output", "plot", "sourcing_product_BF.pdf"),
 
 
 
+# NEW (tcf):  stage-1 flows can be converted from FEEDSTOCK USE (tonnes of feedstock) to
+#             BIOFUEL SUPPLY (biofuel output the feedstock yields) via a technical conversion
+#             factor table. Applied PER (feedstock x biofuel) on the un-aggregated rows, so a
+#             producer running several feedstocks with different yields is handled correctly.
+#             With balanced units, the producer node's inflow == outflow (mass conservation),
+#             so the feedstock/biofuel "gap" at the conversion node closes.
+#
+#             biofuel_supply = feedstock_use * cf        (cf = biofuel output per unit feedstock,
+#                                                          i.e. an extraction/yield rate, output/input)
+#             If your tcf is stored the other way round (feedstock per unit biofuel, an input
+#             coefficient), pass tcf_invert = TRUE.
+#
+#             To actually SEE the balance, render with normalize = "raw" (or "match_stage1",
+#             which is now equivalent). normalize = "per_stage" re-normalises each stage to 1
+#             independently and will hide the per-producer balance.
+
 bf_sankey_gg <- function(sankey_flows,
                          year_sel    = NULL,
                          window      = 1L,
@@ -2076,8 +2105,18 @@ bf_sankey_gg <- function(sankey_flows,
                          gap_frac    = 0.04,
                          curv_n      = 60,
                          alpha       = 0.8,
-                         share_min   = 0.02,   # NEW: hide labels below this share
-                         share_size  = 2.3) {  # NEW: font size for share labels
+                         share_min   = 0.02,   # hide labels below this share
+                         share_size  = 2.3,    # font size for share labels
+                         # --- TCF conversion of stage-1 (feedstock use -> biofuel supply) ---------------------
+                         tcf            = NULL,                    # data.table; NULL = old behaviour (no conversion)
+                         tcf_stage      = "feedstock_to_producer", # which `stage` value carries feedstock-use rows
+                         tcf_feed_col   = "item",                  # column in `tcf` holding the feedstock id
+                         tcf_bf_col     = "biofuel_code",          # column in `tcf` holding the biofuel id (c146/c147/c149)
+                         tcf_val_col    = "tcf",                   # column in `tcf` holding the conversion factor  <-- CHECK names(tcf)
+                         feed_join      = "feedstock",             # column in `sankey_flows` matched to tcf_feed_col
+                         bf_join        = "biofuel",               # column in `sankey_flows` matched to tcf_bf_col
+                         tcf_invert     = FALSE,                   # TRUE if tcf = feedstock-per-biofuel (input coeff) -> uses 1/cf
+                         tcf_on_missing = "warn") {                # "warn" (keep raw, unbalanced) | "drop" | "error"
   
   req <- c("stage","source_node","target_node","flow_class","value",
            "source_continent","target_continent")
@@ -2085,6 +2124,56 @@ bf_sankey_gg <- function(sankey_flows,
   aggregate <- match.arg(aggregate, c("mean","sum"))
   d <- copy(as.data.table(sankey_flows))
   if (!is.null(biofuel_sel) && "biofuel" %in% names(d)) d <- d[biofuel %in% biofuel_sel]
+  
+  # --- TCF: feedstock USE -> biofuel SUPPLY on stage-1 rows --------------------------------
+  # Done BEFORE the link aggregation below, while each row is still a single feedstock,
+  # so heterogeneous feedstock mixes per producer convert with their own factor.
+  if (!is.null(tcf)) {
+    tcf <- as.data.table(tcf)
+    need <- c(tcf_feed_col, tcf_bf_col, tcf_val_col)
+    if (!all(need %in% names(tcf)))
+      stop("`tcf` is missing column(s): ", paste(setdiff(need, names(tcf)), collapse = ", "),
+           ". Set tcf_feed_col / tcf_bf_col / tcf_val_col to match names(tcf).")
+    if (!all(c(feed_join, bf_join) %in% names(d)))
+      stop("`sankey_flows` has no `", feed_join, "` / `", bf_join,
+           "` column \u2014 stage-1 rows must carry feedstock & biofuel ids to attach a tcf. ",
+           "(bf_supply_chain_flows emits these; check feed_join/bf_join.)")
+    
+    tcf_lu <- unique(tcf[, .(feed = as.character(get(tcf_feed_col)),
+                             bf   = as.character(get(tcf_bf_col)),
+                             cf   = as.numeric(get(tcf_val_col)))])
+    tcf_lu <- tcf_lu[!is.na(cf) & !is.na(feed) & !is.na(bf)]
+    dup <- tcf_lu[, .N, by = .(feed, bf)][N > 1L]
+    if (nrow(dup))
+      stop(nrow(dup), " (feedstock, biofuel) pair(s) map to more than one tcf value \u2014 ",
+           "collapse `tcf` to one factor per pair before passing it in.")
+    if (isTRUE(tcf_invert)) tcf_lu[, cf := 1 / cf]
+    
+    s1_idx <- which(d$stage == tcf_stage)
+    if (length(s1_idx)) {
+      key    <- data.table(feed = as.character(d[[feed_join]][s1_idx]),
+                           bf   = as.character(d[[bf_join]][s1_idx]))
+      cf_vec <- tcf_lu[key, on = c("feed", "bf"), cf]   # one cf per stage-1 row, key order; NA = no match
+      
+      na_i <- is.na(cf_vec)
+      if (any(na_i)) {
+        bad <- unique(key[na_i])
+        msg <- sprintf("TCF: %d stage-1 row(s) across %d feedstock\u00d7biofuel pair(s) have no match",
+                       sum(na_i), nrow(bad))
+        if (tcf_on_missing == "error") stop(msg, ".")
+        if (tcf_on_missing == "drop")  warning(msg, " \u2014 dropped from the diagram.")
+        if (tcf_on_missing == "warn")  warning(msg,
+                                               " \u2014 left in feedstock units; the producer node will not balance for these.")
+      }
+      
+      keep <- !na_i
+      if (any(keep)) {
+        d[s1_idx[keep], value := value * cf_vec[keep]]
+        if ("unit" %in% names(d)) d[s1_idx[keep], unit := "biofuel output (via tcf)"]
+      }
+      if (any(na_i) && tcf_on_missing == "drop") d <- d[-s1_idx[na_i]]
+    }
+  }
   
   # --- year selection / averaging window ---------------------------------------------------
   if ("year" %in% names(d)) {
@@ -2159,8 +2248,6 @@ bf_sankey_gg <- function(sankey_flows,
   
   # Target side: sort by flow_class FIRST (keeps same-class ribbons contiguous),
   # then by s_mid within each class (minimises crossing within a class band).
-  # flow_class is factored by class_cols order so the colour bands are always in
-  # the same top-to-bottom sequence across all nodes.
   link[, flow_class_f := factor(flow_class, levels = names(class_cols))]
   setorder(link, target_node, flow_class_f, s_mid)
   link[, ty_top := nodes[target_node, ytop] + cumsum(c(0, head(h, -1))), by = target_node]
@@ -2175,50 +2262,36 @@ bf_sankey_gg <- function(sankey_flows,
     fbot <- (sy_top + h) + ((ty_top + h) - (sy_top + h)) * smooth(tt)
     data.table(x = c(x, rev(x)), y = c(ftop, rev(fbot)), flow_class = flow_class)
   }, by = lid]
-
-  # --- flow-class shares per RECEPTOR node -------------------------------------------------
-  # Aggregate w and the ACTUAL rendered ribbon top-positions from the Sankey layout.
-  # ty_top is already sorted by t_mid (the Sankey stacking order), so summing h per
-  # (target_node, flow_class) gives the real pixel band — no assumptions about cls_order.
   
+  # --- flow-class shares per RECEPTOR node -------------------------------------------------
   shares_raw <- link[, .(
     w_cls    = sum(w),
-    ty_top   = min(ty_top),   # topmost ribbon edge for this (node × flow_class) band
+    ty_top   = min(ty_top),   # topmost ribbon edge for this (node x flow_class) band
     band_h_r = sum(h)         # total rendered height of this band at the target node
   ), by = .(node = target_node, flow_class, stage)]
   
-  # Stage total for threshold
   stage_totals <- link[, .(w_stage = sum(w)), by = stage]
   shares_raw   <- merge(shares_raw, stage_totals, by = "stage")
   
   shares_raw[, share_of_stage := w_cls / w_stage]
   shares_raw[, share          := w_cls / sum(w_cls), by = node]
   
-  # Filter: only show labels >= share_min of stage total
   shares_raw <- shares_raw[share_of_stage >= share_min]
   
   if (nrow(shares_raw) > 0) {
     shares_raw <- merge(shares_raw,
                         nodes[, .(node, col, ytop, h, xr, xl)],
                         by = "node")
-    
-    # Label y: midpoint of the ACTUAL rendered band (from Sankey geometry, not cls_order)
     shares_raw[, label_y   := ty_top + band_h_r / 2]
     shares_raw[, label_txt := paste0(round(share * 100), "%")]
     shares_raw[, label_x   := xl - node_w * 0.6]
     shares_raw[, label_hjust := 1]
-    
     shares_raw <- shares_raw[col > 0]
   }
   
   # --- self-documenting year label ---------------------------------------------------------
   agg_word <- if (aggregate == "mean") "mean" else "sum"
-  # yr_label <- if (anyNA(avail)) NULL
-  # else if (n_years > 1) paste0(min(avail), "\u2013", max(avail),
-  #                              " ", agg_word, " (", n_years, "-yr)")
-  # else as.character(avail)
   
-  # Darken class colours for label text (blend 45% toward black)
   darken_col <- function(hex, amount = 0.45) {
     rgb_vals <- col2rgb(hex) / 255
     rgb(rgb_vals[1] * (1 - amount),
@@ -2240,26 +2313,23 @@ bf_sankey_gg <- function(sankey_flows,
     annotate("text", x = c(0, 1, 2), y = 1.06, fontface = 2, size = 3.4,
              label = c("Feedstock origin", "Biofuel producer", "Biofuel consumer")) +
     scale_fill_manual(values = class_cols, name = "flow class") +
-    # labs(subtitle = yr_label) +
     coord_cartesian(xlim = c(-0.55, 2.55), ylim = c(-0.02, 1.10), clip = "off") +
     theme_void() +
     theme(legend.position = "bottom", plot.margin = margin(0, 0, 0, 0))
   
-  # Overlay share labels (only when there is something to show)
   if (nrow(shares_raw) > 0) {
     p <- p +
       geom_text(data = shares_raw,
                 aes(x = label_x, y = label_y, label = label_txt, colour = flow_class),
                 hjust    = shares_raw$label_hjust,
-                size     = share_size * 0.87,   # ~2.0 when default share_size = 2.3
+                size     = share_size * 0.87,
                 fontface = "bold",
                 show.legend = FALSE) +
-      scale_colour_manual(values = label_cols)  # darkened palette
+      scale_colour_manual(values = label_cols)
   }
   
   p
 }
-
 
 
 codes <- commodity_meta$comm_code   # c146, c147, c149
@@ -2283,14 +2353,20 @@ p1 <- bf_sankey_gg(
   sankey_flows,
   year_sel    = 2020:2022,
   biofuel_sel = "c146",
-  cont_order  = c("LAM", "NAM", "ASI", "EU")
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  tcf = tcf, 
+  tcf_val_col = "output_qty",
+  normalize = "raw"
 )
 
 p2 <- bf_sankey_gg(
   sankey_flows,
   year_sel    = 2020:2022,
   biofuel_sel = c("c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU")
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  tcf = tcf, 
+  tcf_val_col = "output_qty",
+  normalize = "raw"
 )
 
 # Build vertical title strips
