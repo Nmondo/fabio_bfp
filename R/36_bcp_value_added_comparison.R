@@ -1,5 +1,5 @@
 # =============================================================================
-# 35_bcp_value_added_comparison.R
+# 36_bcp_value_added_comparison.R
 # Direct biofuel value added for the EU Member States, read from the JRC BioSAM
 # Social Accounting Matrices. In a SAM an activity's value added is what its
 # column pays to the primary-factor rows; here full gross value added (GVA at
@@ -205,7 +205,7 @@ message(sprintf("33_bcp_value_added_biosam: %d rows across %d year(s), %d fuel g
 
 
 # =============================================================================
-# APPEND to 35_bcp_value_added_comparison.R (after the BioSAM extraction, which
+# APPEND to 36_bcp_value_added_comparison.R (after the BioSAM extraction, which
 # leaves `out` in scope).  Runs after the BioSAM block: first derive the
 # Canada-report GVA, then draw the comparison scatter that pits the MRIO base
 # against every independent estimate.
