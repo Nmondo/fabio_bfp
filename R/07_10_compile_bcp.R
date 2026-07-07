@@ -14,7 +14,17 @@ library(stringr)
 
 ############# Loading all the data necessary for final compilation ##################
 
-setwd("/home/mmondolfo/fabio_bfp/inputs_for_final_data")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(file.path(fabio_root, "inputs_for_final_data"))
 
 files <- c(
   "btd_final_bf.rds",
@@ -35,7 +45,7 @@ invisible(lapply(files, function(f) {
 
 ############# Loading lists of items, processes, regions ##################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 items_supply_bcp <- read.csv("inst/items_supply_bcp.csv")
 items_full_bcp <- read.csv("inst/items_full_bcp.csv")
@@ -209,7 +219,7 @@ btd_final_bcp <- bind_rows(btd_final_bf, btd_final_bp_bf_coproducts) %>%
 ########### WRITING TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 write_rds(use_compiled_bcp, "intermediate_data/use_compiled_bcp.rds")
 

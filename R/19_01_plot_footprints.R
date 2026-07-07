@@ -1,6 +1,16 @@
 # 19.01 - Plot footprint results
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 
 # Setup ------------------------------------------------------------------------
 library(data.table)
@@ -1266,7 +1276,7 @@ plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv")
 # 
 # source("R/00_system_variables.R")
 # 
-# setwd("/home/mmondolfo/fabio_bfp/")
+# setwd(fabio_root)
 # # Read labels ------------------------------------------------------------------
 # input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
 # L22 <- readRDS(paste0(input_path,"2022_", "L_", "value", ".rds"))
@@ -1566,7 +1576,7 @@ p_indicator_BRA_IDN_USA <-
   )
 
 ggsave(plot = p_indicator_BRA_IDN_USA,
-       filename = "/home/mmondolfo/fabio_bfp/output/plot/p_indicator_BRA_IDN_USA.pdf",
+       filename = file.path(fabio_root, "output/plot/p_indicator_BRA_IDN_USA.pdf"),
        width = 12, 
        height = 9,
        dpi = 300)

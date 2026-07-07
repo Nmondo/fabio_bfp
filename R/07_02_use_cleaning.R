@@ -21,7 +21,17 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 
 ########### FABIO regions #########
 
@@ -33,7 +43,7 @@ cbs_full <- readRDS("data/cbs_full.rds")
 
 ############# Supply data from own collection ##################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 supply <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply")
 supply_selection <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="supply_selection")
@@ -52,7 +62,7 @@ tcf_table <- read_excel("own_data/tcf_table.xlsx")
 
 ############# Supply tables ##################
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 supply_biogasoline <- readRDS("sup_biogasoline_initial.rds")
 supply_fame_hvo <- readRDS("sup_fame_hvo_initial.rds")
@@ -637,7 +647,7 @@ supply_feedstock <- supply_feedstock %>% left_join(tcf_table %>% select(input,in
 ########### SAVING CLEANED TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(supply_feedstock,
         "intermediate_data/supply_feedstock.rds")
