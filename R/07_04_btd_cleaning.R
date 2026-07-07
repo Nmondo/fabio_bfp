@@ -21,7 +21,17 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 
 ########### FABIO regions #########
 
@@ -36,7 +46,7 @@ baci_hs12 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs12.rds")
 
 ########### Trade data from Eurostat #########
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 ### Combined Eurostat API request: biofuels + biopolymers ###
 
@@ -825,7 +835,7 @@ prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_s
 # prices <- left_join(prices, caps, by = "product")
 
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 btd_intermediate <- readRDS("btd_intermediate.rds")
 
@@ -834,7 +844,7 @@ btd_intermediate <- readRDS("btd_intermediate.rds")
 ########### WRITING DATA TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 # Trade 
 saveRDS(total_trade,   "intermediate_data/btd_total.rds")
@@ -842,7 +852,7 @@ saveRDS(btd,           "intermediate_data/btd_intermediate.rds")
 saveRDS(btd_excluded,  "intermediate_data/btd_excluded_flows.rds")
 
 # Prices
-saveRDS(prices, "prices.rds")
+saveRDS(prices, "intermediate_data/prices_bcp.rds")
 
 # Removing temporary objects
 

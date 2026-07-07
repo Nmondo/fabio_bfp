@@ -15,7 +15,17 @@ library(magrittr)
 ###########################################################
 
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 
 ########### FABIO regions #########
 
@@ -27,7 +37,7 @@ y_own <- read_excel("own_data/Compilation_data_sources.xlsx",sheet="y")
 
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 supply_biogasoline <- readRDS("sup_biogasoline_full.rds")
 supply_fame_hvo <- readRDS("sup_fame_hvo_full.rds")
@@ -450,7 +460,7 @@ y_table <- y_table %>%
 ########### SAVING CONSUMPTION TABLE ###############################
 ################################################################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(y_table,
         "intermediate_data/y_table_initial.rds")

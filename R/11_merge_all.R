@@ -9,13 +9,23 @@ library("data.table")
 library(Matrix)
 library(dplyr)
 
-source("/home/mmondolfo/fabio_bfp/R/00_run_config.R")  # RUN_MODE / BYPASS_RESCALE / tag()
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+source(file.path(fabio_root, "R/00_run_config.R"))  # RUN_MODE / BYPASS_RESCALE / tag()
 
 ###########################################################
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/data/")
+setwd(file.path(fabio_root, "data"))
 
 yr_keep <- function(x) dplyr::filter(x, year %in% 2012:2022)
 
@@ -41,7 +51,7 @@ if (BYPASS_RESCALE) {
 }
 
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 y_bp_incomplete_rows <- readRDS("inputs_for_final_data/y_bp_incomplete_rows.rds") 
 items_use_bcp <- read_csv("inst/items_use_bcp.csv")
@@ -462,7 +472,7 @@ btd_full <- btd_full %>%
 ########### WRITING TABLES #######################
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(sup_full, tag("data/sup_final_merged.rds"))
 saveRDS(use_full, tag("data/use_final_merged.rds"))

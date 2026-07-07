@@ -1,6 +1,15 @@
 # 19.01 - Plot footprint results
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
 
 # Setup ------------------------------------------------------------------------
 library(data.table)
@@ -1251,6 +1260,72 @@ plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicat
 ######################################################################################################################
 #2. Plot impacts by commodity, by feedstock over time. 
 ######################################################################################################################
+<<<<<<< HEAD
+=======
+# 
+# str(dt_totalreq)
+# 
+# 
+# source("R/00_system_variables.R")
+# 
+# setwd(fabio_root)
+# # Read labels ------------------------------------------------------------------
+# input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+# L22 <- readRDS(paste0(input_path,"2022_", "L_", "value", ".rds"))
+# L12 <- readRDS(paste0(input_path,"2012_", "L_", "value", ".rds"))
+# input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+# io <- fread(paste0(input_path,"io_labels.csv"))
+# io_names <- io[, paste0(iso3c, "_", comm_code)]
+# 
+# library(Matrix)
+# colnames(L22) <- rownames(L22) <- colnames(L12) <- rownames(L12) <- io_names
+# 
+# contrast_country_bfp <- function(L_late, L_early,
+#                                  iso3,
+#                                  comm_codes = c(146, 147, 149),
+#                                  threshold  = 0.01,
+#                                  fill       = 0) {
+#   
+#   pattern <- paste0("^", iso3, "_c(", paste(comm_codes, collapse = "|"), ")$")
+#   
+#   extract <- function(L) {
+#     col_idx <- grep(pattern, colnames(L))
+#     if (!length(col_idx)) stop("No columns match pattern: ", pattern)
+#     sub  <- L[, col_idx, drop = FALSE]
+#     keep <- sub@x >= threshold
+#     rows <- sort.int(unique(sub@i[keep])) + 1L
+#     as.matrix(sub[rows, , drop = FALSE])
+#   }
+#   
+#   agg <- function(M) {
+#     suffix <- substring(rownames(M), nchar(rownames(M)) - 4L)
+#     rowsum(M, group = suffix)
+#   }
+#   
+#   A <- agg(extract(L_late))
+#   B <- agg(extract(L_early))
+#   
+#   rows <- union(rownames(A), rownames(B))
+#   align <- function(M) {
+#     out <- matrix(fill, length(rows), ncol(M),
+#                   dimnames = list(rows, colnames(M)))
+#     out[rownames(M), ] <- M
+#     out
+#   }
+#   
+#   align(A) - align(B)
+# }
+# 
+# # usage
+# L_diff_USA <- contrast_country_bfp(L22, L12, iso3 = "USA")
+# L_diff_BRA <- contrast_country_bfp(L22, L12, iso3 = "BRA")
+# L_diff_ARG <- contrast_country_bfp(L22, L12, iso3 = "ARG")
+# L_diff_DEU <- contrast_country_bfp(L22, L12, iso3 = "DEU")
+# 
+# 
+# 
+# 
+>>>>>>> 8ab21e56ab23884c92afded7fbd3ec25afcd2eec
 
 p_ibif <- plot_commodity_feedstock_grid(
   dt_tradeFeed,
@@ -1498,7 +1573,11 @@ p_indicator_BRA_IDN_USA <-
   )
 
 ggsave(plot = p_indicator_BRA_IDN_USA,
+<<<<<<< HEAD
        filename = "/home/mmondolfo/fabio_bfp/output/plot/p_indicator_BRA_IDN_USA.svg",
+=======
+       filename = file.path(fabio_root, "output/plot/p_indicator_BRA_IDN_USA.pdf"),
+>>>>>>> 8ab21e56ab23884c92afded7fbd3ec25afcd2eec
        width = 12, 
        height = 9,
        dpi = 300)

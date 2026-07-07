@@ -17,7 +17,17 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
@@ -27,7 +37,7 @@ years <- as.character(2012:2022)
 
 ########### Pre-cleaned supply & use data #########
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 supply_feedstock <- readRDS("supply_feedstock.rds")
 supply_fame_hvo <- readRDS("sup_fame_hvo_initial.rds")
@@ -261,7 +271,7 @@ setdiff(unique(subset(supply_fame_hvo, process == "HVO"  & value > 0)$iso3c),
 #1. Neste plants: Singapore, The Netherlands and Finland #########
 ###########################################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 Neste_specific_data <- read_excel("own_data/RD_specific_data.xlsx")
 Neste_total_use <- Neste_specific_data[1:6,2:16]
@@ -935,7 +945,7 @@ mutate(process = case_when(process == "FAME" ~ "Biodiesel production",
 ################## SAVING SUPPLY AND USE TABLE ####################
 #########################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(object = supply_fame_hvo,
         file = "intermediate_data/sup_fame_hvo_full.rds")

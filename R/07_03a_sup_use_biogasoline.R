@@ -18,7 +18,17 @@ library(purrr)
 ########### LOADING DATA #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE) 
@@ -28,7 +38,7 @@ years <- as.character(2012:2022)
 
 ########### Pre-cleaned supply & use data #########
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 supply_feedstock <- readRDS("supply_feedstock.rds")
 supply_biogasoline <- readRDS("sup_biogasoline_initial.rds")
@@ -818,7 +828,7 @@ supply_biogasoline <- bind_rows(supply_biogasoline, etbe_zeros) %>%
 ################## WRITING BIOGASOLINE SUPPLY AND USE TABLE ####################
 #########################################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(object = supply_biogasoline,
         file = "intermediate_data/sup_biogasoline_full.rds")

@@ -3,7 +3,17 @@ rm(list = ls())
 ###########################################################
 ########### LOADING PACKAGES #########
 ###########################################################
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
+setwd(fabio_root)
 
 library("tidyverse")
 library("data.table")
@@ -134,7 +144,7 @@ cbs_sua_bal <- rows_update(cbs_sua_full, cbs_sua_adjusted, by = c("item_code", "
 ########### SAVING TABLES #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 saveRDS(cbs_sua_bal,   tag("data/cbs_sua_bal.rds"))
 

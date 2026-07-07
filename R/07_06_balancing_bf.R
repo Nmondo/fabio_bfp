@@ -25,14 +25,23 @@ library(purrr)
 ###########################################################
 
 
-setwd("/home/mmondolfo/fabio_bfp/")
+## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the repo marker ---
+fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
+if (!nzchar(fabio_root)) {
+  fabio_root <- getwd()
+  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
+         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
+  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
+    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
+}
+setwd(fabio_root)
 
 ########### FABIO regions #########
 
 regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter(current == TRUE)
 
 
-setwd("/home/mmondolfo/fabio_bfp/intermediate_data/")
+setwd(file.path(fabio_root, "intermediate_data"))
 
 ########### Pre-cleaned supply data (to collect consumption from the same source) #########
 
@@ -69,7 +78,7 @@ neste_regional <- neste_clean$neste_regional
 #1. RD Trade balancing (Iterative proportional fitting with initial constraints) #########
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 rd_trade_balancing <- function(year) {
   
@@ -334,7 +343,7 @@ run_sa_rebalancing <- function(
 
 
 #########################################################################
-  ########### CALCULATING TOTAL BIOFUELS IMPORTS AND EXPORTS BY COUNTRY AND YEAR #########
+########### CALCULATING TOTAL BIOFUELS IMPORTS AND EXPORTS BY COUNTRY AND YEAR #########
 #########################################################################
 
 btd_intermediate %<>%
@@ -458,7 +467,7 @@ y_rd <- subset(y_table_intermediate1, product == "Renewable diesel") %>%
   rename(y_rd = value) %>%
   mutate(y_rd = case_when(unit == "Ml" ~ y_rd/1.282,
                           unit == "1000 barrels" ~ (y_rd*0.158987)/1.282,
-                           TRUE ~ y_rd),
+                          TRUE ~ y_rd),
          unit = case_when(unit %in% c("Ml","1000 barrels") ~ "kt",
                           TRUE ~ unit))
 
@@ -476,18 +485,18 @@ rd_total_trade <- btd_total %>%
 
 y_rd %<>% mutate(exports_rd = NA_real_) %>%
   left_join(supply_fame_hvo %>% 
-                    filter(output == "Renewable diesel") %>% 
-                    select(year,iso3c,value) %>%
-                    rename(supply_rd = value),
-                  by = c("year","iso3c")) %>%
+              filter(output == "Renewable diesel") %>% 
+              select(year,iso3c,value) %>%
+              rename(supply_rd = value),
+            by = c("year","iso3c")) %>%
   left_join(total_trade %>%
               filter(product == "Renewable diesel") %>%
               select(-product,-exports) %>%
               rename(imports_rd = imports),
             by = c("year","iso3c")) %>% 
   rows_update(rd_total_trade %>% select(year,iso3c,exports_rd,imports_rd),
-             by = c("year","iso3c"),
-             unmatched = "ignore")
+              by = c("year","iso3c"),
+              unmatched = "ignore")
 
 y_rd %<>% mutate(
   exports_nettrade_rd = ifelse(y_rd < supply_rd, supply_rd - y_rd, 0),
@@ -541,8 +550,8 @@ y_rd %<>% mutate(
 
 rd_btd_final <- map_dfr(2012:2022, rd_trade_balancing) %>% filter(exporter_iso3!="TOTAL")
 rd_btd_final %<>% mutate(product = "Renewable diesel",
-                        unit = "kt",
-                        source = "Estimate")
+                         unit = "kt",
+                         source = "Estimate")
 
 # Removing temporary objects
 rm(list = ls(pattern = "^rd_btd_\\d{4}$"))
@@ -753,7 +762,7 @@ btd_intermediate_balanced1 <- rows_upsert(
     unit == "kt" & product == "ETBE"             ~ 1.351 * value,
     TRUE                                                 ~ value),
     unit = case_when(unit == "kt" & product %in% c("Biodiesel","Bioethanol","Renewable diesel", "ETBE") ~ "Ml",
-    TRUE ~ unit)) 
+                     TRUE ~ unit)) 
 
 ###########################################################
 #2. Recompute total trade from updated bilateral flows #################
@@ -898,9 +907,9 @@ full_compile_balanced <- full_compile_balanced %>%
         is.na(y_Fuel)                              ~ 0,
       product %in% c("Bioethanol","Biogasoline") & is.na(y_Fuel) ~ y_Total,
       TRUE ~ y_Fuel
+    )
   )
-  )
- 
+
 full_compile_balanced <- full_compile_balanced %>%
   mutate(
     y_Fuel = case_when(
@@ -1040,6 +1049,24 @@ biogasoline_agg_p1 <- biogasoline_context_full %>%
   ) %>%
   select(-.apparent, -.total_y)
 
+# --- capture the ethanol/ETBE composition of biogasoline (for price blending) --
+# Producer value-added valuation (script 30) needs the REAL per-country blend of
+# Bioethanol vs ETBE in biogasoline, not a global trade-weighted proxy. We read
+# it straight from the volumes summed into the Biogasoline row here. Equal density
+# for ethanol and ETBE is assumed, so the Ml volumes are used as-is (volume share
+# = mass share). Based on total_supply (production) — the base relevant to output
+# valuation. Pass 1 = country-years with a Biogasoline row alongside Bioethanol/ETBE.
+blend_shares_p1 <- biogasoline_context_full %>%
+  semi_join(biogasoline_keys_with_eth, by = c("iso3c", "year")) %>%
+  filter(product %in% c("Bioethanol", "ETBE")) %>%
+  mutate(supply_pos = pmax(coalesce(total_supply, 0), 0)) %>%
+  group_by(iso3c, year) %>%
+  summarise(
+    eth_supply  = sum(supply_pos[product == "Bioethanol"]),
+    etbe_supply = sum(supply_pos[product == "ETBE"]),
+    .groups     = "drop"
+  )
+
 full_compile_balanced <- full_compile_balanced %>%
   rows_update(biogasoline_agg_p1, by = c("iso3c", "year", "product")) %>%
   anti_join(biogasoline_keys_with_eth %>% mutate(product = "Bioethanol"),
@@ -1072,6 +1099,40 @@ biogasoline_agg_p2 <- full_compile_balanced %>%
     y            = y_Fuel + y_Non_fuel
   ) %>%
   select(-.apparent, -.total_y)
+
+# Pass 2 composition: country-years with NO pre-existing Biogasoline row, whose
+# biogasoline is built purely by summing Bioethanol + ETBE. Same source rows as
+# biogasoline_agg_p2 above (still present in full_compile_balanced at this point).
+blend_shares_p2 <- full_compile_balanced %>%
+  filter(product %in% c("Bioethanol", "ETBE")) %>%
+  mutate(supply_pos = pmax(coalesce(total_supply, 0), 0)) %>%
+  group_by(iso3c, year) %>%
+  summarise(
+    eth_supply  = sum(supply_pos[product == "Bioethanol"]),
+    etbe_supply = sum(supply_pos[product == "ETBE"]),
+    .groups     = "drop"
+  )
+
+# Combine the two passes (disjoint keys) into one mini table for script 30.
+# etbe_share is the weight to apply to the ETBE price when blending the c146
+# producer price; keys absent from this table have no ETBE and default to the
+# pure Bioethanol price in script 30.
+biogasoline_blend_shares <- bind_rows(blend_shares_p1, blend_shares_p2) %>%
+  mutate(
+    year       = as.integer(as.character(year)),
+    denom      = eth_supply + etbe_supply,
+    etbe_share = if_else(denom > 0, etbe_supply / denom, NA_real_),
+    eth_share  = if_else(denom > 0, eth_supply  / denom, NA_real_),
+    n_sources  = (eth_supply > 0) + (etbe_supply > 0)
+  ) %>%
+  select(iso3c, year, eth_supply, etbe_supply, etbe_share, eth_share, n_sources) %>%
+  arrange(iso3c, year)
+
+message(sprintf(
+  ">>> biogasoline blend shares: %d country-years (%d with ETBE > 0); mean ETBE share = %.1f%%",
+  nrow(biogasoline_blend_shares),
+  sum(biogasoline_blend_shares$etbe_supply > 0, na.rm = TRUE),
+  100 * mean(biogasoline_blend_shares$etbe_share, na.rm = TRUE)))
 
 biogasoline_agg_p2 <- biogasoline_agg_p2 %>%
   mutate(
@@ -1247,7 +1308,7 @@ btd_intermediate_other <- btd_intermediate_balanced1 %>%
 ########### SAVING FINAL DATASETS ########### 
 ###########################################################
 
-setwd("/home/mmondolfo/fabio_bfp/")
+setwd(fabio_root)
 
 dir.create("inputs_for_final_data", recursive = TRUE, showWarnings = FALSE)
 
@@ -1255,5 +1316,6 @@ saveRDS(btd_final_bf, "inputs_for_final_data/btd_final_bf.rds")
 saveRDS(y_final_bf, "inputs_for_final_data/y_final_bf.rds")
 saveRDS(supply_final_bf, "inputs_for_final_data/supply_final_bf.rds")
 saveRDS(btd_intermediate_other, "intermediate_data/btd_intermediate_other_step1.rds")
+saveRDS(biogasoline_blend_shares, "intermediate_data/biogasoline_blend_shares.rds")
 
 rm(list = ls())
