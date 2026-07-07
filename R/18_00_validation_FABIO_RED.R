@@ -906,6 +906,7 @@ plot_cmp_country_biofuel_item_ts <- function(cmp, country_sel, biofuel_sel,
 
 
 ## ---- 3. Feedstock totals: FABIO initial vs rescaled vs empirical RED ----
+
 plot_global_gap_item_bars <- function(cmp, ncol = 2,
                                       free_y = TRUE, label_accuracy = 1,
                                       extra = NULL, extra_overrides = character(0),
@@ -957,21 +958,22 @@ plot_global_gap_item_bars <- function(cmp, ncol = 2,
   
   ## --- residual (post-rescaling) gap + signed label ---
   ay[, resid_gap := fabio_resc - red_value]
-  ay[, gap_lab := paste0(ifelse(resid_gap >= 0, "+\u2009", "-\u2009"),
+  ay[, gap_lab := paste0(ifelse(resid_gap >= 0, "+", "-"),
                          scales::label_number(accuracy = label_accuracy,
-                                              big.mark = ",")(abs(resid_gap)))]
+                                              big.mark = "")(abs(resid_gap)))]
   
   ## --- per-facet vertical reference, so label offset scales sensibly under free_y ---
   ay[, period_max := max(pmax(fabio_init, fabio_resc, red_value), na.rm = TRUE), by = period]
-  ay[, lab_y := red_value + 0.05 * period_max]   # sits just above the RED tick, with a gap
+  ## label sits just above whichever of the three bars/tick is tallest for that row
+  ay[, top_val := pmax(fabio_init, fabio_resc, red_value, na.rm = TRUE)]
+  ay[, lab_y := top_val + 0.03 * period_max]   # small gap above the tallest element
   
   ## --- geometry constants ---
   bar_w  <- 0.6
   cap_w  <- 0.06
-  seg_i  <- bar_w / 2 + 0.05     # initial-gap segment offset
-  seg_r  <- bar_w / 2 + 0.18     # rescaled-gap segment offset
-  arr_x  <- bar_w / 2 + 0.115    # trajectory-arrow offset
-  lab_x  <- bar_w / 2 + 0.02     # gap-label offset (sits left of seg_i / arrow / seg_r)
+  arr_x  <- bar_w / 2 + 0.05     # trajectory-arrow offset (now closest to the bars)
+  seg_r  <- bar_w / 2 + 0.115    # rescaled-gap segment offset (now where the arrow used to sit)
+  lab_x  <- bar_w / 2 - 0.03     # gap-label offset (sits left of arrow / seg_r)
   
   ggplot2::ggplot(ay) +
     ## faint initial bar
@@ -985,32 +987,25 @@ plot_global_gap_item_bars <- function(cmp, ncol = 2,
     ggplot2::geom_segment(ggplot2::aes(x = x - bar_w / 2, xend = x + bar_w / 2,
                                        y = red_value, yend = red_value),
                           colour = red_col, linewidth = 0.5) +
-    ## initial gap (faint): RED -> fabio_init, with cap tick at RED
-    ggplot2::geom_segment(ggplot2::aes(x = x + seg_i, xend = x + seg_i,
-                                       y = red_value, yend = fabio_init),
-                          colour = red_col, alpha = 0.45, linewidth = 0.4) +
-    ggplot2::geom_segment(ggplot2::aes(x = x + seg_i - cap_w, xend = x + seg_i + cap_w,
-                                       y = red_value, yend = red_value),
-                          colour = red_col, alpha = 0.45, linewidth = 0.4) +
     ## residual gap (solid): RED -> fabio_resc, with cap tick at RED
     ggplot2::geom_segment(ggplot2::aes(x = x + seg_r, xend = x + seg_r,
                                        y = red_value, yend = fabio_resc),
-                          colour = red_col, linewidth = 0.6) +
+                          colour = red_col, linewidth = 0.4) +
     ggplot2::geom_segment(ggplot2::aes(x = x + seg_r - cap_w, xend = x + seg_r + cap_w,
                                        y = red_value, yend = red_value),
-                          colour = red_col, linewidth = 0.6) +
+                          colour = red_col, linewidth = 0.4) +
     ## trajectory arrow: fabio_init -> fabio_resc (fine line)
     ggplot2::geom_segment(ggplot2::aes(x = x + arr_x, xend = x + arr_x,
                                        y = fabio_init, yend = fabio_resc),
                           colour = "grey20", linewidth = 0.3,
                           arrow = grid::arrow(length = grid::unit(0.035, "in"),
                                               type = "closed")) +
-    ## residual gap label, left of the initial-gap / arrow / rescaled-gap cluster,
-    ## anchored just above the RED-value line (vjust = 0 -> text sits above lab_y)
+    ## residual gap label, left of the arrow / seg_r cluster,
+    ## anchored just above the tallest of the three elements (vjust = 0 -> text sits above lab_y)
     ggplot2::geom_text(ggplot2::aes(x = x + lab_x,
                                     y = lab_y,
                                     label = gap_lab),
-                       colour = red_col, hjust = 1, vjust = 0, size = 2.2) +
+                       colour = "black", hjust = 1, vjust = 0, size = 2.2) +
     ggplot2::scale_fill_manual(values = feedstock_pal_for(item_order),
                                name = "Feedstock", drop = FALSE) +
     ggplot2::scale_x_continuous(breaks = seq_along(item_order), labels = item_order,
@@ -1020,11 +1015,7 @@ plot_global_gap_item_bars <- function(cmp, ncol = 2,
     ggplot2::facet_wrap(~ period, ncol = ncol,
                         scales = if (free_y) "free_y" else "fixed") +
     ggplot2::labs(
-      x = NULL, y = "Volume (M liters)",
-      caption = paste(
-        "Faint bar = initial (non-rescaled); solid outlined bar = rescaled.",
-        "Red tick = RED target; faint / solid red segment = initial / residual gap to RED;",
-        "grey arrow = initial \u2192 rescaled trajectory.")) +
+      x = NULL, y = "Volume (M liters)") +
     ggplot2::theme_minimal(base_size = 10) +
     ggplot2::theme(legend.position    = "right",
                    panel.grid.major.x = ggplot2::element_blank(),
@@ -1086,21 +1077,22 @@ plot_global_gap_country_bars <- function(cmp, ncol = 2,
   
   ## --- residual (post-rescaling) gap + signed label ---
   ay[, resid_gap := fabio_resc - red_value]
-  ay[, gap_lab := paste0(ifelse(resid_gap >= 0, "+\u2009", "-\u2009"),
+  ay[, gap_lab := paste0(ifelse(resid_gap >= 0, "+", "-"),
                          scales::label_number(accuracy = label_accuracy,
-                                              big.mark = ",")(abs(resid_gap)))]
+                                              big.mark = "")(abs(resid_gap)))]
   
   ## --- per-facet vertical reference, so label offset scales sensibly under free_y ---
   ay[, period_max := max(pmax(fabio_init, fabio_resc, red_value), na.rm = TRUE), by = period]
-  ay[, lab_y := red_value + 0.05 * period_max]   # sits just above the RED tick, with a gap
+  ## label sits just above whichever of the three bars/tick is tallest for that row
+  ay[, top_val := pmax(fabio_init, fabio_resc, red_value, na.rm = TRUE)]
+  ay[, lab_y := top_val + 0.03 * period_max]   # small gap above the tallest element
   
   ## --- geometry constants ---
   bar_w  <- 0.6
   cap_w  <- 0.06
-  seg_i  <- bar_w / 2 + 0.05     # initial-gap segment offset
-  seg_r  <- bar_w / 2 + 0.18     # rescaled-gap segment offset
-  arr_x  <- bar_w / 2 + 0.115    # trajectory-arrow offset
-  lab_x  <- bar_w / 2 + 0.02     # gap-label offset (sits left of seg_i / arrow / seg_r)
+  arr_x  <- bar_w / 2 + 0.05     # trajectory-arrow offset (now closest to the bars)
+  seg_r  <- bar_w / 2 + 0.115    # rescaled-gap segment offset (now where the arrow used to sit)
+  lab_x  <- bar_w / 2 - 0.03     # gap-label offset (sits left of arrow / seg_r)
   
   ggplot2::ggplot(ay) +
     ## faint initial bar
@@ -1114,32 +1106,25 @@ plot_global_gap_country_bars <- function(cmp, ncol = 2,
     ggplot2::geom_segment(ggplot2::aes(x = x - bar_w / 2, xend = x + bar_w / 2,
                                        y = red_value, yend = red_value),
                           colour = red_col, linewidth = 0.5) +
-    ## initial gap (faint): RED -> fabio_init, with cap tick at RED
-    ggplot2::geom_segment(ggplot2::aes(x = x + seg_i, xend = x + seg_i,
-                                       y = red_value, yend = fabio_init),
-                          colour = red_col, alpha = 0.45, linewidth = 0.4) +
-    ggplot2::geom_segment(ggplot2::aes(x = x + seg_i - cap_w, xend = x + seg_i + cap_w,
-                                       y = red_value, yend = red_value),
-                          colour = red_col, alpha = 0.45, linewidth = 0.4) +
     ## residual gap (solid): RED -> fabio_resc, with cap tick at RED
     ggplot2::geom_segment(ggplot2::aes(x = x + seg_r, xend = x + seg_r,
                                        y = red_value, yend = fabio_resc),
-                          colour = red_col, linewidth = 0.6) +
+                          colour = red_col, linewidth = 0.4) +
     ggplot2::geom_segment(ggplot2::aes(x = x + seg_r - cap_w, xend = x + seg_r + cap_w,
                                        y = red_value, yend = red_value),
-                          colour = red_col, linewidth = 0.6) +
+                          colour = red_col, linewidth = 0.4) +
     ## trajectory arrow: fabio_init -> fabio_resc (fine line)
     ggplot2::geom_segment(ggplot2::aes(x = x + arr_x, xend = x + arr_x,
                                        y = fabio_init, yend = fabio_resc),
                           colour = "grey20", linewidth = 0.3,
                           arrow = grid::arrow(length = grid::unit(0.035, "in"),
                                               type = "closed")) +
-    ## residual gap label, left of the initial-gap / arrow / rescaled-gap cluster,
-    ## anchored just above the RED-value line (vjust = 0 -> text sits above lab_y)
+    ## residual gap label, left of the arrow / seg_r cluster,
+    ## anchored just above the tallest of the three elements (vjust = 0 -> text sits above lab_y)
     ggplot2::geom_text(ggplot2::aes(x = x + lab_x,
                                     y = lab_y,
                                     label = gap_lab),
-                       colour = red_col, hjust = 1, vjust = 0, size = 2.2) +
+                       colour = "black", hjust = 1, vjust = 0, size = 2.2) +
     ggplot2::scale_fill_manual(values = continent_palette,
                                name = "Origin continent", drop = FALSE) +
     ggplot2::scale_x_continuous(breaks = seq_along(country_order), labels = country_order,
@@ -1149,11 +1134,7 @@ plot_global_gap_country_bars <- function(cmp, ncol = 2,
     ggplot2::facet_wrap(~ period, ncol = ncol,
                         scales = if (free_y) "free_y" else "fixed") +
     ggplot2::labs(
-      x = NULL, y = "Volume (M liters)",
-      caption = paste(
-        "Faint bar = initial (non-rescaled); solid outlined bar = rescaled.",
-        "Red tick = RED target; faint / solid red segment = initial / residual gap to RED;",
-        "grey arrow = initial \u2192 rescaled trajectory.")) +
+      x = NULL, y = "Volume (M liters)") +
     ggplot2::theme_minimal(base_size = 10) +
     ggplot2::theme(legend.position    = "right",
                    panel.grid.major.x = ggplot2::element_blank(),

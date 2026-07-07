@@ -17,6 +17,17 @@ items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
 regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
 
+# ---- MODEL VERSION -----------------------------------------------------------
+# Read the SDA CSVs produced by 18_02 for the chosen model version:
+#   "rescaled" (default) -> results in output/         (the RED-rescaled run)
+#   "bypass"             -> results in output/bypass/  (non-rescaled counterfactual)
+# Rescaled is the default, so behaviour is unchanged. Keep in sync with 18_02.
+model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
+model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
+IN_DIR <- if (model_version == "bypass") "output/bypass" else "output"
+message(sprintf(">>> [19_02] model_version = '%s'  (reading SDA from: %s)",
+                model_version, IN_DIR))
+
 
 ######################################################################################################################
 ############################## Setting colors #######################
@@ -55,12 +66,12 @@ indicator_meta <- data.table(
 ############################## LOADING SDA RESULTS #######################
 ######################################################################################################################
 
-SDA_chain_ibif <- fread("output/FABIO_SDA_chained_2012_2022_ibif_total_value_BF.csv")
-SDA_chain_ibif_drivers <- fread("output/FABIO_SDA_chained_2012_2022_ibif_total_value_BF_drivers.csv")
-# SDA_chain_lcim <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF.csv")
-# SDA_chain_lcim_drivers <- fread("output/FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF_drivers.csv")
-# SDA_smooth <- fread("output/FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF.csv")
-# SDA_smooth_drivers <- fread("output/FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF_drivers.csv")
+SDA_chain_ibif <- fread(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_ibif_total_value_BF.csv"))
+SDA_chain_ibif_drivers <- fread(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_ibif_total_value_BF_drivers.csv"))
+# SDA_chain_lcim <- fread(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF.csv"))
+# SDA_chain_lcim_drivers <- fread(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_LCIM_EQ_terrestrial_value_BF_drivers.csv"))
+# SDA_smooth <- fread(file.path(IN_DIR, "FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF.csv"))
+# SDA_smooth_drivers <- fread(file.path(IN_DIR, "FABIO_SDA_smoothed_2012-2014_vs_2020-2022_land_harv_value_BF_drivers.csv"))
 
 
 # View(SDA_chain_ibif_drivers[effect == "feedstock_mix"])
@@ -129,7 +140,7 @@ plot_SDA_chain <- function(first_year,
                            last_year,
                            extension,
                            top_n      = 9,
-                           input_dir  = "output",
+                           input_dir  = IN_DIR,
                            output_dir = file.path("output", "plot"),
                            width      = 12,
                            height     = 12) {
@@ -214,14 +225,150 @@ plot_SDA_chain <- function(first_year,
 }
 
 
+######################################################################################################################
+#2b. Plotting SDA time series for top continents
+######################################################################################################################
 
+plot_SDA_chain_continent <- function(first_year,
+                                     last_year,
+                                     extension,
+                                     top_n          = 4,
+                                     continents     = NULL,   # explicit continent selection; overrides top_n if set
+                                     include_global = FALSE,  # add a "World" panel = sum over ALL continents
+                                     input_dir      = IN_DIR,
+                                     output_dir     = file.path("output", "plot"),
+                                     width          = 12,
+                                     height         = 12) {
+  
+  # --- Build filename and read ----------------------------------------------
+  in_file  <- file.path(
+    input_dir,
+    sprintf("FABIO_SDA_chained_%d_%d_%s_value_BF.csv",
+            first_year, last_year, extension)
+  )
+  SDA_chain_country <- fread(in_file)
+  
+  # --- Aggregate to continent level, preserving the year/effect structure ---
+  SDA_chain <- SDA_chain_country[
+    regions[, .(iso3c, continent)],
+    on = c(country_consumer = "iso3c"),
+    nomatch = NULL
+  ][, .(value = sum(value, na.rm = TRUE)),
+    by = .(continent, effect, year_current)]
+  
+  # --- Select continents: explicit choice, or top-N by cumulative delta -----
+  if (!is.null(continents)) {
+    
+    available <- unique(SDA_chain$continent)
+    missing   <- setdiff(continents, available)
+    if (length(missing) > 0) {
+      warning(sprintf("Continent(s) not found in data and will be dropped: %s",
+                      paste(missing, collapse = ", ")))
+    }
+    continent_order <- continents[continents %in% available]  # keeps user-specified order
+    if (length(continent_order) == 0 && !include_global) {
+      stop("None of the requested continents were found in the data.")
+    }
+    
+  } else {
+    
+    SDA_cumul <- SDA_chain[
+      effect %in% c("intensity", "feedstock_mix", "sourcing",
+                    "scale", "composition", "origin", "delta"),
+      .(value = sum(value)),
+      by = .(continent, effect)
+    ]
+    topN            <- SDA_cumul[effect == "delta"][order(-value)][seq_len(top_n)]
+    continent_order <- topN$continent
+    
+  }
+  
+  # --- Optionally append a "World" panel = sum across ALL continents --------
+  if (include_global) {
+    global_chain <- SDA_chain[, .(value = sum(value, na.rm = TRUE)),
+                              by = .(effect, year_current)][, continent := "World"]
+    SDA_chain       <- rbindlist(list(SDA_chain, global_chain), use.names = TRUE, fill = TRUE)
+    continent_order <- c(continent_order, "World")
+  }
+  
+  traj <- SDA_chain[
+    continent %in% continent_order &
+      effect %in% c("intensity", "feedstock_mix", "sourcing",
+                    "scale", "composition", "origin")
+  ]
+  
+  year_levels <- sort(unique(traj$year_current))
+  traj[, continent    := factor(continent, levels = continent_order)]
+  traj[, effect       := factor(effect, levels = c("intensity", "feedstock_mix", "sourcing",
+                                                   "scale", "composition", "origin"))]
+  traj[, year_current := factor(year_current, levels = year_levels)]
+  
+  # --- Running cumulative Δ per continent -------------------------------------
+  cum_delta <- SDA_chain[
+    continent %in% continent_order & effect == "delta"
+  ][order(continent, year_current),
+    .(year_current, value, cum_value = cumsum(value)),
+    by = continent]
+  cum_delta[, continent    := factor(continent, levels = continent_order)]
+  cum_delta[, year_current := factor(year_current, levels = year_levels)]
+  
+  # --- Title reflects the selection mode -------------------------------------
+  selection_label <- if (!is.null(continents)) {
+    paste(setdiff(continent_order, "World"), collapse = ", ")
+  } else {
+    sprintf("top %d", top_n)
+  }
+  if (include_global) selection_label <- paste0(selection_label, " + World")
+  
+  # --- Plot -----------------------------------------------------------------
+  p <- ggplot(traj, aes(x = year_current, y = value, fill = effect)) +
+    geom_col(position = position_stack(), width = 0.7) +
+    geom_line(data = cum_delta,
+              aes(x = year_current, y = cum_value, group = 1),
+              inherit.aes = FALSE, linewidth = 0.6, colour = "black") +
+    geom_point(data = cum_delta,
+               aes(x = year_current, y = cum_value),
+               inherit.aes = FALSE, size = 1.2, colour = "black") +
+    geom_hline(yintercept = 0, linewidth = 0.3) +
+    facet_wrap(~ continent, scales = "free_y") +
+    scale_fill_brewer(palette = "Set2") +
+    labs(
+      title    = sprintf("SDA effects, annual chain %d-%d — %s (%s)",
+                         first_year, last_year, selection_label, extension),
+      subtitle = "Stacked annual contributions per year-pair; black line = running cumulative Δ",
+      x        = "Year",
+      y        = "Annual contribution to Δ footprint",
+      fill     = "Effect"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom",
+          axis.text.x     = element_text(angle = 45, hjust = 1))
+  
+  # --- Save -----------------------------------------------------------------
+  out_file <- file.path(
+    output_dir,
+    sprintf("%d_%d_SDA_chain_ts_%s_continent_BF.pdf",
+            first_year, last_year, extension)
+  )
+  ggsave(filename = out_file,
+         device   = cairo_pdf,
+         plot     = p,
+         width    = width, height = height, dpi = 300)
+  
+  invisible(p)
+}
 
 ########### Plotting for various extensions
 
 plot_SDA_chain(2012, 2022, "ibif_total")
 # plot_SDA_chain(2012, 2022, "LCIM_EQ_terrestrial")
 
+plot_SDA_chain_continent(2012, 2022, "ibif_total",
+                         continents = c("EU", "ASI", "LAM", "NAM"))
 
+plot_SDA_chain_continent(2012, 2022, "ibif_total",
+                         continents     = character(0),
+                         include_global = TRUE)
 
 
 ######################################################################################################################
@@ -241,19 +388,25 @@ plot_SDA_chained_drivers <- function(indicator,
   y_axis_label <- paste0("Contribution to Δ ", meta$y_label)
   short_lbl    <- meta$short_label
   
-  # --- 0. Read, rescale, and aggregate over time per effect ------------------
-  path <- sprintf("output/FABIO_SDA_chained_2012_2022_%s_value_BF_drivers.csv",
+  # --- 0. Read, rescale, and map to continent BEFORE aggregating -------------
+  path <- sprintf(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_%s_value_BF_drivers.csv"),
                   indicator)
   raw <- fread(path)
   raw[, value := value / scale_factor]
   
+  # Map country_consumer / country_origin to continent up front, so every
+  # downstream sum groups directly by continent — no country-level
+  # intermediate, no late-stage re-collapse inside make_sda_driver_plot.
+  raw[regions, on = c(country_consumer = "iso3c"), continent_consumer := i.continent]
+  raw[regions, on = c(country_origin   = "iso3c"), continent_origin   := i.continent]
+  
   effect_groups <- list(
-    intensity     = c("country_consumer", "country_origin", "item_origin"),
-    feedstock_mix = c("country_consumer", "item_origin"),
-    sourcing      = c("country_consumer", "country_origin", "item_origin"),
-    scale         = c("country_consumer", "commodity"),
-    origin        = c("country_consumer", "country_origin", "item_origin", "commodity"),
-    composition   = c("country_consumer", "commodity")
+    intensity     = c("continent_consumer", "continent_origin", "item_origin"),
+    feedstock_mix = c("continent_consumer", "item_origin"),
+    sourcing      = c("continent_consumer", "continent_origin", "item_origin"),
+    scale         = c("continent_consumer", "commodity"),
+    origin        = c("continent_consumer", "continent_origin", "item_origin", "commodity"),
+    composition   = c("continent_consumer", "commodity")
   )
   
   plot_base <- rbindlist(
@@ -266,13 +419,9 @@ plot_SDA_chained_drivers <- function(indicator,
     use.names = TRUE, fill = TRUE
   )
   
-  # --- 1. Add continent labels via update-on-join ----------------------------
-  plot_base[regions, on = c(country_consumer = "iso3c"),
-            continent_consumer := i.continent]
-  plot_base[regions, on = c(country_origin   = "iso3c"),
-            continent_origin   := i.continent]
-  
-  # --- 2. Helper: aggregate + plot one effect --------------------------------
+  # --- 1. Helper: aggregate + plot one effect --------------------------------
+  # (unchanged — agg's group-by continent_consumer is now a no-op re-sum
+  #  since plot_base is already at continent granularity, but kept for safety)
   make_sda_driver_plot <- function(dt, eff, group_var,
                                    palette    = NULL,
                                    cont_order = NULL,
@@ -330,7 +479,7 @@ plot_SDA_chained_drivers <- function(indicator,
     p
   }
   
-  # --- 3. Crop palette -------------------------------------------------------
+  # --- 2. Crop palette -------------------------------------------------------
   item_palette <- c(
     "Sunflower seed"       = "#F59E0B",
     "Rape and Mustardseed" = "#B7791F",
@@ -366,7 +515,7 @@ plot_SDA_chained_drivers <- function(indicator,
     by = continent_consumer
   ][order(-total), continent_consumer]
   
-  # --- 4. Specs --------------------------------------------------------------
+  # --- 3. Specs --------------------------------------------------------------
   specs <- list(
     intensity     = list(group_var = "item_origin",      top_n = 10,
                          palette = item_palette, fill_order = item_order),
@@ -382,7 +531,7 @@ plot_SDA_chained_drivers <- function(indicator,
                          palette = NULL,         fill_order = cont_order)
   )
   
-  # --- 5. Build all six plots -----------------------------------------------
+  # --- 4. Build all six plots -------------------------------------------------
   plots <- lapply(names(specs), function(eff) {
     s <- specs[[eff]]
     make_sda_driver_plot(plot_base, eff,
@@ -394,7 +543,7 @@ plot_SDA_chained_drivers <- function(indicator,
   })
   names(plots) <- names(specs)
   
-  # --- 6. Save ---------------------------------------------------------------
+  # --- 5. Save ---------------------------------------------------------------
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   for (eff in names(plots)) {
     ggsave(
@@ -410,8 +559,6 @@ plot_SDA_chained_drivers <- function(indicator,
   invisible(list(plots = plots, plot_base = plot_base))
 }
 
-
 # --- Usage -----------------------------------------------------------------
 plot_SDA_chained_drivers("ibif_total")
-# plot_SDA_chained_drivers("LCIM_EQ_terrestrial")
 

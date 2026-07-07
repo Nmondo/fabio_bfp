@@ -12,12 +12,23 @@ library(paletteer)
 library(RColorBrewer)
 library(gridExtra)
 library(patchwork)
-
+library(svglite)
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
 regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
 tcf <- readRDS("intermediate_data/tcf_table_final.rds")
+
+# ---- MODEL VERSION -----------------------------------------------------------
+# Read the footprint CSVs produced by 18_01 for the chosen model version:
+#   "rescaled" (default) -> results in output/         (the RED-rescaled run)
+#   "bypass"             -> results in output/bypass/  (non-rescaled counterfactual)
+# Rescaled is the default, so behaviour is unchanged. Keep in sync with 18_01.
+model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
+model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
+IN_DIR <- if (model_version == "bypass") "output/bypass" else "output"
+message(sprintf(">>> [19_01] model_version = '%s'  (reading footprints from: %s)",
+                model_version, IN_DIR))
 
 source("R/19_plot_definitions.R")
 
@@ -39,7 +50,7 @@ tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
 ############################## HELPER FUNCTION TO EXTRACTS RESULTS FILES FROM SPECIFIC PATTERN #######################
 ######################################################################################################################
 
-fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"), dir = "output") {
+fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"), dir = IN_DIR) {
   group <- match.arg(group)
   yr    <- "(201[2-9]|202[0-2])"
   all   <- list.files(dir,
@@ -61,11 +72,11 @@ fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"), dir = "output") 
 
 
 ## Read descriptive stats
-Y_summary <- fread("output/Y_summary_c146_c147_c149.csv")
-Y_summary_BP <- fread("output/Y_summary_BP.csv")
-Z_summary <- fread("output/Z_summary_c146_c147_c149.csv")
-dt_ysrc <- fread("output/FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv")
-sankey_flows <- fread("output/FABIO_bfChain_2012-2022_BF_final_demand_continent.csv")
+Y_summary <- fread(file.path(IN_DIR, "Y_summary_c146_c147_c149.csv"))
+Y_summary_BP <- fread(file.path(IN_DIR, "Y_summary_BP.csv"))
+Z_summary <- fread(file.path(IN_DIR, "Z_summary_c146_c147_c149.csv"))
+dt_ysrc <- fread(file.path(IN_DIR, "FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv"))
+sankey_flows <- fread(file.path(IN_DIR, "FABIO_bfChain_2012-2022_BF_final_demand_continent.csv"))
 
 files_tradeFeed_BF <- fabio_files("FABIO_tradeFeed", "BF")
 files_tradeFeed_BP <- fabio_files("FABIO_tradeFeed", "BP")
@@ -79,18 +90,15 @@ dt_tradeFeed_BP <- rbindlist(lapply(files_tradeFeed_BP, fread))
 dt_feedstock    <- rbindlist(lapply(files_feedstock_BF, fread))
 dt_totalreq     <- rbindlist(lapply(files_totalreq_BF,  fread))
 
-saveRDS(dt_feedstock, "dt_feedstock.rds")
-saveRDS(dt_tradeFeed, "dt_tradefeed.rds")
-
 # Build combined LC Impact terrestrial indicator (climate + acidification; ruling out "land use") ----------------
 
-id_cols <- c("country_origin", "country_consumer", "flow_type", "year",
+id_cols_trade <- c("country_origin", "country_consumer", "flow_type", "year",
              "allocation", "feedstock", "commodity")
 
 lcim_terr <- dt_tradeFeed[
   indicator %in% c("LCIM_EQ_terrestrial_climate", "LCIM_EQ_terrestrial_acidification"),
   .(value = sum(value, na.rm = TRUE)),
-  by = id_cols
+  by = id_cols_trade
 ][, indicator := "LCIM_EQ_terrestrial"]
 
 # Drop any pre-existing LCIM_EQ_terrestrial rows, bind in the recomputed ones
@@ -99,6 +107,21 @@ dt_tradeFeed <- rbindlist(
   use.names = TRUE
 )
 
+id_cols_feed <- c("country_consumer", "continent_origin", "year",
+                  "allocation", "feedstock", "commodity")
+
+# Build combined LC Impact terrestrial indicator (climate + acidification) in dt_feedstock ----------------
+lcim_terr_feedstock <- dt_feedstock[
+  indicator %in% c("LCIM_EQ_terrestrial_climate", "LCIM_EQ_terrestrial_acidification"),
+  .(value = sum(value, na.rm = TRUE)),
+  by = id_cols_feed
+][, indicator := "LCIM_EQ_terrestrial"]
+
+# Drop any pre-existing LCIM_EQ_terrestrial rows, bind in the recomputed ones
+dt_feedstock <- rbindlist(
+  list(dt_feedstock[indicator != "LCIM_EQ_terrestrial"], lcim_terr_feedstock),
+  use.names = TRUE
+)
 
 
 ######################################################################################################################
@@ -196,11 +219,11 @@ Y_global_BP <- plot_consumption(Y_summary_BP %>% filter(comm_code != "c146"), it
                                 title          = "Global biopolymer and building block consumption by product")
 
 ## Saving
-ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BF.pdf"),
+ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BF.svg"),
        plot = Y_global_plot,
        width = 10, height = 6, dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.pdf"),
+ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.svg"),
        plot = Y_global_BP,
        width = 10, height = 6, dpi = 300)
 
@@ -242,17 +265,17 @@ plot_feedstock_desc <- function(data,
                                 y_label             = "Feedstock mass embodied in biofuel consumption (ktonnes)") {
   
   top_scope <- match.arg(top_scope)
-
+  
   comm_lookup  <- setNames(as.character(commodity_meta$item),
                            as.character(commodity_meta$comm_code))
   relabel_comm <- function(x) ifelse(x %in% names(comm_lookup), comm_lookup[x], x)
-
+  
   # feedstock → category lookup (Oil / Sugar / Other), with safe fallback
   feed_lookup <- setNames(as.character(feedstock_meta$category),
                           as.character(feedstock_meta$feedstock))
   feed_cat    <- function(x) ifelse(x %in% names(feed_lookup),
                                     feed_lookup[x], "Other")
-    
+  
   # default to "all" when nothing is supplied
   if (is.null(target_comm_in))      target_comm_in      <- unique(data$target_comm)
   if (is.null(target_continent_in)) target_continent_in <- unique(data$target_continent)
@@ -298,7 +321,7 @@ plot_feedstock_desc <- function(data,
     ungroup() %>%
     arrange(desc(cat_total), category, desc(total)) %>%
     pull(origin_comm_name)
-
+  
   # bucket non-top feedstocks into "Other"; aggregate
   d_plot <- d %>%
     mutate(feedstock = ifelse(origin_comm_name %in% top_feedstocks,
@@ -314,28 +337,76 @@ plot_feedstock_desc <- function(data,
     summarize(value = sum(value), .groups = "drop")
   
   # fixed, one-feedstock = one-colour palette (see R/feedstock_palette.R).
-  cats <- feed_cat(top_feedstocks)                      
+  cats <- feed_cat(top_feedstocks)
   pal  <- get_feedstock_palette(top_feedstocks, feedstock_meta)
   
-  # legend breaks/labels: insert header pseudo-entries above each group
+  # ---- legend breaks/labels ---------------------------------------------------
+  # Feedstocks whose category is "Other" (the neutrals in other_pool, e.g.
+  # "Other, Waste") belong to no single crop group, so they're shown once under
+  # EACH header. Detect them from what's actually present rather than testing one
+  # hard-coded name, and add their colours to pal_full explicitly so they're
+  # coloured even when they aren't top-N (hence absent from `pal`). The real
+  # neutral level is kept out of `breaks` so it doesn't also get a third key.
+  cat_display <- c("Starchy / Sugar crops" = "Sugar and starch",
+                   "Oilcrops"              = "Oils and fats")
+  cat_order   <- names(cat_display)                    # sugar/starch first
+  
+  present_levels  <- levels(droplevels(d_plot$feedstock))
+  neutral_present <- setdiff(present_levels[feed_cat(present_levels) == "Other"],
+                             "Other")
+  neutral_cols    <- setNames(unname(feedstock_color_map[neutral_present]),
+                              neutral_present)
+  
   legend_breaks <- character()
   legend_labels <- character()
   header_pal    <- character()
   
-  for (k in unique(cats)) {
+  for (k in cat_order) {
+    fs <- top_feedstocks[cats == k]
+    if (length(fs) == 0 && length(neutral_present) == 0) next
     hdr <- paste0("__hdr_", k)
-    fs  <- top_feedstocks[cats == k]
     legend_breaks <- c(legend_breaks, hdr, fs)
-    legend_labels <- c(legend_labels, paste0("<b>", k, "</b>"), fs)
+    legend_labels <- c(legend_labels, paste0("<b>", cat_display[[k]], "</b>"), fs)
     header_pal[hdr] <- "transparent"
+    
+    for (nm in neutral_present) {                      # neutral once per header
+      key <- paste0("__ow_", k, "_", nm)
+      legend_breaks   <- c(legend_breaks, key)
+      legend_labels   <- c(legend_labels, nm)
+      header_pal[key] <- neutral_cols[[nm]]
+    }
   }
+  
+  # Safety net: top feedstocks that are neither sugar/oil nor a neutral.
+  placed   <- unlist(lapply(cat_order, function(k) top_feedstocks[cats == k]))
+  leftover <- setdiff(top_feedstocks, c(placed, neutral_present))
+  if (length(leftover)) {
+    legend_breaks <- c(legend_breaks, leftover)
+    legend_labels <- c(legend_labels, leftover)
+  }
+  
   if (include_other) {
     legend_breaks <- c(legend_breaks, "Other")
     legend_labels <- c(legend_labels, "Other")
   }
   
-  pal_full <- c(header_pal, pal)
+  pal_full <- c(header_pal, pal, neutral_cols)
+  pal_full <- pal_full[!duplicated(names(pal_full))]     # neutral may already be in pal
   if (include_other) pal_full <- c(pal_full, Other = "grey70")
+  
+  # Register phantom keys (__hdr_*, __ow_*) as empty factor levels so
+  # scale_fill_manual(drop = FALSE) keeps them in the limits and draws them.
+  d_plot$feedstock <- factor(d_plot$feedstock,
+                             levels = union(levels(d_plot$feedstock), names(header_pal)))
+  
+  phantom_lvls <- names(header_pal)
+  if (length(phantom_lvls)) {
+    pad <- d_plot[rep(1L, length(phantom_lvls)), , drop = FALSE]
+    pad$feedstock <- factor(phantom_lvls, levels = levels(d_plot$feedstock))
+    pad$value     <- 0
+    d_plot <- rbind(d_plot, pad)
+    d_plot$feedstock <- factor(d_plot$feedstock, levels = levels(pad$feedstock))  # keep factor after rbind
+  }
   
   # auto-decide faceting
   n_comm <- length(unique(d_plot$target_comm))
@@ -646,25 +717,25 @@ build_feedstock_palette <- function(data,
                                     indicators      = NULL,
                                     top_n_feedstock = 10,
                                     other_color     = unname(feedstock_color_map[["Other"]])) {
-
+  
   dt <- as.data.table(data)
   if (!is.null(commodities)) dt <- dt[commodity %in% commodities]
   if (!is.null(indicators))  dt <- dt[indicator %in% indicators]
-
+  
   dt[grepl("^Animal or vegetable fats and oils", feedstock),
      feedstock := "Used Cooking Oil"]
-
+  
   # which feedstocks make each commodity x indicator top-N (union)
   top_by_combo <- dt[, {
     rk <- .SD[, .(total = sum(value, na.rm = TRUE)), by = feedstock][order(-total)]
     list(feedstock = head(rk$feedstock, top_n_feedstock))
   }, by = .(commodity, indicator)]
-
+  
   # order the union by overall magnitude (preserves prior stacking order)
   feedstocks <- dt[feedstock %in% unique(top_by_combo$feedstock),
                    .(total = sum(value, na.rm = TRUE)),
                    by = feedstock][order(-total), feedstock]
-
+  
   # COLOURS come from the fixed map, not a generator/override
   pal <- get_feedstock_palette(feedstocks, feedstock_meta, other_color = other_color)
   c(pal, Other = other_color)
@@ -934,149 +1005,21 @@ plot_commodity_grid <- function(data, commodities, indicators,
 }
 
 
-
-
-
-
-
 ######################################################################################################################
-############################## PLOT RESULTS #######################
-######################################################################################################################
-
-######################################################################################################################
-#0. Plot descriptive statistics
-######################################################################################################################
-
-# usage
-p <- plot_feedstock_desc(Z_per_year, c("c146", "c147", "c149"), c("EU","ASI","NAM","LAM"))
-
-ggsave(
-filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.pdf"),
-plot = p,
-width = 10, height = 8, dpi = 300)
-
-
-######################################################################################################################
-#1. Plot countries' impact balance (exported, self, imported)
-######################################################################################################################
-
-plot_netLU_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary)      
-
-plot_ibif_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicator = "ibif_total")
-
-plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicator = "LCIM_EQ_terrestrial")
-
-
-
-######################################################################################################################
-#2. Plot impacts by commodity, by feedstock over time. 
-######################################################################################################################
-
-p_ibif <- plot_commodity_feedstock_grid(
-  dt_tradeFeed,
-  commodities = c("c146", "c147", "c149"),
-  indicators  = "ibif_total",
-  Y_summary = Y_summary,
-  top_n_feedstock = 7
-)
-
-p_lcim <- plot_commodity_feedstock_grid(
-  dt_tradeFeed,
-  commodities = c("c146", "c147", "c149"),
-  indicators  = "LCIM_EQ_terrestrial",
-  Y_summary = Y_summary,
-  top_n_feedstock = 7
-)
-
-p_grid <- plot_commodity_feedstock_grid(
-  dt_tradeFeed,
-  commodities = c("c146", "c147", "c149"),
-  indicators  = c("ibif_total", "land_harv"),
-  Y_summary = Y_summary,
-  top_n_feedstock = 7
-)
-
-## For full comparison with LCIM terrestrial
-# p_grid_full <- plot_commodity_feedstock_grid(
-#   dt_tradeFeed,
-#   commodities = c("c146", "c147", "c149"),
-#   indicators  = c("land_harv", "ibif_total", "LCIM_EQ_terrestrial")
-# )
-
-p_grid_BP <- plot_commodity_grid(
-  dt_tradeFeed_BP,
-  commodities = bp_set,
-  indicators  = "ibif_total"
-  )
-
-
-######################################################################################################################
-############################## SAVE PLOTS #######################
-######################################################################################################################
-
-dir.create(file.path("output", "plot"), recursive = TRUE, showWarnings = FALSE)
-
-ggsave(filename = file.path("output", "plot", "balance_LU_2012_2022.pdf"),
-       plot = plot_netLU_2012_2022,
-       width = 10, height = 10, dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "balance_ibif_2012_2022.pdf"),
-       plot = plot_ibif_2012_2022,
-       width = 10, height = 10, dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "balance_lcim_terrestrial_2012_2022.pdf"),
-       plot = plot_lcim_terrestrial_2012_2022,
-       width = 10, height = 10, dpi = 300)
-
-# ggsave(filename = file.path("output", "plot", "feedstock_impact_by_indicator_grid.pdf"), 
-#        plot = p_grid_full,
-#        device = cairo_pdf,
-#        width = 19, height = 12 , dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif_lu.pdf"), 
-       plot = p_grid,
-       device = cairo_pdf,
-       width = 13, height = 12 , dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif.pdf"), 
-       plot = p_ibif,
-       device = cairo_pdf,
-       width = 7, height = 12 , dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "feedstock_impact_lcim.pdf"), 
-       plot = p_lcim,
-       device = cairo_pdf,
-       width = 7, height = 12 , dpi = 300)
-
-
-# ggsave(filename = file.path("output", "plot", "c146_feedstock.pdf"),
-#        plot = plot_commodity_feedstock(tab_land_use, "c146"),
-#        width = 10, height = 6, dpi = 300)
-# 
-# ggsave(filename = file.path("output", "plot", "c147_feedstock.pdf"),
-#        plot = plot_commodity_feedstock(tab_land_use, "c147"),
-#        width = 10, height = 6, dpi = 300)
-# 
-# ggsave(filename = file.path("output", "plot", "c149_feedstock.pdf"),
-#        plot = plot_commodity_feedstock(tab_land_use, "c149"),
-#        width = 10, height = 6, dpi = 300)
-
-
-
-
-######################################################################################################################
-############################## READ RESULTS DATA #######################
+############################## INTER-REGIONAL IMPACT FLOWS #######################
 ######################################################################################################################
 
 plot_continent_heatmap <- function(dt_feedstock,
                                    years_base,
                                    years_curr,
                                    indicator,
-                                   save_dir = file.path("output", "plot"),
-                                   save     = TRUE,
-                                   trans    = NULL,   # override default
-                                   breaks   = NULL,   # override default
-                                   limits   = NULL) { # override default
+                                   ref_max   = NULL,  # reference max defining the colour curve; SHARE across indicators
+                                   gamma     = 1,     # >1 keeps darker colours until larger values (rightward shift)
+                                   region_order = NULL, # fix continent axis order (e.g. land_harv's); NULL = self self-flow
+                                   save_dir  = file.path("output", "plot"),
+                                   save      = TRUE,
+                                   breaks    = NULL,  # override auto breaks
+                                   limits    = NULL) {
   
   # --- Map consumer country -> continent, aggregate ------------------------
   dt_feedstock <- left_join(
@@ -1090,25 +1033,21 @@ plot_continent_heatmap <- function(dt_feedstock,
     setDT()
   
   # --- Per-indicator config ------------------------------------------------
-  # Add a new indicator here = supported everywhere downstream.
   cfg_all <- list(
     ibif_total = list(
       div          = 1e3,
       legend_title = "Means species abundance loss (1000 MSA·km²·yr, annual mean)",
-      file_suffix  = "IBIF_flows_continent",
-      trans        = "log1p"
+      file_suffix  = "IBIF_flows_continent"
     ),
     LCIM_EQ_terrestrial = list(
-      div          = 1e6,
-      legend_title = "Terrestrial ecosystem damage (PDF·yr, annual mean)",
-      file_suffix  = "LCIM_terrestrial_flows_continent",
-      trans        = "log1p"
+      div          = 1e-6,
+      legend_title = "Terrestrial ecosystem damage (1/1,000,000 PDF·yr, annual mean)",
+      file_suffix  = "LCIM_terrestrial_flows_continent"
     ),
     land_harv = list(
-      div          = 1e3, 
+      div          = 1e3,
       legend_title = "Land use (1000 ha, annual mean)",
-      file_suffix  = "LU_flows_continent",
-      trans        = "log1p"
+      file_suffix  = "LU_flows_continent"
     )
   )
   
@@ -1117,7 +1056,6 @@ plot_continent_heatmap <- function(dt_feedstock,
          paste(names(cfg_all), collapse = ", "))
   }
   cfg <- cfg_all[[indicator]]
-  if (is.null(trans)) trans <- cfg$trans
   
   # --- Filter & aggregate --------------------------------------------------
   ind    <- indicator                              # avoid i-expr name clash
@@ -1146,26 +1084,56 @@ plot_continent_heatmap <- function(dt_feedstock,
   
   dt_both <- rbind(dt_heatmap_base, dt_heatmap_curr)
   
-  # --- Auto-derive limits & breaks from THIS indicator's range -------------
+  # --- Reference-anchored colour scale (SHARED across indicators) ----------
+  # Reproduces land_harv's exact log1p curve, but keyed to a REFERENCE max so
+  # the SAME curve can be reused for other indicators. A cell at ratio
+  # r = value / val_max is coloured at
+  #
+  #     t(r) = log1p(r * ref_max) / log1p(ref_max)     (clamped to [0,1])
+  #
+  # which depends only on r and the shared ref_max -> "30x below max" gets the
+  # same colour for every indicator. When ref_max == val_max (the default, i.e.
+  # each indicator against itself), this is BYTE-FOR-BYTE the original log1p
+  # appearance: low values stay in the blues, exactly as before. Larger ref_max
+  # -> lows brighter; smaller ref_max -> lows darker. Pass land_harv's val_max
+  # as ref_max to make ibif_total / LCIM_EQ_terrestrial inherit its look.
+  #
+  # `gamma` then distorts that curve: t -> t^gamma. gamma > 1 (e.g. 1.5) holds
+  # the dark blues until larger values before ramping into the greens/yellows;
+  # gamma < 1 does the opposite. gamma = 1 leaves the reference curve untouched.
   pos_vals <- dt_both$value[dt_both$value > 0 & is.finite(dt_both$value)]
   val_max  <- max(pos_vals, na.rm = TRUE)
+  if (is.null(ref_max)) ref_max <- val_max        # default: self -> original per-indicator look
   
   if (is.null(limits)) limits <- c(0, val_max)
   if (is.null(breaks)) {
-    breaks <- if (grepl("^log", trans)) {
-      high_pow <- ceiling(log10(val_max))
-      low_pow  <- max(0, high_pow - 4)
-      c(0, 10^(low_pow:high_pow))
-    } else {
-      ggplot2::waiver()   # let scale_fill_viridis_c pick linear breaks
-    }
+    high_pow <- ceiling(log10(val_max))
+    low_pow  <- max(0, high_pow - 4)
+    breaks   <- c(0, 10^(low_pow:high_pow))
   }
   
-  # --- Continent ordering by base self-flow --------------------------------
-  diag_base <- dt_heatmap_base[continent_origin == continent_target,
-                               .(diag_val = sum(value)),
-                               by = continent_origin][order(-diag_val)]
-  cont_order <- diag_base$continent_origin
+  ratio_rescaler <- function(x, to = c(0, 1), from = c(0, val_max)) {
+    r <- x / from[2]                              # ratio to this indicator's max
+    t <- log1p(r * ref_max) / log1p(ref_max)      # land_harv's curve, keyed to ref_max
+    pmin(pmax(t, 0), 1) ^ gamma                   # gamma > 1 -> darker until larger values
+  }
+  
+  # --- Continent ordering ---------------------------------------------------
+  # Default: order by base-period self-flow (this indicator). If `region_order`
+  # is supplied (e.g. land_harv's order), use it verbatim so every indicator
+  # shares one axis order; any continents present but missing from it are
+  # appended at the end rather than dropped.
+  present <- setdiff(union(unique(dt_both$continent_origin),
+                           unique(dt_both$continent_target)), "Total")
+  if (is.null(region_order)) {
+    diag_base  <- dt_heatmap_base[continent_origin == continent_target,
+                                  .(diag_val = sum(value)),
+                                  by = continent_origin][order(-diag_val)]
+    cont_order <- diag_base$continent_origin
+  } else {
+    cont_order <- as.character(region_order)
+  }
+  cont_order <- c(intersect(cont_order, present), setdiff(present, cont_order))
   
   # --- Marginal sums -------------------------------------------------------
   rs <- dt_both[, .(value = sum(value)), by = .(continent_origin, period)]
@@ -1210,10 +1178,11 @@ plot_continent_heatmap <- function(dt_feedstock,
                              label = fmt_cell(value)),
               inherit.aes = FALSE, size = 3, fontface = "bold") +
     scale_fill_viridis_c(
-      trans  = trans,
-      breaks = breaks,
-      limits = limits,
-      labels = scales::comma
+      limits   = limits,
+      breaks   = breaks,
+      labels   = scales::comma,
+      oob      = scales::squish,
+      rescaler = ratio_rescaler
     ) +
     scale_x_discrete(limits = target_levels, position = "top") +
     scale_y_discrete(limits = origin_levels) +
@@ -1240,214 +1209,177 @@ plot_continent_heatmap <- function(dt_feedstock,
   
   # --- Save ----------------------------------------------------------------
   if (save) {
-    fname <- paste0(label_base, "_vs_", label_curr, "_", cfg$file_suffix, ".pdf")
+    fname <- paste0(label_base, "_vs_", label_curr, "_", cfg$file_suffix, ".svg")
     ggsave(filename = file.path(save_dir, fname),
            plot = p, width = 10, height = 6, dpi = 300)
   }
   
+  attr(p, "cont_order") <- cont_order   # read back with attr(p, "cont_order")
   p
 }
 
 
-plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "ibif_total")
-plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "LCIM_EQ_terrestrial")
-plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv")
+######################################################################################################################
+############################## PLOT RESULTS #######################
+######################################################################################################################
+
+######################################################################################################################
+#0. Plot descriptive statistics
+######################################################################################################################
+
+# usage
+p <- plot_feedstock_desc(Z_per_year, c("c146", "c147", "c149"), c("EU","ASI","NAM","LAM"))
+
+ggsave(
+  filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
+  plot = p,
+  width = 10, height = 8, dpi = 300)
 
 
+######################################################################################################################
+#1. Plot countries' impact balance (exported, self, imported)
+######################################################################################################################
+
+plot_netLU_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary)      
+
+plot_ibif_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicator = "ibif_total")
+
+plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicator = "LCIM_EQ_terrestrial")
 
 
 
 ######################################################################################################################
-############################## COMPLEMENTARY, TEMPORARY CHECKS #######################
+#2. Plot impacts by commodity, by feedstock over time. 
 ######################################################################################################################
-# 
-# str(dt_totalreq)
-# 
-# 
-# source("R/00_system_variables.R")
-# 
-# setwd("/home/mmondolfo/fabio_bfp/")
-# # Read labels ------------------------------------------------------------------
-# input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
-# L22 <- readRDS(paste0(input_path,"2022_", "L_", "value", ".rds"))
-# L12 <- readRDS(paste0(input_path,"2012_", "L_", "value", ".rds"))
-# input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
-# io <- fread(paste0(input_path,"io_labels.csv"))
-# io_names <- io[, paste0(iso3c, "_", comm_code)]
-# 
-# library(Matrix)
-# colnames(L22) <- rownames(L22) <- colnames(L12) <- rownames(L12) <- io_names
-# 
-# contrast_country_bfp <- function(L_late, L_early,
-#                                  iso3,
-#                                  comm_codes = c(146, 147, 149),
-#                                  threshold  = 0.01,
-#                                  fill       = 0) {
-#   
-#   pattern <- paste0("^", iso3, "_c(", paste(comm_codes, collapse = "|"), ")$")
-#   
-#   extract <- function(L) {
-#     col_idx <- grep(pattern, colnames(L))
-#     if (!length(col_idx)) stop("No columns match pattern: ", pattern)
-#     sub  <- L[, col_idx, drop = FALSE]
-#     keep <- sub@x >= threshold
-#     rows <- sort.int(unique(sub@i[keep])) + 1L
-#     as.matrix(sub[rows, , drop = FALSE])
-#   }
-#   
-#   agg <- function(M) {
-#     suffix <- substring(rownames(M), nchar(rownames(M)) - 4L)
-#     rowsum(M, group = suffix)
-#   }
-#   
-#   A <- agg(extract(L_late))
-#   B <- agg(extract(L_early))
-#   
-#   rows <- union(rownames(A), rownames(B))
-#   align <- function(M) {
-#     out <- matrix(fill, length(rows), ncol(M),
-#                   dimnames = list(rows, colnames(M)))
-#     out[rownames(M), ] <- M
-#     out
-#   }
-#   
-#   align(A) - align(B)
-# }
-# 
-# # usage
-# L_diff_USA <- contrast_country_bfp(L22, L12, iso3 = "USA")
-# L_diff_BRA <- contrast_country_bfp(L22, L12, iso3 = "BRA")
-# L_diff_ARG <- contrast_country_bfp(L22, L12, iso3 = "ARG")
-# L_diff_DEU <- contrast_country_bfp(L22, L12, iso3 = "DEU")
-# 
-# 
-# 
-# 
 
+p_ibif <- plot_commodity_feedstock_grid(
+  dt_tradeFeed,
+  commodities = c("c146", "c147", "c149"),
+  indicators  = "ibif_total",
+  Y_summary = Y_summary,
+  top_n_feedstock = 7
+)
 
+p_lcim <- plot_commodity_feedstock_grid(
+  dt_tradeFeed,
+  commodities = c("c146", "c147", "c149"),
+  indicators  = "LCIM_EQ_terrestrial",
+  Y_summary = Y_summary,
+  top_n_feedstock = 7
+)
 
+p_ibif_lcim <- plot_commodity_feedstock_grid(
+  dt_tradeFeed,
+  commodities = c("c146", "c147", "c149"),
+  indicators  = c("ibif_total","LCIM_EQ_terrestrial"),
+  Y_summary = Y_summary,
+  top_n_feedstock = 7
+)
 
+p_grid <- plot_commodity_feedstock_grid(
+  dt_tradeFeed,
+  commodities = c("c146", "c147", "c149"),
+  indicators  = c("ibif_total", "land_harv"),
+  Y_summary = Y_summary,
+  top_n_feedstock = 7
+)
 
-# # ============================================================================
-# # Δ Material footprint vs Technique effect — by continent × origin item
-# # ============================================================================
-# 
-# # --- A. Add continent_consumer to dt_totalreq -----------------------------
-# dt_totalreq <- copy(dt_totalreq)
-# dt_totalreq[regions, on = c(country_consumer = "iso3c"),
-#             continent_consumer := i.continent]
-# 
-# # --- B. Sum by (continent_consumer, year, item_origin) --------------------
-# totalreq_yr <- dt_totalreq[
-#   , .(value = sum(value, na.rm = TRUE)),
-#   by = .(continent_consumer, year, item_origin)
-# ]
-# 
-# # --- C. Filter to the same top_items used in the SDA plot -----------------
-# missing <- setdiff(top_items, item_order)
-# if (length(missing) > 0) {
-#   warning("top_items not in item_order (no color/level): ",
-#           paste(missing, collapse = ", "))
-# }
-# totalreq_yr <- totalreq_yr[item_origin %in% top_items]
-# 
-# # --- D. Convert to within-continent shares, then contrast late − early ----
-# totalreq_yr[, period := fifelse(year %in% 2012:2014, "early",
-#                                 fifelse(year %in% 2020:2022, "late", NA_character_))]
-# 
-# period_means <- totalreq_yr[!is.na(period),
-#                             .(value = mean(value, na.rm = TRUE)),
-#                             by = .(continent_consumer, item_origin, period)]
-# 
-# period_means[, share := value / sum(value, na.rm = TRUE),
-#              by = .(continent_consumer, period)]
-# 
-# delta_material <- dcast(period_means,
-#                         continent_consumer + item_origin ~ period,
-#                         value.var = "share", fill = 0)
-# delta_material[, value := late - early]
-# delta_material <- delta_material[, .(continent_consumer, item_origin, value)]
-# 
-# # --- E. Technique effect from plot_base, restricted to the same items -----
-# technique_effect <- plot_base[effect == "technique" & item_origin %in% top_items,
-#                               .(value = sum(value, na.rm = TRUE)),
-#                               by = .(continent_consumer, item_origin)]
-# 
-# # --- F. Stack the two metrics into one long table -------------------------
-# combined <- rbindlist(list(
-#   technique_effect[, .(continent_consumer, item_origin, value,
-#                        type = "technique")],
-#   delta_material  [, .(continent_consumer, item_origin, value,
-#                        type = "delta_material")]
-# ))
-# 
-# combined[, item_origin        := factor(item_origin, levels = item_order)]
-# combined[, continent_consumer := factor(continent_consumer, levels = cont_order)]
-# combined[, type               := factor(type,
-#                                         levels = c("technique", "delta_material"))]
-# 
-# # --- G. Dual-axis scale factor --------------------------------------------
-# # Match the tallest stacked bar on each side so the two side-by-side bars
-# # look comparable; each metric keeps its own y-axis label.
-# visual_height <- function(x)
-#   sum(pmax(x, 0), na.rm = TRUE) - sum(pmin(x, 0), na.rm = TRUE)
-# 
-# range_tech  <- combined[type == "technique",
-#                         visual_height(value), by = continent_consumer][, max(V1)]
-# range_delta <- combined[type == "delta_material",
-#                         visual_height(value), by = continent_consumer][, max(V1)]
-# scale_factor <- range_tech / range_delta
-# 
-# combined[, value_scaled := fifelse(type == "delta_material",
-#                                    value * scale_factor, value)]
-# 
-# # --- H. Numeric x positions: dodge within continent, stack within bar -----
-# combined[, cont_idx := as.numeric(continent_consumer)]
-# combined[, x_pos    := cont_idx + fifelse(type == "technique", -0.22, 0.22)]
-# 
-# # --- I. Plot --------------------------------------------------------------
-# p_compare <- ggplot(combined,
-#                     aes(x = x_pos, y = value_scaled, fill = item_origin)) +
-#   geom_col(width = 0.4, position = position_stack(reverse = FALSE)) +
-#   geom_hline(yintercept = 0, linewidth = 0.3) +
-#   scale_x_continuous(
-#     breaks = seq_along(levels(combined$continent_consumer)),
-#     labels = levels(combined$continent_consumer),
-#     expand = expansion(add = 0.5)
-#   ) +
-#   scale_y_continuous(
-#     name     = "Technique effect (SDA, Δ land-harvested)",
-#     sec.axis = sec_axis(~ . / scale_factor,
-#                         name = "Δ feedstock share  (mean 2020–2022 − mean 2012–2014)")
-#   ) +
-#   scale_fill_manual(values = item_palette, drop = FALSE) +
-#   labs(
-#     title    = "Technique effect vs Δ material footprint",
-#     subtitle = "Per continent: left bar = technique effect (SDA), right bar = Δ material",
-#     x        = NULL,
-#     fill     = "Origin item"
-#   ) +
-#   theme_minimal(base_size = 12) +
-#   theme(
-#     axis.text.x        = element_text(angle = 30, hjust = 1),
-#     panel.grid.major.x = element_blank(),
-#     legend.position    = "right"
-#   )
-# 
-# # --- J. Save --------------------------------------------------------------
-# ggsave(
-#   filename = file.path("output", "plot",
-#                        "2012_2022_technique_vs_delta_material.pdf"),
-#   device   = cairo_pdf,
-#   plot     = p_compare,
-#   width    = 12, height = 6.5, dpi = 300
+## For full comparison with LCIM terrestrial
+# p_grid_full <- plot_commodity_feedstock_grid(
+#   dt_tradeFeed,
+#   commodities = c("c146", "c147", "c149"),
+#   indicators  = c("land_harv", "ibif_total", "LCIM_EQ_terrestrial")
 # )
-# 
-# 
-# 
-# 
-# 
 
+p_grid_BP <- plot_commodity_grid(
+  dt_tradeFeed_BP,
+  commodities = bp_set,
+  indicators  = "ibif_total"
+)
+
+
+p_lh    <- plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022,
+                                  "land_harv", save = FALSE)
+ref_max <- max(p_lh$data$value)
+ord     <- attr(p_lh, "cont_order")
+
+plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "ibif_total",
+                       ref_max = ref_max, gamma = 1.5, region_order = ord,
+                       breaks = c(0, 10, 100, round(ref_max)))
+plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "LCIM_EQ_terrestrial",
+                       ref_max = ref_max, gamma = 1.5, region_order = ord,
+                       breaks = c(0, 20, 100, round(ref_max)))
+plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv",
+                       ref_max = ref_max, gamma = 1.5, region_order = ord,
+                       breaks = c(0, 1000, 10000, round(ref_max)))
+
+######################################################################################################################
+############################## SAVE PLOTS #######################
+######################################################################################################################
+
+dir.create(file.path("output", "plot"), recursive = TRUE, showWarnings = FALSE)
+
+ggsave(filename = file.path("output", "plot", "balance_LU_2012_2022.svg"),
+       plot = plot_netLU_2012_2022,
+       width = 10, height = 10, dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "balance_ibif_2012_2022.svg"),
+       plot = plot_ibif_2012_2022,
+       width = 10, height = 10, dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "balance_lcim_terrestrial_2012_2022.svg"),
+       plot = plot_lcim_terrestrial_2012_2022,
+       width = 10, height = 10, dpi = 300)
+
+# ggsave(filename = file.path("output", "plot", "feedstock_impact_by_indicator_grid.svg"), 
+#        plot = p_grid_full,
+#        device = svg,
+#        width = 19, height = 12 , dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif_lu.svg"), 
+       plot = p_grid,
+       device = svg,
+       width = 13, height = 12 , dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif_lcim.svg"), 
+       plot = p_ibif_lcim,
+       device = svg,
+       width = 13, height = 12 , dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif.svg"), 
+       plot = p_ibif,
+       device = svg,
+       width = 7, height = 12 , dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "feedstock_impact_lcim.svg"), 
+       plot = p_lcim,
+       device = svg,
+       width = 7, height = 12 , dpi = 300)
+
+
+# ggsave(filename = file.path("output", "plot", "c146_feedstock.svg"),
+#        plot = plot_commodity_feedstock(tab_land_use, "c146"),
+#        width = 10, height = 6, dpi = 300)
+# 
+# ggsave(filename = file.path("output", "plot", "c147_feedstock.svg"),
+#        plot = plot_commodity_feedstock(tab_land_use, "c147"),
+#        width = 10, height = 6, dpi = 300)
+# 
+# ggsave(filename = file.path("output", "plot", "c149_feedstock.svg"),
+#        plot = plot_commodity_feedstock(tab_land_use, "c149"),
+#        width = 10, height = 6, dpi = 300)
+
+
+
+
+
+
+
+
+
+######################################################################################################################
+############################## READ RESULTS DATA #######################
+######################################################################################################################
 
 
 sub_map <- data.table(
@@ -1566,7 +1498,7 @@ p_indicator_BRA_IDN_USA <-
   )
 
 ggsave(plot = p_indicator_BRA_IDN_USA,
-       filename = "/home/mmondolfo/fabio_bfp/output/plot/p_indicator_BRA_IDN_USA.pdf",
+       filename = "/home/mmondolfo/fabio_bfp/output/plot/p_indicator_BRA_IDN_USA.svg",
        width = 12, 
        height = 9,
        dpi = 300)
@@ -1653,7 +1585,7 @@ ggsave(plot = p_indicator_BRA_IDN_USA,
 # # Subset & reorder the matrix
 # cor_sub_ord <- cor_sub[parent_order, parent_order]
 # 
-# pdf("output/plot/cor_indicators.pdf", width = 10, height = 9)
+# pdf("output/plot/cor_indicators.svg", width = 10, height = 9)
 # 
 # cor_subindicators <- corrplot(
 #   cor_sub_ord,
@@ -2006,7 +1938,7 @@ plot_sourcing_feedstock <- function(data, regions,
 ######################################################################################################################
 # (2) Geographic sourcing of the FINAL BIOFUEL PRODUCT consumed
 ######################################################################################################################
-# Input: fread("output/FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv")
+# Input: fread(file.path(IN_DIR, "FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv"))
 # Columns: country_consumer, year, commodity, country_origin, flow_type, value, share
 #          (uses `value`, not `share`, for the cross-country volume weighting)
 
@@ -2049,8 +1981,8 @@ p_feed_src <- plot_sourcing_feedstock(
   indicator_keep = "material",
   allocation_keep = "value")
 
-ggsave(file.path("output", "plot", "sourcing_feedstock_BF.pdf"),
-       p_feed_src, width = 11, height = 6, dpi = 300, device = cairo_pdf)
+ggsave(file.path("output", "plot", "sourcing_feedstock_BF.svg"),
+       p_feed_src, width = 11, height = 6, dpi = 300, device = svg)
 
 # --- (2) final product origin -----------------------------------------------
 
@@ -2060,8 +1992,8 @@ p_prod_src <- plot_sourcing_product(
   commodities = c("c146", "c147", "c149"),
   continents  = c("EU", "ASI", "NAM", "LAM"))
 
-ggsave(file.path("output", "plot", "sourcing_product_BF.pdf"),
-       p_prod_src, width = 11, height = 6, dpi = 300, device = cairo_pdf)
+ggsave(file.path("output", "plot", "sourcing_product_BF.svg"),
+       p_prod_src, width = 11, height = 6, dpi = 300, device = svg)
 
 
 
@@ -2390,8 +2322,8 @@ grid <- (row1 / row2) +
     plot.margin     = margin(2, 2, 2, 2)  # 2 pt on all sides — tweak downward to taste
   )
 
-cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.pdf",
-          width = 6, height = 10); print(grid); dev.off()
+svglite::svglite("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.svg",
+                 width = 6, height = 10); print(grid); dev.off()
 
 
 
@@ -2402,7 +2334,7 @@ cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.pdf",
 
 # 
 # plot_consumption_vs_impact_by_continent <- function(
-#     Y_data, impact_data, regions,
+    #     Y_data, impact_data, regions,
 #     target_comm_in, indicator_select,
 #     meta      = indicator_meta,
 #     y_label   = "Biofuel consumption (M liters)",
@@ -2524,7 +2456,7 @@ cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.pdf",
 # 
 # 
 # plot_decoupling_indexed <- function(
-#     Y_data, impact_data, regions,
+    #     Y_data, impact_data, regions,
 #     target_comm_in, indicator_select,
 #     meta = indicator_meta,
 #     base_year = NULL) {
@@ -2606,21 +2538,3 @@ cairo_pdf("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.pdf",
 #   target_comm_in   = c("c146", "c147"),
 #   indicator_select = "ibif_total"
 # )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

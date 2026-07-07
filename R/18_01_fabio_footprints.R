@@ -8,16 +8,34 @@ source("R/00_system_variables.R")
 
 setwd("/home/mmondolfo/fabio_bfp/")
 
+# ---- MODEL VERSION -----------------------------------------------------------
+# Which FABIO-BCP MRIO to load, and where results are written:
+#   "rescaled" (default) -> RED-rescaled tables at the base v2_bcp/ paths;
+#                           footprint CSVs written to output/.
+#   "bypass"             -> non-rescaled counterfactual under v2_bcp/bypass/;
+#                           CSVs to output/bypass/ (never clobbers the rescaled set).
+# Rescaled is the default, so behaviour is byte-identical to before. Flip this one
+# line (or export FABIO_RUN_MODE=bypass) only to regenerate the non-rescaled run.
+model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
+model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
+
+base_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"          # version-invariant root (E, ex)
+MRIO_PATH <- if (model_version == "bypass")
+  paste0(sub("/+$", "", base_path), "/bypass/") else base_path   # version-specific MRIO
+OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
+message(sprintf(">>> [18_01] model_version = '%s'  (MRIO: %s | out: %s)",
+                model_version, MRIO_PATH, OUT_DIR))
+
 # Read labels ------------------------------------------------------------------
-input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+input_path <- MRIO_PATH                                     # rescaled MRIO by default
 regions <- fread(file="inst/regions_full.csv") %>% filter(current==TRUE)
 io <- fread(paste0(input_path,"io_labels.csv"))
 items <- fread(file="inst/items_full_bcp.csv") %>% filter(comm_code %in% unique(io$comm_code))
 fd <- fread(file=paste0(input_path,"losses/fd_labels.csv"))
-ex <- fread(file=paste0(input_path,"ex_labels.csv"))
+ex <- fread(file=paste0(base_path,"ex_labels.csv"))         # shared across versions
 
 # Create output directory ----------------------------------------
-dir.create("output", showWarnings = FALSE, recursive = TRUE)
+dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # Load static data once (all years, value allocation) -------------------------
 # X, Y, Z, E are year-independent containers and only need to be read once.
@@ -27,7 +45,7 @@ allocation <- "value"
 X <- readRDS(paste0(input_path, "losses/X.rds"))
 Y <- readRDS(paste0(input_path, "losses/Y.rds"))
 Z <- readRDS(paste0(input_path, "losses/Z_", allocation, ".rds"))
-E <- readRDS(paste0(input_path, "E.rds"))
+E <- readRDS(paste0(base_path, "E.rds"))                    # extensions: shared across versions
 
 # Make E_bar, 3-years average of the environmental extensions.
 yrs_E_bar <- as.character(2012:2022)
@@ -109,14 +127,14 @@ fp_feedstock <- function(country       = NULL,
                          extension     = NULL,
                          commodity,
                          allocation    = "value",
-                         input_path    = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                         input_path    = MRIO_PATH,
                          losses        = TRUE,
                          by_commodity  = TRUE,
                          by_country    = TRUE,
                          top_n         = NULL,        # NEW: keep top-N feedstocks per (country, commodity); NULL = all
                          drop_zero     = TRUE,        # NEW: drop zero-value entries early
                          save          = FALSE,
-                         output_dir    = "output",
+                         output_dir    = OUT_DIR,
                          regions, io, fd, ex,
                          X = NULL, Y = NULL, Z = NULL, E = NULL, L = NULL,
                          return_full   = FALSE) {
@@ -128,7 +146,7 @@ fp_feedstock <- function(country       = NULL,
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
   if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(input_path, "E.rds"))
+    E <- readRDS(paste0(base_path, "E.rds"))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -300,14 +318,14 @@ fp_indirect <- function(country       = NULL,
                         extension     = NULL,
                         commodity,
                         allocation    = "value",
-                        input_path    = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                        input_path    = MRIO_PATH,
                         losses        = TRUE,
                         by_commodity  = TRUE,
                         by_country    = TRUE,
                         top_n         = NULL,        # keep top-N origin sectors per (country, commodity)
                         drop_zero     = TRUE,
                         save          = FALSE,
-                        output_dir    = "output",
+                        output_dir    = OUT_DIR,
                         regions, io, fd, ex,
                         X = NULL, Y = NULL, E = NULL, L = NULL,
                         return_full   = FALSE) {
@@ -321,7 +339,7 @@ fp_indirect <- function(country       = NULL,
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(input_path, "E.rds"))
+    E <- readRDS(paste0(base_path, "E.rds"))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -486,7 +504,7 @@ fp_trade_breakdown_feedstock <- function(year,
                                          extension    = NULL,     # NULL = material flows
                                          commodity    = NULL,     # NULL = all commodities
                                          allocation   = "value",
-                                         input_path   = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                                         input_path   = MRIO_PATH,
                                          losses       = TRUE,
                                          by_commodity = FALSE,
                                          by_feedstock = TRUE,
@@ -494,7 +512,7 @@ fp_trade_breakdown_feedstock <- function(year,
                                          bilateral    = FALSE,
                                          drop_zero    = TRUE,
                                          save         = FALSE,
-                                         output_dir   = "output",
+                                         output_dir   = OUT_DIR,
                                          regions, io, fd, ex,
                                          X = NULL, Y = NULL, Z = NULL,
                                          E = NULL, L = NULL,
@@ -507,7 +525,7 @@ fp_trade_breakdown_feedstock <- function(year,
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
   if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(input_path, "E.rds"))
+    E <- readRDS(paste0(base_path, "E.rds"))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -762,7 +780,7 @@ for (yr in 2012:2022) {
   }
 }
 
-extensions_choice <- as.list(c("ibif_total", "LCIM_EQ_terrestrial", "land_harv"))
+extensions_choice <- as.list(c("ibif_total", "LCIM_EQ_terrestrial_acidification", "LCIM_EQ_terrestrial_climate", "land_harv"))
 
 for (yr in 2012:2022) {
   for (ext in extensions_choice) {
@@ -793,7 +811,7 @@ for (yr in 2012:2022) {
     by_country   = TRUE,
     drop_zero    = TRUE,
     save         = TRUE,
-    output_dir  = "output",
+    output_dir  = OUT_DIR,
     regions = regions, io = io, fd = fd, ex = ex,
     X = X, Y = Y, E = E_bar
   )
@@ -813,7 +831,7 @@ for (yr in 2012:2022) {
     bilateral    = TRUE,
     drop_zero    = TRUE,
     save         = TRUE,
-    output_dir   = "output",
+    output_dir   = OUT_DIR,
     regions = regions, io = io, fd = fd, ex = ex,
     X = X, Y = Y, Z = Z,
     E = E_bar,                    
@@ -897,8 +915,8 @@ dt_Y_long <- extract_Y_long(Y)
 dt_Y_BP <- extract_Y_long(Y, commodities = c("c060", "c146", "c148", c(paste0("c",150:170))),
                           uses = c("other_industrial", "unknown"))
 
-fwrite(dt_Y_long, file.path("output", "Y_summary_c146_c147_c149.csv"))
-fwrite(dt_Y_BP, file.path("output", "Y_summary_BP.csv"))
+fwrite(dt_Y_long, file.path(OUT_DIR, "Y_summary_c146_c147_c149.csv"))
+fwrite(dt_Y_BP, file.path(OUT_DIR, "Y_summary_BP.csv"))
 
 
 
@@ -958,7 +976,7 @@ extract_Z_long <- function(Z, commodities = c("c146", "c147", "c149")) {
 # usage
 dt_Z_long <- extract_Z_long(Z)
 
-fwrite(dt_Z_long, file.path("output", "Z_summary_c146_c147_c149.csv"))
+fwrite(dt_Z_long, file.path(OUT_DIR, "Z_summary_c146_c147_c149.csv"))
 
 
 
@@ -1002,11 +1020,11 @@ bf_supply_chain_flows <- function(years,
                                   level           = "continent",   # "continent" | "country" (no aggregation)
                                   clamp_neg       = FALSE,         # set negative flows (e.g. stock changes in Y) to 0
                                   drop_zero       = TRUE,
-                                  input_path      = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                                  input_path      = MRIO_PATH,
                                   losses          = TRUE,
                                   allocation      = "value",
                                   save            = FALSE,
-                                  output_dir      = "output",
+                                  output_dir      = OUT_DIR,
                                   regions, io, fd,
                                   X = NULL, Y = NULL, Z = NULL, L = NULL) {
   
@@ -1163,8 +1181,8 @@ y_sourcing_shares <- function(years,
                               wide         = FALSE,       # one row per (consumer, year, commodity)
                               clamp_neg    = FALSE,       # set negative FD entries (e.g. stock changes) to 0
                               save         = FALSE,
-                              output_dir   = "output",
-                              input_path   = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+                              output_dir   = OUT_DIR,
+                              input_path   = MRIO_PATH,
                               losses       = TRUE,
                               io, fd,
                               Y = NULL) {
@@ -1285,12 +1303,12 @@ y_sourcing_shares(years = 2012:2022,
 #                                 extension,
 #                                 commodity,
 #                                 allocation      = "value",
-#                                 input_path      = "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/",
+#                                 input_path      = MRIO_PATH,
 #                                 losses          = TRUE,
 #                                 by_origin       = TRUE,
 #                                 drop_zero       = TRUE,
 #                                 save            = FALSE,
-#                                 output_dir      = "output",
+#                                 output_dir      = OUT_DIR,
 #                                 regions, io, ex,
 #                                 X = NULL, Z = NULL, E = NULL, L = NULL,
 #                                 return_full     = FALSE) {
@@ -1301,7 +1319,7 @@ y_sourcing_shares(years = 2012:2022,
 #   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
 #   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
 #   if (!is.null(extension) && is.null(E))
-#     E <- readRDS(paste0(input_path, "E.rds"))
+#     E <- readRDS(paste0(base_path, "E.rds"))
 #   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
 #   
 #   Xi <- X[, as.character(year)]
@@ -1453,5 +1471,5 @@ y_sourcing_shares(years = 2012:2022,
 #   comm      = c("c146", "c147", "c149"),
 #   byOrigin  = TRUE
 # )
-# fwrite(intensity_land_bcp, file.path("output", fname))
-# message("Wrote ", file.path("output", fname))
+# fwrite(intensity_land_bcp, file.path(OUT_DIR, fname))
+# message("Wrote ", file.path(OUT_DIR, fname))
