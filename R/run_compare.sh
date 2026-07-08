@@ -20,6 +20,7 @@
 # =============================================================================
 set -euo pipefail
 
+export FABIO_BFP_ROOT=/home/mmondolfo/fabio_bfp
 REPO="/home/mmondolfo/fabio_bfp"
 cd "$REPO"
 

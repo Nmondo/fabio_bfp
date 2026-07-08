@@ -1260,8 +1260,7 @@ plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicat
 ######################################################################################################################
 #2. Plot impacts by commodity, by feedstock over time. 
 ######################################################################################################################
-<<<<<<< HEAD
-=======
+
 # 
 # str(dt_totalreq)
 # 
@@ -1325,7 +1324,6 @@ plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicat
 # 
 # 
 # 
->>>>>>> 8ab21e56ab23884c92afded7fbd3ec25afcd2eec
 
 p_ibif <- plot_commodity_feedstock_grid(
   dt_tradeFeed,
@@ -1573,11 +1571,7 @@ p_indicator_BRA_IDN_USA <-
   )
 
 ggsave(plot = p_indicator_BRA_IDN_USA,
-<<<<<<< HEAD
-       filename = "/home/mmondolfo/fabio_bfp/output/plot/p_indicator_BRA_IDN_USA.svg",
-=======
        filename = file.path(fabio_root, "output/plot/p_indicator_BRA_IDN_USA.pdf"),
->>>>>>> 8ab21e56ab23884c92afded7fbd3ec25afcd2eec
        width = 12, 
        height = 9,
        dpi = 300)
@@ -2616,4 +2610,4 @@ svglite::svglite("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.svg",
 #   regions          = regions,
 #   target_comm_in   = c("c146", "c147"),
 #   indicator_select = "ibif_total"
-# )
+# 

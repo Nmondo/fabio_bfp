@@ -5,21 +5,6 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
-###########################################################
-########### LOADING INITIAL LABELS - TO COPY THOSE UNCHANGED #######################
-###########################################################
-
-setwd("/mnt/nfs_fineprint/tmp/fabio/v2/")
-ex_fd_labels <- read_csv("ex_fd_labels.csv")
-ex_labels    <- read_csv("ex_labels.csv")
-fd_labels    <- read_csv("fd_labels.csv")
-io_labels    <- read_csv("io_labels.csv")
-items        <- read_csv("items.csv")
-regions      <- read_csv("regions.csv")
-su_labels    <- read_csv("su_labels.csv")
-
-# setwd("/mnt/nfs_fineprint/tmp/fabio/v2_bcp/")
-
 
 
 
@@ -36,8 +21,26 @@ if (!nzchar(fabio_root)) {
   if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
+
+###########################################################
+########### LOADING INITIAL LABELS - TO COPY THOSE UNCHANGED #######################
+###########################################################
+
+setwd("/mnt/nfs_fineprint/tmp/fabio/v2/")
+ex_fd_labels <- read_csv("ex_fd_labels.csv")
+ex_labels    <- read_csv("ex_labels.csv")
+fd_labels    <- read_csv("fd_labels.csv")
+io_labels    <- read_csv("io_labels.csv")
+items        <- read_csv("items.csv")
+regions      <- read_csv("regions.csv")
+su_labels    <- read_csv("su_labels.csv")
+
+# setwd("/mnt/nfs_fineprint/tmp/fabio/v2_bcp/")
+
+
 setwd(fabio_root)
-setwd(fabio_root)
+
+
 
 library(data.table)
 library(tidyverse)

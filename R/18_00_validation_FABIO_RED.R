@@ -692,8 +692,6 @@ feedstock_pal_for <- function(levels) {
 ##  9.  PLOT FUNCTIONS
 ################################################################################
 
-
-
 ## ---- 1. Total feedstocks embodied in consumption, by origin continent ----
 ##
 ## compare_rescale = FALSE  -> original behaviour (single `version`: FABIO vs RED)

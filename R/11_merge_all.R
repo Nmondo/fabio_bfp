@@ -92,6 +92,84 @@ use_full <- bind_rows(use_final, use_final_bcp) %>%
   filter(area_code %in% current_codes)
 
 
+###########################################################
+########### RESCALE BIOFUEL FEEDSTOCK USE TO OUTPUT #######
+###########################################################
+# Close the gap between feedstock-implied biofuel output (use x TCF) and reported
+# biofuel supply, by applying ONE scale factor per (biofuel, area, year) block.
+# A uniform factor leaves the feedstock mix (shares by feedstock type) unchanged.
+# BRA + USA are held at their original, un-rescaled feedstock use.
+
+## --- TCF table: feedstock -> biofuel output_qty (kL output per t feedstock) ---
+tcf <- readRDS("intermediate_data/tcf_table_final.rds")   # rel. to data/ (setwd above)
+tcf$item <- ifelse(tcf$item == " Triticale", "Triticale", tcf$item)
+setDT(tcf)
+items_lu <- unique(as.data.table(items_full_bcp)[!is.na(comm_code), .(item, comm_code)], by = "item")
+tcf[items_lu, comm_code := fcoalesce(comm_code, i.comm_code), on = "item"]
+tcf[, biofuel_code := fcase(
+  grepl("Biogasoline", proc),      "c146",
+  grepl("Biodiesel", proc),        "c147",
+  grepl("Renewable diesel", proc), "c149",
+  default = NA_character_)]
+tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total") & !is.na(biofuel_code)]
+
+tcf_key <- unique(tcf[, .(comm_code, biofuel_code, output_qty)])
+stopifnot(nrow(tcf_key[, .N, by = .(comm_code, biofuel_code)][N > 1]) == 0)
+
+## --- proc_code -> biofuel commodity (derived, same rule as tcf) ---
+bf_procs <- unique(as.data.table(use_full)[proc_code %in% c("p125","p126","p127"),
+                                           .(proc_code, proc)])
+bf_procs[, biofuel_code := fcase(
+  grepl("Biogasoline", proc),      "c146",
+  grepl("Biodiesel", proc),        "c147",
+  grepl("Renewable diesel", proc), "c149",
+  default = NA_character_)]
+stopifnot(!anyNA(bf_procs$biofuel_code), uniqueN(bf_procs$proc_code) == 3L)
+
+## --- countries excluded from rescaling ---
+stopifnot("iso3c" %in% names(regions))
+no_rescale_codes <- regions$code[regions$iso3c %in% c("BRA", "USA")]
+stopifnot(length(no_rescale_codes) == 2L)
+
+## --- implied output = sum(feedstock use x TCF) per (biofuel, area, year) ---
+u_bf <- as.data.table(use_full)[proc_code %in% c("p125","p126","p127")]
+u_bf <- merge(u_bf, bf_procs[, .(proc_code, biofuel_code)], by = "proc_code", all.x = TRUE)
+u_bf <- merge(u_bf, tcf_key, by = c("comm_code", "biofuel_code"), all.x = TRUE)
+
+miss_tcf <- u_bf[!is.na(use) & use != 0 & is.na(output_qty),
+                 .(use = sum(use)), by = .(biofuel_code, comm_code, item)]
+if (nrow(miss_tcf)) warning("biofuel rescale: ", nrow(miss_tcf),
+                            " feedstock/biofuel combos have use but no TCF (excluded from implied) — inspect `miss_tcf`")
+
+implied <- u_bf[, .(implied = sum(use * output_qty, na.rm = TRUE)),
+                by = .(biofuel_code, area_code, year)]
+
+## --- actual output = reported biofuel supply (pre-imbalance) ---
+actual <- as.data.table(sup_final_bcp)[comm_code %in% c("c146","c147","c149"),
+                                       .(actual = sum(supply, na.rm = TRUE)),
+                                       by = .(biofuel_code = comm_code, area_code, year)]
+
+## --- scale factor (uniform within group -> mix preserved) ---
+lam <- merge(implied, actual, by = c("biofuel_code","area_code","year"), all = TRUE)
+lam[is.na(implied), implied := 0][is.na(actual), actual := 0]
+lam[, lambda := actual / implied]
+lam[!is.finite(lambda), lambda := 1]                 # implied==0: nothing to scale
+lam[area_code %in% no_rescale_codes, lambda := 1]    # BRA + USA untouched
+
+n_zeroed <- lam[implied > 0 & actual == 0 & !(area_code %in% no_rescale_codes), .N]
+if (n_zeroed) message(">>> biofuel rescale: ", n_zeroed,
+                      " (biofuel,area,year) with output=0 but feedstock use>0 -> feedstock use zeroed")
+
+## --- apply lambda onto biofuel feedstock use rows ---
+use_full <- as.data.table(use_full)
+use_full[proc_code %in% c("p125","p126","p127"),
+         biofuel_code := bf_procs$biofuel_code[match(proc_code, bf_procs$proc_code)]]
+use_full[lam, lambda := i.lambda, on = c("biofuel_code","area_code","year")]
+use_full[!is.na(lambda) & !is.na(use), use := use * lambda]
+use_full[, c("biofuel_code","lambda") := NULL]
+use_full <- as_tibble(use_full)
+
+
 # self-source c901 use that waste_flows doesn't cover (placed right after edit 1)
 c901_use <- as.data.table(as.data.frame(use_full))[comm_code == "c901",
                                                    .(use = sum(use)), by = .(area_code, year)]
@@ -128,7 +206,7 @@ use_fd_full <- bind_rows(use_fd_final, use_fd_final_bcp) %>%
                 ~ case_when(item %in% extension_items & is.na(.x) ~ 0, 
                             ! item %in% extension_items           ~ 0,
                             TRUE                                  ~ .x))
-         )  %>%
+  )  %>%
   filter(area_code %in% current_codes)
 
 
@@ -226,7 +304,7 @@ balance_check <- balance_check %>%
 balance_check <- balance_check %>% 
   mutate(tot_supply = na_sum(prod, imports, stock_withdrawal, - exports), 
          tot_use    = na_sum(use, food, losses, other, stock_addition, 
-           tourist, fuel, other_industrial, unknown_use),
+                             tourist, fuel, other_industrial, unknown_use),
          imbalance  = tot_supply - tot_use)
 
 # ---- c901 is pinned by waste_flows (trade) + biofuel use; keep it OUT of the
@@ -258,7 +336,7 @@ balance_check_adj <- balance_check %>%
          prod_new = if_else(imbalance < 0, prod + abs(imbalance), prod)) %>%
   # Recompute totals to verify zero imbalance
   mutate(tot_use_new    = na_sum(use, food, losses, other, stock_addition,
-           tourist, fuel, other_industrial, unknown_use),
+                                 tourist, fuel, other_industrial, unknown_use),
          tot_supply_new = na_sum(prod_new, imports, stock_withdrawal, exports),
          imbalance_new  = tot_supply_new - tot_use_new)
 
@@ -473,6 +551,12 @@ btd_full <- btd_full %>%
 ###########################################################
 
 setwd(fabio_root)
+
+# Ensure data.table class on disk: 12_a (and 12_b/13) consume these with
+# data.table syntax `dt[, .(...)]`, which fails on a plain data.frame with
+# "could not find function '.'". use_full / use_fd_full come off bind_rows()/
+# as_tibble() as tibbles, so normalise all four before writing.
+setDT(sup_full); setDT(use_full); setDT(use_fd_full); setDT(btd_full)
 
 saveRDS(sup_full, tag("data/sup_final_merged.rds"))
 saveRDS(use_full, tag("data/use_final_merged.rds"))
