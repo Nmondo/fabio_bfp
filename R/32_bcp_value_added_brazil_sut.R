@@ -12,13 +12,16 @@
 # refining and the dedicated biofuels industry), and its main activity also
 # makes non-fuel products, so its VA cannot be read off a single industry. We
 # use the industry-technology assumption (make-share allocation): each activity's
-# total value added is split across the products it makes in proportion to
-# gross-output share, and we keep product 19921's slice:
+# value added is split across the products it makes in proportion to gross-output
+# share, and we keep product 19921's slice:
 #     VA_pool[y] = sum_i  VA_activity_i[y] * make[19921, i, y] / output_i[y]
-# VA is the whole block (labour + capital + taxes - subsidies), taken directly
-# from the workbook's "Valor adicionado bruto" row, in 10^6 BRL, then converted
-# to USD with a hard-coded annual exchange rate. That pooled VA is then divided
-# between c146 and c147 by their Brazil producer-value shares for the year.
+# VA is read as three accounts — wages ("Remunerações"), capital ("Excedente
+# operacional bruto e rendimento misto bruto") and tls ("Outros impostos sobre a
+# produção" + "Outros subsídios à produção", subsidies stored NEGATIVE so both
+# are added as-is) — each allocated separately, in 10^6 BRL, then converted to
+# USD with a hard-coded annual exchange rate. Each account's pooled VA is then
+# divided between c146 and c147 by their Brazil producer-value shares for the
+# year; the total is the signed sum of the three.
 #
 # Inputs :  inst/value_added/brazil_sut/68_tab1_<year>.xls   Recursos (Supply / Make)
 #           inst/value_added/brazil_sut/68_tab2_<year>.xls   Usos     (Use / VA)
@@ -64,8 +67,16 @@ USE_SHEET    <- "VA"                  # value added by activity
 SUT_PRODUCT_CODE <- "19921"
 SUT_PRODUCT_NAME <- "Etanol e outros biocombustiveis"
 
-# Row label (column A of the VA sheet) carrying gross value added per activity.
-VA_ROW_PREFIX <- "valor adicionado bruto"
+# VA accounts, and the column-A labels of the "VA" sheet that feed each (PARENT
+# rows only).  IBGE stores subsidies NEGATIVE, so both TLS rows are added as-is.
+VA_ACCOUNTS       <- c("wages", "capital", "tls")
+BRA_LABOUR_LABELS  <- c("Remunera\u00e7\u00f5es")                                  # Remunerações
+BRA_CAPITAL_LABELS <- c("Excedente operacional bruto e rendimento misto bruto")
+BRA_TLS_POS_LABELS <- c("Outros impostos sobre a produ\u00e7\u00e3o")              # Outros impostos sobre a produção
+BRA_TLS_NEG_LABELS <- c("Outros subs\u00eddios \u00e0 produ\u00e7\u00e3o")         # Outros subsídios à produção
+BRA_TLS_SUBSIDY_SIGN <- 1
+# Gross-output row label (make-share denominator cross-check).
+BRA_OUTPUT_ROW_LABEL <- "Valor da produ\u00e7\u00e3o"                              # Valor da produção
 
 # FABIO commodities the pooled VA is split across, and the producer-value key.
 TARGET_ISO3C      <- "BRA"
@@ -132,8 +143,8 @@ num <- function(v) suppressWarnings(as.numeric(v))
 
 # --- per-year pooled value added ---------------------------------------------
 
-# From the Supply workbook: per-activity gross output (make column sums) and the
-# pooled product's make value per activity.
+# From the Supply workbook: the full make matrix in long form (product x
+# activity) plus per-activity gross output (make column sums).
 read_supply <- function(supply_path, year) {
   mat  <- read_sheet_matrix(supply_path, resolve_sheet(supply_path, SUPPLY_SHEET))
   hdr  <- find_activity_header(mat)
@@ -146,52 +157,114 @@ read_supply <- function(supply_path, year) {
   vals <- matrix(num(mat[prows, hdr$cols]), nrow = length(prows),
                  dimnames = list(code[prows], hdr$codes))
   vals[!is.finite(vals)] <- 0
-  
-  output_i <- colSums(vals)                    # per-activity total gross output
-  prow     <- which(rownames(vals) == SUT_PRODUCT_CODE)
-  if (!length(prow))
+  if (!SUT_PRODUCT_CODE %in% rownames(vals))
     stop("Product ", SUT_PRODUCT_CODE, " not found in ", basename(supply_path), ".")
-  make_pool <- colSums(vals[prow, , drop = FALSE])   # pooled make per activity
   
-  data.table(activity_code = hdr$codes, year = as.integer(year),
-             make_pool = as.numeric(make_pool), output_i = as.numeric(output_i))
+  make_long <- as.data.table(as.data.frame(as.table(vals)))
+  setnames(make_long, c("sut_item_code", "activity_code", "sup_val"))
+  make_long[, `:=`(sut_item_code = as.character(sut_item_code),
+                   activity_code = as.character(activity_code),
+                   sup_val       = as.numeric(sup_val),
+                   year          = as.integer(year))]
+  output_i <- data.table(activity_code = hdr$codes, year = as.integer(year),
+                         output_i = as.numeric(colSums(vals)))
+  list(make_long = make_long[is.finite(sup_val)], output_i = output_i)
 }
 
-# From the Use workbook: total value added per activity (the "Valor adicionado
-# bruto" row = labour + capital + taxes - subsidies).
-read_va <- function(use_path, year) {
+# From the Use workbook: VA per activity for the three accounts, long
+# (activity_code, va_account, year, va_value).  Subsidies (tls) are added with
+# BRA_TLS_SUBSIDY_SIGN (+1: IBGE stores them negative).
+read_va_by_activity <- function(use_path, year) {
   mat <- read_sheet_matrix(use_path, resolve_sheet(use_path, USE_SHEET))
   hdr <- find_activity_header(mat)
-  lab <- norm_label(mat[, 1L])
-  vrow <- which(startsWith(lab, VA_ROW_PREFIX))
-  if (!length(vrow))
-    stop("Value-added row ('", VA_ROW_PREFIX, "...') not found in ", basename(use_path), ".")
-  data.table(activity_code = hdr$codes, year = as.integer(year),
-             va_activity = num(mat[vrow[1L], hdr$cols]))
+  colA <- norm_label(mat[, 1L])
+  
+  acct_spec <- list(
+    list(acct = "wages",   labels = BRA_LABOUR_LABELS,  sign = 1),
+    list(acct = "capital", labels = BRA_CAPITAL_LABELS, sign = 1),
+    list(acct = "tls",     labels = BRA_TLS_POS_LABELS, sign = 1),
+    list(acct = "tls",     labels = BRA_TLS_NEG_LABELS, sign = BRA_TLS_SUBSIDY_SIGN))
+  
+  found <- character(0); pieces <- list()
+  for (sp in acct_spec) {
+    targets <- norm_label(sp$labels)
+    rws <- which(colA %in% targets)
+    if (!length(rws)) next
+    found  <- c(found, targets[targets %in% colA[rws]])
+    vals   <- matrix(num(mat[rws, hdr$cols]), nrow = length(rws))
+    peract <- colSums(vals, na.rm = TRUE) * sp$sign
+    pieces[[length(pieces) + 1L]] <- data.table(
+      activity_code = hdr$codes, va_account = sp$acct,
+      year = as.integer(year), va_value = peract)
+  }
+  
+  expect      <- norm_label(c(BRA_LABOUR_LABELS, BRA_CAPITAL_LABELS,
+                              BRA_TLS_POS_LABELS, BRA_TLS_NEG_LABELS))
+  missing_lab <- setdiff(expect, unique(found))
+  if (length(missing_lab))
+    warning(sprintf("[%d] VA account label(s) NOT found in the 'VA' sheet: %s",
+                    year, paste(missing_lab, collapse = " | ")))
+  
+  rbindlist(pieces, use.names = TRUE)[
+    , .(va_value = sum(va_value, na.rm = TRUE)),
+    by = .(activity_code, va_account, year)]
 }
 
-# Make-share allocation: pooled VA = sum_i VA_i * make[19921,i] / output_i.
+# Make-share allocation per account: VA_product = sum_i VA_i * make[p,i] /
+# output_i, keeping product 19921's slice.  Also runs the full-identity sanity
+# check Sum_p VA_p = Sum_i VA_i per account (make-shares sum to 1 over all
+# products for each activity with output_i > 0).
 pooled_va_year <- function(year) {
   supply <- file.path(SUT_DIR, sprintf(SUPPLY_FILE_FMT, year))
   use    <- file.path(SUT_DIR, sprintf(USE_FILE_FMT,    year))
   if (!file.exists(supply) || !file.exists(use)) return(NULL)
   
-  d <- merge(read_supply(supply, year), read_va(use, year),
-             by = c("activity_code", "year"))
-  d[, make_share := fifelse(output_i > 0, make_pool / output_i, 0)]
-  d[, va_alloc   := va_activity * make_share]
-  data.table(year = as.integer(year),
-             pooled_output_brl_mn = d[, sum(make_pool, na.rm = TRUE)],
-             pooled_va_brl_mn     = d[, sum(va_alloc,  na.rm = TRUE)])
+  sup     <- read_supply(supply, year)
+  va_ind  <- read_va_by_activity(use, year)
+  
+  shares <- merge(sup$make_long, sup$output_i, by = c("activity_code", "year"))
+  shares[, make_share := fifelse(output_i > 0, sup_val / output_i, 0)]
+  alloc  <- merge(va_ind, shares, by = c("activity_code", "year"),
+                  allow.cartesian = TRUE)
+  alloc[, va_share := va_value * make_share]
+  va_prod <- alloc[, .(va_value = sum(va_share, na.rm = TRUE)),
+                   by = .(sut_item_code, va_account, year)]
+  
+  # Full-identity sanity check per account.
+  ind_tot  <- va_ind[activity_code %in% sup$output_i[output_i > 0, activity_code],
+                     .(ind = sum(va_value, na.rm = TRUE)), by = va_account]
+  prod_tot <- va_prod[, .(prod = sum(va_value, na.rm = TRUE)), by = va_account]
+  chk      <- merge(ind_tot, prod_tot, by = "va_account", all = TRUE)
+  chk[is.na(ind), ind := 0][is.na(prod), prod := 0]
+  bad <- chk[abs(prod - ind) > 1e-6 * pmax(1, abs(ind))]
+  if (nrow(bad))
+    warning(sprintf("[%d] make-share identity gap (Sum_p != Sum_i): %s", year,
+                    paste(sprintf("%s %+.3g", bad$va_account, bad$prod - bad$ind),
+                          collapse = "; ")))
+  
+  pool <- merge(data.table(va_account = VA_ACCOUNTS),
+                va_prod[sut_item_code == SUT_PRODUCT_CODE, .(va_account, va_value)],
+                by = "va_account", all.x = TRUE)
+  pool[is.na(va_value), va_value := 0]
+  
+  pooled_output <- sup$make_long[sut_item_code == SUT_PRODUCT_CODE,
+                                 sum(sup_val, na.rm = TRUE)]
+  res_row <- as.data.table(as.list(setNames(pool$va_value, pool$va_account)))
+  res_row[, `:=`(year = as.integer(year), pooled_output_brl_mn = pooled_output)]
+  res_row[]
 }
 
 
 # --- pooled VA per year ------------------------------------------------------
 
-res <- rbindlist(lapply(keep_years, pooled_va_year))
+res <- rbindlist(lapply(keep_years, pooled_va_year), use.names = TRUE, fill = TRUE)
 if (is.null(res) || !nrow(res))
   stop("No Brazil SUT workbook pair found in '", SUT_DIR, "' for years ",
        paste(range(keep_years), collapse = "-"), ".")
+
+for (acct in VA_ACCOUNTS) if (!acct %in% names(res)) res[, (acct) := 0]
+res[, pooled_va_brl_mn := wages + capital + tls]
+setnames(res, VA_ACCOUNTS, sprintf("pooled_va_%s_brl_mn", VA_ACCOUNTS))
 
 missing_years <- setdiff(keep_years, res$year)
 if (length(missing_years))
@@ -228,9 +301,15 @@ if (length(fallback_years))
 
 d <- merge(grid, res,               by = "year")
 d <- merge(d,    SPLIT_COMMODITIES, by = "comm_code")
-d[, value_added_brl_mn := pooled_va_brl_mn * share]
 
-# Attach the hard-coded FX and convert 10^6 BRL -> USD.
+# Split each account's pooled VA by the producer-value share; total is the sum.
+for (acct in VA_ACCOUNTS)
+  d[, (sprintf("value_added_%s_brl_mn", acct)) :=
+      get(sprintf("pooled_va_%s_brl_mn", acct)) * share]
+d[, value_added_brl_mn := value_added_wages_brl_mn + value_added_capital_brl_mn +
+    value_added_tls_brl_mn]
+
+# Attach the hard-coded FX and convert 10^6 BRL -> USD, per account and total.
 d[, fx_brl_per_usd := FX_BRL_PER_USD[as.character(year)]]
 no_fx <- unique(d[!is.finite(fx_brl_per_usd), year])
 if (length(no_fx)) {
@@ -238,7 +317,18 @@ if (length(no_fx)) {
           " - add them to FX_BRL_PER_USD. Those rows are dropped.")
   d <- d[is.finite(fx_brl_per_usd)]
 }
+for (acct in VA_ACCOUNTS)
+  d[, (sprintf("value_added_sut_%s [USD]", acct)) :=
+      get(sprintf("value_added_%s_brl_mn", acct)) * 1e6 / fx_brl_per_usd]
 d[, `value_added_sut [USD]` := value_added_brl_mn * 1e6 / fx_brl_per_usd]
+
+# Invariant: the three components sum to the total in every kept cell.
+d[, .comp_sum := `value_added_sut_wages [USD]` + `value_added_sut_capital [USD]` +
+    `value_added_sut_tls [USD]`]
+if (d[share > 0 & is.finite(`value_added_sut [USD]`) &
+      abs(.comp_sum - `value_added_sut [USD]`) > 1e-6 * pmax(1, abs(`value_added_sut [USD]`)), .N])
+  stop("32: Brazil SUT components do not sum to the total.")
+d[, .comp_sum := NULL]
 
 out <- d[share > 0, .(iso3c         = TARGET_ISO3C,
                       comm_code,
@@ -247,11 +337,20 @@ out <- d[share > 0, .(iso3c         = TARGET_ISO3C,
                       sut_item_code = SUT_PRODUCT_CODE,
                       sut_item      = SUT_PRODUCT_NAME,
                       pooled_output_brl_mn,
+                      pooled_va_wages_brl_mn,
+                      pooled_va_capital_brl_mn,
+                      pooled_va_tls_brl_mn,
                       pooled_va_brl_mn,
                       producer_value_usd,
                       split_share   = share,
+                      value_added_wages_brl_mn,
+                      value_added_capital_brl_mn,
+                      value_added_tls_brl_mn,
                       value_added_brl_mn,
                       fx_brl_per_usd,
+                      `value_added_sut_wages [USD]`,
+                      `value_added_sut_capital [USD]`,
+                      `value_added_sut_tls [USD]`,
                       `value_added_sut [USD]`)]
 setorder(out, year, comm_code)
 

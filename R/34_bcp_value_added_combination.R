@@ -55,9 +55,12 @@
 # Outputs (per base; <base> = "gloria" / "exiobase", <tag> = run-mode suffix):
 #   intermediate_data/bcp_value_added_combined_<base><tag>.rds / .csv
 #     keys iso3c, area_code, comm_code, item, year; the chosen `value_added_usd`
-#     and its `va_source`; the base MRIO value (`base_value_added_usd`, pre-
-#     overwrite) and each overlay's raw contribution, so the row is self-
-#     documenting and the later validation (script 35 + US reports) can compare.
+#     and its three components `value_added_{wages,capital,tls}_usd`; the
+#     `va_source`; the base MRIO value (`base_value_added_usd`, pre-overwrite) and
+#     each overlay's raw contribution (total + three components), so the row is
+#     self-documenting and the later validation can compare.  Components sum to
+#     the total in every valued cell; a US overlay supplying only wages has its
+#     capital/tls apportioned from the residual by the base's capital:tls ratio.
 #   intermediate_data/value_added_diagnostics/
 #     bcp_value_added_combined_<base>_source_mix<tag>.csv   rows & VA sum by source
 #     bcp_value_added_combined_<base>_overwrite_audit<tag>.csv  base-vs-overlay,
@@ -82,6 +85,9 @@ source("R/00_system_variables.R")   # years
 source("R/00_run_config.R")          # tag() / mode_tag
 
 keep_years <- as.integer(years)
+
+# VA components carried through the ladder, in a fixed order.
+VA_COMPONENTS <- c("wages", "capital", "tls")
 
 
 # --- configuration -----------------------------------------------------------
@@ -157,6 +163,14 @@ SRC_NESTE  <- "Company GVA: Neste (renewable-diesel bundle)"
 US_REPORTS_VA <- data.table(
   year = 2014:2022,
   value_added_musd = c(15357, 7382, 6432, 4325, 5021, 3709, 3055, 5023, 2383),
+  # Labor income (the ethanol-production "Direct" row's INCOME cell of each
+  # report's Table 2), nominal USD millions, aligned to value_added_musd (Direct
+  # GDP) above.  Used as the wages component; the residual (Direct GDP − wages)
+  # is apportioned into capital/tls by the base's capital:tls ratio (R/31).
+  # IMPLAN "labor income" includes proprietor income, so this is a
+  # wages+mixed-income proxy.
+  wages_income_musd = c(4489, 2536, 2386, 1842, 2199,
+                        1862, 1321, 2357, 1017),
   source_report = c(
     "Contribution of Ethanol Industry to Economy of US in 2014 (Urbanchuk, 2015)",
     "Ethanol Economic Impact for 2015 (RFA/ABF)",
@@ -199,26 +213,41 @@ mriot  <- need_file(MRIOT_RDS,  "31_bcp_value_added_MRIOTs.R")
 brazil <- need_file(BRAZIL_RDS, "32_bcp_value_added_brazil_sut.R")
 neste  <- need_file(NESTE_RDS,  "33_bcp_value_added_neste.R")
 
-for (b in BASES)
-  if (!b$base_col %in% names(mriot))
-    stop("bcp_value_added_MRIOTs.rds has no `", b$base_col,
-         "` column -- re-run 31_bcp_value_added_MRIOTs.R.")
+for (b in BASES) {
+  need_cols <- c(b$base_col,
+                 sprintf("value_added_%s_%s [USD]", VA_COMPONENTS, b$file_key),
+                 sprintf("va_intensity_%s_%s",      VA_COMPONENTS, b$file_key))
+  miss <- setdiff(need_cols, names(mriot))
+  if (length(miss))
+    stop("bcp_value_added_MRIOTs.rds is missing column(s): ",
+         paste(miss, collapse = ", "), " -- re-run 31_bcp_value_added_MRIOTs.R.")
+}
 
 mriot[, year := as.integer(year)]
 
-# -- Brazil overlay -> common overlay schema (one VA value + a source label).
+# -- Brazil overlay -> common overlay schema (total + the three components).
 if (!"value_added_sut [USD]" %in% names(brazil))
   stop("bcp_value_added_brazil_sut.rds has no `value_added_sut [USD]` column.")
+for (cc in sprintf("value_added_sut_%s [USD]", VA_COMPONENTS))
+  if (!cc %in% names(brazil))
+    stop("bcp_value_added_brazil_sut.rds has no `", cc, "` column -- re-run 32.")
 brazil_ov <- brazil[, .(iso3c, comm_code, item, year = as.integer(year),
-                        overlay_value = `value_added_sut [USD]`,
+                        overlay_value   = `value_added_sut [USD]`,
+                        overlay_wages   = `value_added_sut_wages [USD]`,
+                        overlay_capital = `value_added_sut_capital [USD]`,
+                        overlay_tls     = `value_added_sut_tls [USD]`,
                         overlay_source = SRC_BRAZIL, priority = 1L)]
 brazil_ov <- brazil_ov[is.finite(overlay_value)]
 
-# -- US overlay: millions -> USD, tag as USA c146.
+# -- US overlay: millions -> USD, tag as USA c146.  Wages (labor income) is
+#    known; capital/tls are left NA and apportioned per base from the residual.
 us_ov <- US_REPORTS_VA[year %in% keep_years,
                        .(iso3c = US_ISO3C, comm_code = US_COMM, item = US_ITEM,
                          year = as.integer(year),
-                         overlay_value = value_added_musd * 1e6,
+                         overlay_value   = value_added_musd * 1e6,
+                         overlay_wages   = wages_income_musd * 1e6,
+                         overlay_capital = NA_real_,
+                         overlay_tls     = NA_real_,
                          overlay_source = SRC_US, priority = 1L)]
 
 # -- The two OVERWRITE overlays, stacked and de-duplicated by an explicit
@@ -236,13 +265,19 @@ if (nrow(overwrite_ov) != n_ow_raw)
   message(sprintf("  note: %d overlapping direct-overlay cell(s) resolved by priority.",
                   n_ow_raw - nrow(overwrite_ov)))
 
-# -- Neste FILL rows (renewable-diesel bundle; absent from the MRIO base).
+# -- Neste FILL rows (renewable-diesel bundle; absent from the MRIO base).  R/33
+#    already carries all three components (tls a genuine 0), so no fallback.
 if (!"value_added_usd" %in% names(neste))
   stop("bcp_value_added_neste.rds has no `value_added_usd` column.")
+for (cc in sprintf("value_added_%s_usd", VA_COMPONENTS))
+  if (!cc %in% names(neste))
+    stop("bcp_value_added_neste.rds has no `", cc, "` column -- re-run 33.")
 neste_fill <- neste[is.finite(value_added_usd) &
                       year %in% keep_years,
                     .(iso3c, area_code, comm_code, item, year = as.integer(year),
-                      value_added_usd, va_source = SRC_NESTE,
+                      value_added_usd,
+                      value_added_wages_usd, value_added_capital_usd, value_added_tls_usd,
+                      va_source = SRC_NESTE,
                       total_product_output = output, unit)]
 
 
@@ -252,23 +287,71 @@ dir.create("intermediate_data", showWarnings = FALSE, recursive = TRUE)
 DIAG_DIR <- "intermediate_data/value_added_diagnostics"
 dir.create(DIAG_DIR, showWarnings = FALSE, recursive = TRUE)
 
+# Component value + intensity column names, per fixed VA_COMPONENTS order.
+COMP_VAL_COLS <- sprintf("value_added_%s_usd", VA_COMPONENTS)
+COMP_INT_COLS <- sprintf("base_int_%s",        VA_COMPONENTS)
+
+# APPORTIONMENT FALLBACK: for any row with a finite total but only a SUBSET of
+# components known, distribute residual = total − sum(known) across the MISSING
+# components by that base's per-component intensity ratio (same cell), so the
+# three always sum to the total.  When the base ratio is unavailable (missing or
+# ~0 denominator), the residual is placed on the first missing component.
+apportion_missing <- function(dt) {
+  tot  <- dt$value_added_usd
+  vals <- as.matrix(dt[, ..COMP_VAL_COLS])
+  ints <- as.matrix(dt[, ..COMP_INT_COLS])
+  need <- which(is.finite(tot) & rowSums(is.na(vals)) > 0L)
+  for (i in need) {
+    miss  <- which(is.na(vals[i, ]))
+    known <- which(!is.na(vals[i, ]))
+    residual <- tot[i] - (if (length(known)) sum(vals[i, known]) else 0)
+    w     <- ints[i, miss]
+    denom <- sum(w)
+    if (is.finite(denom) && abs(denom) > .Machine$double.eps) {
+      vals[i, miss] <- residual * w / denom
+    } else {
+      vals[i, miss]     <- 0
+      vals[i, miss[1L]] <- residual
+    }
+  }
+  for (k in seq_along(COMP_VAL_COLS)) set(dt, j = COMP_VAL_COLS[k], value = vals[, k])
+  dt
+}
+
 combine_one_base <- function(base) {
   
   cat(sprintf("\n=== combining value added on the %s base ===\n", base$label))
   
-  # 1. base table -> the common `value_added_usd` name; keep context + a copy of
-  #    the untouched base value for the audit.
+  # 1. base table -> the common `value_added_usd` name; keep context, an untouched
+  #    copy of the base total + components for the audit, and this base's per-
+  #    component intensities for the apportionment fallback.
+  base_val_cols <- sprintf("value_added_%s_%s [USD]", VA_COMPONENTS, base$file_key)
+  base_int_cols <- sprintf("va_intensity_%s_%s",      VA_COMPONENTS, base$file_key)
   base_dt <- mriot[, .(iso3c, area_code, comm_code, item, year,
                        total_product_output, unit, total_value,
-                       value_added_usd      = get(base$base_col),
-                       base_value_added_usd = get(base$base_col),
-                       va_source            = base$label)]
+                       value_added_usd         = get(base$base_col),
+                       value_added_wages_usd   = get(base_val_cols[1]),
+                       value_added_capital_usd = get(base_val_cols[2]),
+                       value_added_tls_usd     = get(base_val_cols[3]),
+                       base_value_added_usd    = get(base$base_col),
+                       va_mriot_wages_usd      = get(base_val_cols[1]),
+                       va_mriot_capital_usd    = get(base_val_cols[2]),
+                       va_mriot_tls_usd        = get(base_val_cols[3]),
+                       base_int_wages          = get(base_int_cols[1]),
+                       base_int_capital        = get(base_int_cols[2]),
+                       base_int_tls            = get(base_int_cols[3]),
+                       va_source               = base$label)]
   n_base <- nrow(base_dt)
   
-  # 2. OVERWRITE overlays: update value + source in place on the matched cells,
+  # 2. OVERWRITE overlays: update total + components + source in place on the
+  #    matched cells (US leaves capital/tls NA for the apportionment step),
   #    leaving area_code / item / context (from the base) untouched.
   base_dt[overwrite_ov,
-          `:=`(value_added_usd = i.overlay_value, va_source = i.overlay_source),
+          `:=`(value_added_usd         = i.overlay_value,
+               value_added_wages_usd   = i.overlay_wages,
+               value_added_capital_usd = i.overlay_capital,
+               value_added_tls_usd     = i.overlay_tls,
+               va_source               = i.overlay_source),
           on = JOIN_KEYS]
   n_overwritten <- base_dt[va_source %in% c(SRC_BRAZIL, SRC_US), .N]
   
@@ -315,21 +398,46 @@ combine_one_base <- function(base) {
   
   combined <- rbindlist(list(base_dt, neste_rows), use.names = TRUE, fill = TRUE)
   
-  # 4. Per-source raw columns, so the combined row is self-documenting.
+  # 3b. APPORTIONMENT FALLBACK: fill any component left NA under a finite total
+  #     (the US overlay's capital/tls) from the residual, by this base's ratio.
+  combined <- apportion_missing(combined)
+  
+  # Invariant: the three components sum to the total in every valued cell.
+  inv <- combined[is.finite(value_added_usd)]
+  if (nrow(inv) && inv[, max(abs(value_added_wages_usd + value_added_capital_usd +
+                                 value_added_tls_usd - value_added_usd) /
+                             pmax(1, abs(value_added_usd)))] > 1e-6)
+    stop("34 [", base$label, "]: components do not sum to the total after apportionment.")
+  
+  # 4. Per-source raw columns (total + the three components), so the combined row
+  #    is self-documenting.  va_mriot_* is always the base; the others carry the
+  #    chosen value only on the rows that source supplied.
   combined[, `:=`(
     va_mriot_usd      = base_value_added_usd,
-    va_brazil_sut_usd = NA_real_,
-    va_us_reports_usd = NA_real_,
-    va_neste_usd      = NA_real_)]
-  combined[va_source == SRC_BRAZIL, va_brazil_sut_usd := value_added_usd]
-  combined[va_source == SRC_US,     va_us_reports_usd := value_added_usd]
-  combined[va_source == SRC_NESTE,  va_neste_usd      := value_added_usd]
+    va_brazil_sut_usd = NA_real_, va_us_reports_usd = NA_real_, va_neste_usd = NA_real_,
+    va_brazil_sut_wages_usd = NA_real_, va_brazil_sut_capital_usd = NA_real_, va_brazil_sut_tls_usd = NA_real_,
+    va_us_reports_wages_usd = NA_real_, va_us_reports_capital_usd = NA_real_, va_us_reports_tls_usd = NA_real_,
+    va_neste_wages_usd = NA_real_, va_neste_capital_usd = NA_real_, va_neste_tls_usd = NA_real_)]
+  combined[va_source == SRC_BRAZIL, `:=`(
+    va_brazil_sut_usd = value_added_usd, va_brazil_sut_wages_usd = value_added_wages_usd,
+    va_brazil_sut_capital_usd = value_added_capital_usd, va_brazil_sut_tls_usd = value_added_tls_usd)]
+  combined[va_source == SRC_US, `:=`(
+    va_us_reports_usd = value_added_usd, va_us_reports_wages_usd = value_added_wages_usd,
+    va_us_reports_capital_usd = value_added_capital_usd, va_us_reports_tls_usd = value_added_tls_usd)]
+  combined[va_source == SRC_NESTE, `:=`(
+    va_neste_usd = value_added_usd, va_neste_wages_usd = value_added_wages_usd,
+    va_neste_capital_usd = value_added_capital_usd, va_neste_tls_usd = value_added_tls_usd)]
+  
+  combined[, c("base_int_wages", "base_int_capital", "base_int_tls") := NULL]
   
   setcolorder(combined, c("iso3c", "area_code", "comm_code", "item", "year",
-                          "value_added_usd", "va_source",
-                          "base_value_added_usd",
-                          "va_mriot_usd", "va_brazil_sut_usd",
-                          "va_us_reports_usd", "va_neste_usd",
+                          "value_added_usd",
+                          "value_added_wages_usd", "value_added_capital_usd", "value_added_tls_usd",
+                          "va_source", "base_value_added_usd",
+                          "va_mriot_usd", "va_mriot_wages_usd", "va_mriot_capital_usd", "va_mriot_tls_usd",
+                          "va_brazil_sut_usd", "va_brazil_sut_wages_usd", "va_brazil_sut_capital_usd", "va_brazil_sut_tls_usd",
+                          "va_us_reports_usd", "va_us_reports_wages_usd", "va_us_reports_capital_usd", "va_us_reports_tls_usd",
+                          "va_neste_usd", "va_neste_wages_usd", "va_neste_capital_usd", "va_neste_tls_usd",
                           "total_product_output", "unit", "total_value"))
   setorder(combined, iso3c, comm_code, year)
   

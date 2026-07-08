@@ -2,10 +2,14 @@
 # 31_bcp_value_added_MRIOTs.R
 # Value added for the bio-based commodities, estimated by multiplying each
 # commodity's total producer value by a chemical-sector value-added intensity
-# (total VA / producer-price output) borrowed from two upstream MRIO databases:
+# (VA / producer-price output) borrowed from two upstream MRIO databases:
 #   GLORIA   — sector "Basic organic chemicals"
 #   EXIOBASE — sector "Chemicals nec"
-# The whole VA block is summed; VA is not split into wages / capital / taxes.
+# VA is split into three components — wages (compensation of employees),
+# capital (net operating surplus + net mixed income + consumption of fixed
+# capital) and tls (taxes on production − subsidies, signed) — so one intensity
+# per component is built per base; the two aggregate totals are the row-wise
+# sums of their three components.
 #
 # For each database the intensity is built per (region, year), optionally
 # cleaned (Hampel spike filter + MAD winsor, toggled by APPLY_INTENSITY_FILTER),
@@ -19,10 +23,13 @@
 #           inst/value_added/concordance_areas_gloria_fabio.csv    region -> FABIO area
 #           inst/value_added/concordance_areas_exiobase_fabio.csv  region -> FABIO area
 # Outputs:  intermediate_data/bcp_value_added_MRIOTs.rds / .csv
-#             producer-value context, the two VA intensities, and
-#             value_added_gloria [USD] / value_added_exiobase [USD].
+#             producer-value context, per-component VA intensities and VA
+#             (value_added_{wages,capital,tls}_{gloria,exiobase} [USD]), and the
+#             aggregate totals value_added_gloria [USD] / value_added_exiobase
+#             [USD] (row-wise sums of their three components).
 #           intermediate_data/value_added_diagnostics/
-#             bcp_value_added_intensity_{gloria,exiobase}.csv  region x year VA,
+#             bcp_value_added_intensity_{gloria,exiobase}.csv  region x year x
+#               component VA,
 #               output, and the raw -> Hampel -> winsor intensity with the spike
 #               audit (window_median, series_mad, hampel_z, is_spike) and the cap
 #               audit (cap_lower, cap_upper, mad_z, winsorized).
@@ -65,6 +72,9 @@ HAMPEL_THRESHOLD   <- 3     # robust-z spike cutoff
 WINSOR_MAD_K       <- 2.5   # robust-z cap for the pooled MAD winsor
 WINSOR_MIN_OBS     <- 8L    # minimum pooled obs before a winsor band is built
 
+# VA components, in a fixed order used for every per-component emission.
+VA_COMPONENTS <- c("wages", "capital", "tls")
+
 # Target sectors (exact label match in each base).
 GLORIA_SECTOR   <- "Basic organic chemicals"
 EXIOBASE_SECTOR <- "Chemicals nec"
@@ -78,20 +88,21 @@ GLORIA_README <- file.path(GLORIA_DIR, "labels", "GLORIA_ReadMe_060.xlsx")
 GLORIA_V_DIR  <- file.path(GLORIA_DIR, "IOTs_producer_prices", "V")
 GLORIA_X_DIR  <- file.path(GLORIA_DIR, "IOTs_producer_prices", "X")
 
-# GLORIA value-added-and-final-demand row labels that are value added (the rest
-# of that sheet is final demand and is excluded from the sum).
-GLORIA_VA_LABELS <- c(
-  "Compensation of employees D.1",
-  "Net operating surplus B.2n",
-  "Net mixed income B.3n",
-  "Consumption of fixed capital K.1",
-  "Taxes on production D.29",
-  "Subsidies on production D.39")
+# GLORIA value-added-and-final-demand row label -> VA component (the rest of that
+# sheet is final demand and is excluded).  "Subsidies on production D.39" is
+# signed in V, so summing it with taxes inside `tls` gives taxes − subsidies.
+GLORIA_VA_LABEL_TO_COMPONENT <- c(
+  "Compensation of employees D.1"    = "wages",
+  "Net operating surplus B.2n"       = "capital",
+  "Net mixed income B.3n"            = "capital",
+  "Consumption of fixed capital K.1" = "capital",
+  "Taxes on production D.29"         = "tls",
+  "Subsidies on production D.39"     = "tls")
 
 # EXIOBASE factor-input rows: row 1 lifts basic prices to producer prices (the
-# intensity denominator); rows 2:9 are the value-added block.
-EXIOBASE_LIFT_ROW <- 1L
-EXIOBASE_VA_ROWS  <- 2:9
+# intensity denominator, not VA); rows 2:9 partition into components.
+EXIOBASE_LIFT_ROW    <- 1L
+EXIOBASE_ROWS_BY_COMPONENT <- list(wages = 3:5, capital = 6:9, tls = 2L)
 
 # Area concordances (region code -> FABIO area code).
 GLORIA_AREA_CONC    <- "inst/value_added/concordance_areas_gloria_fabio.csv"
@@ -170,12 +181,13 @@ mad_winsor <- function(x, theta, k = WINSOR_MAD_K) {
        mad_z = (w - med) / sc)
 }
 
-# region x year intensity cleaning: per-region Hampel over years, then one
-# pooled winsor across all region-years. Both stages are kept as columns
-# (va_intensity -> va_intensity_hampel -> va_intensity_winsor) with their audit
-# fields, so the diagnostic can show each stage explicitly.
+# region x year x component intensity cleaning: per-(region, component) Hampel
+# over years, then one pooled winsor per component across all region-years. Both
+# stages are kept as columns (va_intensity -> va_intensity_hampel ->
+# va_intensity_winsor) with their audit fields, so the diagnostic can show each
+# stage explicitly.
 clean_intensity <- function(d) {
-  setorder(d, region_code, year)
+  setorder(d, va_component, region_code, year)
   if (!APPLY_INTENSITY_FILTER) {
     d[, `:=`(va_intensity_hampel = va_intensity,
              window_median = NA_real_, series_mad = NA_real_,
@@ -186,10 +198,17 @@ clean_intensity <- function(d) {
     return(d[])
   }
   d[, c("va_intensity_hampel", "window_median", "series_mad", "hampel_z", "is_spike") :=
-      hampel_series(va_intensity), by = region_code]
-  w <- mad_winsor(d$va_intensity_hampel, ihs_theta(d$va_intensity_hampel))
-  d[, `:=`(va_intensity_winsor = w$values,
-           cap_lower = w$cap_lower, cap_upper = w$cap_upper, mad_z = w$mad_z)]
+      hampel_series(va_intensity), by = .(va_component, region_code)]
+  d[, `:=`(va_intensity_winsor = NA_real_, cap_lower = NA_real_,
+           cap_upper = NA_real_, mad_z = NA_real_)]
+  for (comp in VA_COMPONENTS) {
+    idx <- which(d$va_component == comp)
+    if (!length(idx)) next
+    hh <- d$va_intensity_hampel[idx]
+    w  <- mad_winsor(hh, ihs_theta(hh))
+    d[idx, `:=`(va_intensity_winsor = w$values, cap_lower = w$cap_lower,
+                cap_upper = w$cap_upper, mad_z = w$mad_z)]
+  }
   d[, winsorized := is.finite(va_intensity_hampel) & is.finite(va_intensity_winsor) &
       va_intensity_hampel != va_intensity_winsor]
   d[]
@@ -197,9 +216,10 @@ clean_intensity <- function(d) {
 
 
 # --- intensity -> FABIO area (output-weighted) -------------------------------
-# Aggregate the cleaned intensity to FABIO areas by output-weighting, so several
-# upstream regions mapping to one area combine as sum(VA) / sum(X). region_col
-# is the concordance column holding the upstream region id.
+# Aggregate the cleaned per-component intensity to FABIO areas by output-
+# weighting, so several upstream regions mapping to one area combine as
+# sum(VA) / sum(X) within each component. region_col is the concordance column
+# holding the upstream region id.
 intensity_to_area <- function(d, area_conc_path, region_col) {
   conc <- fread(area_conc_path, encoding = "UTF-8")
   conc <- unique(conc[, .(region_code     = as.character(get(region_col)),
@@ -209,9 +229,9 @@ intensity_to_area <- function(d, area_conc_path, region_col) {
   d <- merge(d, conc, by = "region_code", allow.cartesian = TRUE)
   area <- d[is.finite(va_intensity_winsor) & is.finite(x) & x > 0,
             .(va_num = sum(va_intensity_winsor * x), x_den = sum(x)),
-            by = .(fabio_area_code, year)]
+            by = .(fabio_area_code, va_component, year)]
   area[, va_intensity := fifelse(x_den > 0, va_num / x_den, NA_real_)]
-  area[, .(area_code = fabio_area_code, year, va_intensity)]
+  area[, .(area_code = fabio_area_code, va_component, year, va_intensity)]
 }
 
 
@@ -236,12 +256,16 @@ gloria_intensity <- function(load_years) {
     stop("GLORIA sector '", GLORIA_SECTOR, "' not found (or not unique) in the ReadMe Sectors sheet.")
   
   # Identify the value-added rows: the ReadMe column carrying the most known VA
-  # labels is the label column; VA rows are those labels present in GLORIA_VA_LABELS.
-  hits    <- vapply(va_fd, function(col) sum(trimws(as.character(col)) %in% GLORIA_VA_LABELS), integer(1))
+  # labels is the label column; assign each VA row to its component.
+  known   <- names(GLORIA_VA_LABEL_TO_COMPONENT)
+  hits    <- vapply(va_fd, function(col) sum(trimws(as.character(col)) %in% known), integer(1))
   labels  <- trimws(as.character(va_fd[[names(va_fd)[which.max(hits)]]]))
-  va_idx  <- which(labels %in% GLORIA_VA_LABELS)
-  if (length(va_idx) == 0L)
-    stop("No GLORIA value-added rows matched GLORIA_VA_LABELS in the ReadMe sheet.")
+  row_comp <- unname(GLORIA_VA_LABEL_TO_COMPONENT[labels])   # NA = final demand
+  rows_by_component <- lapply(VA_COMPONENTS, function(comp) which(row_comp == comp))
+  names(rows_by_component) <- VA_COMPONENTS
+  for (comp in VA_COMPONENTS)
+    if (!length(rows_by_component[[comp]]))
+      stop("GLORIA component '", comp, "' matched no VA-row label in the ReadMe sheet.")
   
   target_cols <- (seq_len(n_regions) - 1L) * n_sectors + sec_pos
   
@@ -255,11 +279,14 @@ gloria_intensity <- function(load_years) {
               ncol(V_mat) == n_regions * n_sectors,
               length(X_vec) == n_regions * n_sectors)
     X_vec[X_vec < 0] <- 0
-    va <- vapply(seq_len(n_regions), function(r)
-      sum(V_mat[(r - 1L) * n_va + va_idx, target_cols[r]]), numeric(1))
     x  <- X_vec[target_cols]
-    data.table(region_code = as.character(regions$Region_acronyms),
-               year = yr, va = va, x = x)
+    rbindlist(lapply(VA_COMPONENTS, function(comp) {
+      sel <- rows_by_component[[comp]]
+      va  <- vapply(seq_len(n_regions), function(r)
+        sum(V_mat[(r - 1L) * n_va + sel, target_cols[r]]), numeric(1))
+      data.table(region_code = as.character(regions$Region_acronyms),
+                 va_component = comp, year = yr, va = va, x = x)
+    }))
   }
   
   disk_years <- sort(as.integer(gsub("V_|\\.qs2", "",
@@ -269,7 +296,7 @@ gloria_intensity <- function(load_years) {
   
   d <- rbindlist(lapply(yrs, process_year))
   d[, va_intensity := fifelse(x > 0, va / x, NA_real_)]
-  message(sprintf("  GLORIA: %d region-years, %d with finite intensity.",
+  message(sprintf("  GLORIA: %d region-year-components, %d with finite intensity.",
                   nrow(d), d[is.finite(va_intensity), .N]))
   d[]
 }
@@ -290,6 +317,8 @@ exiobase_intensity <- function(load_years) {
   if (nrow(target) == 0L)
     stop("EXIOBASE sector '", EXIOBASE_SECTOR, "' not found in the common unit labels.")
   
+  max_va_row <- max(unlist(EXIOBASE_ROWS_BY_COMPONENT, use.names = FALSE))
+  
   process_year <- function(yr) {
     x_path <- file.path(EXIOBASE_DIR, sprintf("IOT_%d_ixi", yr), "x.rds")
     f_path <- file.path(EXIOBASE_DIR, sprintf("IOT_%d_ixi", yr), "factor_inputs", "F.rds")
@@ -303,15 +332,17 @@ exiobase_intensity <- function(load_years) {
     } else X_vec <- as.numeric(X_raw)
     F_mat <- as.matrix(readRDS(f_path))
     if (!is.numeric(F_mat)) storage.mode(F_mat) <- "double"
-    if (nrow(F_mat) < max(EXIOBASE_VA_ROWS))
-      stop("EXIOBASE F for year ", yr, " has fewer than ", max(EXIOBASE_VA_ROWS), " factor rows.")
+    if (nrow(F_mat) < max_va_row)
+      stop("EXIOBASE F for year ", yr, " has fewer than ", max_va_row, " factor rows.")
     
     cols <- target$col
     x_pp <- X_vec[cols] + F_mat[EXIOBASE_LIFT_ROW, cols]
     x_pp[x_pp < 0] <- 0
-    va   <- colSums(F_mat[EXIOBASE_VA_ROWS, cols, drop = FALSE])
-    data.table(region_code = target$region_code,
-               year = yr, va = va, x = x_pp)
+    rbindlist(lapply(VA_COMPONENTS, function(comp) {
+      va <- colSums(F_mat[EXIOBASE_ROWS_BY_COMPONENT[[comp]], cols, drop = FALSE])
+      data.table(region_code = target$region_code,
+                 va_component = comp, year = yr, va = va, x = x_pp)
+    }))
   }
   
   year_dirs  <- list.dirs(EXIOBASE_DIR, recursive = FALSE)
@@ -322,7 +353,7 @@ exiobase_intensity <- function(load_years) {
   
   d <- rbindlist(lapply(yrs, process_year))
   d[, va_intensity := fifelse(x > 0, va / x, NA_real_)]
-  message(sprintf("  EXIOBASE: %d region-years, %d with finite intensity.",
+  message(sprintf("  EXIOBASE: %d region-year-components, %d with finite intensity.",
                   nrow(d), d[is.finite(va_intensity), .N]))
   d[]
 }
@@ -348,21 +379,58 @@ exiobase_area <- intensity_to_area(exiobase_reg, EXIOBASE_AREA_CONC, EXIOBASE_RE
 pv <- as.data.table(readRDS(tag("intermediate_data/bcp_producer_total_values.rds")))
 pv[, year := as.integer(year)]
 
-pv[gloria_area,   va_intensity_gloria   := i.va_intensity, on = .(area_code, year)]
-pv[exiobase_area, va_intensity_exiobase := i.va_intensity, on = .(area_code, year)]
+bases <- c("gloria", "exiobase")
 
-pv[, `value_added_gloria [USD]` := fifelse(
-  is.finite(va_intensity_gloria) & is.finite(total_value),
-  va_intensity_gloria * total_value, NA_real_)]
-pv[, `value_added_exiobase [USD]` := fifelse(
-  is.finite(va_intensity_exiobase) & is.finite(total_value),
-  va_intensity_exiobase * total_value, NA_real_)]
+# Attach the per-component area intensities for one base as
+# va_intensity_{wages,capital,tls}_<base>.
+attach_intensities <- function(pv, area_long, base) {
+  aw <- dcast(area_long, area_code + year ~ va_component, value.var = "va_intensity")
+  for (comp in VA_COMPONENTS) if (!comp %in% names(aw)) aw[, (comp) := NA_real_]
+  setnames(aw, VA_COMPONENTS, sprintf("va_intensity_%s_%s", VA_COMPONENTS, base))
+  merge(pv, aw, by = c("area_code", "year"), all.x = TRUE, sort = FALSE)
+}
+pv <- attach_intensities(pv, gloria_area,   "gloria")
+pv <- attach_intensities(pv, exiobase_area, "exiobase")
 
-out <- pv[, .(iso3c, area_code, comm_code, item, year,
-              total_product_output, unit, total_value,
-              va_intensity_gloria,   `value_added_gloria [USD]`,
-              va_intensity_exiobase, `value_added_exiobase [USD]`)]
+# Per-component VA = intensity x producer value; aggregate total + aggregate
+# intensity are the row-wise sums of the three components (NA if any missing).
+for (base in bases) {
+  for (comp in VA_COMPONENTS) {
+    icol <- sprintf("va_intensity_%s_%s", comp, base)
+    vcol <- sprintf("value_added_%s_%s [USD]", comp, base)
+    pv[, (vcol) := fifelse(is.finite(get(icol)) & is.finite(total_value),
+                           get(icol) * total_value, NA_real_)]
+  }
+  vcols <- sprintf("value_added_%s_%s [USD]", VA_COMPONENTS, base)
+  icols <- sprintf("va_intensity_%s_%s",       VA_COMPONENTS, base)
+  pv[, (sprintf("value_added_%s [USD]", base)) :=
+       get(vcols[1]) + get(vcols[2]) + get(vcols[3])]
+  pv[, (sprintf("va_intensity_%s", base)) :=
+       get(icols[1]) + get(icols[2]) + get(icols[3])]
+}
+
+base_block <- function(b) c(
+  sprintf("va_intensity_%s", b),
+  sprintf("va_intensity_%s_%s", VA_COMPONENTS, b),
+  sprintf("value_added_%s_%s [USD]", VA_COMPONENTS, b),
+  sprintf("value_added_%s [USD]", b))
+keep_cols <- c("iso3c", "area_code", "comm_code", "item", "year",
+               "total_product_output", "unit", "total_value",
+               base_block("gloria"), base_block("exiobase"))
+out <- pv[, ..keep_cols]
 setorder(out, iso3c, comm_code, year)
+
+# Invariant: the three components sum to the aggregate total in every cell.
+for (base in bases) {
+  vcols <- sprintf("value_added_%s_%s [USD]", VA_COMPONENTS, base)
+  tcol  <- sprintf("value_added_%s [USD]", base)
+  s <- out[[vcols[1]]] + out[[vcols[2]]] + out[[vcols[3]]]
+  t <- out[[tcol]]
+  ok <- !is.finite(t) | (is.finite(s) & abs(s - t) <= 1e-6 * pmax(1, abs(t)))
+  if (!all(ok))
+    stop(sprintf("31: %s components do not sum to the total in %d valued cell(s).",
+                 base, sum(!ok)))
+}
 
 
 # --- diagnostics -------------------------------------------------------------
@@ -373,18 +441,18 @@ dir.create(DIAG_DIR, recursive = TRUE, showWarnings = FALSE)
 diag_path <- function(name) file.path(DIAG_DIR, paste0(name, mode_tag, ".csv"))
 
 write_intensity_diag <- function(reg, base) {
-  dg <- reg[, .(region_code, year, va, x,
+  dg <- reg[, .(region_code, va_component, year, va, x,
                 va_intensity, va_intensity_hampel,
                 window_median, series_mad, hampel_z, is_spike,
                 va_intensity_winsor, cap_lower, cap_upper, mad_z, winsorized)]
-  setorder(dg, region_code, year)
+  setorder(dg, va_component, region_code, year)
   fwrite(dg, diag_path(sprintf("bcp_value_added_intensity_%s", base)))
 }
 write_intensity_diag(gloria_reg,   "gloria")
 write_intensity_diag(exiobase_reg, "exiobase")
 
 coverage <- data.table(
-  base            = c("gloria", "exiobase"),
+  base            = bases,
   area_years      = c(nrow(gloria_area[is.finite(va_intensity)]),
                       nrow(exiobase_area[is.finite(va_intensity)])),
   rows_valued     = c(out[is.finite(`value_added_gloria [USD]`),   .N],
@@ -394,6 +462,15 @@ coverage <- data.table(
                       out[, sum(`value_added_exiobase [USD]`, na.rm = TRUE)]))
 print(coverage)
 fwrite(coverage, diag_path("bcp_value_added_coverage"))
+
+# Per-component VA sums, so the wages/capital/tls split is auditable per base.
+component_sums <- rbindlist(lapply(bases, function(b)
+  data.table(base = b, va_component = VA_COMPONENTS,
+             value_added_sum = vapply(VA_COMPONENTS, function(comp)
+               out[, sum(get(sprintf("value_added_%s_%s [USD]", comp, b)), na.rm = TRUE)],
+               numeric(1)))))
+print(component_sums)
+fwrite(component_sums, diag_path("bcp_value_added_component_sums"))
 
 pv_areas  <- unique(pv[, .(iso3c, area_code)])
 unmatched <- rbindlist(list(

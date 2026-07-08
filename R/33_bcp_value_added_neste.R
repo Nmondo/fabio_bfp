@@ -7,9 +7,11 @@
 # Method: a Gross Value Added intensity (USD per tonne) is built from Neste's
 # Renewable Products segment and multiplied by each country's physical output.
 #
-#   GVA (income approach) = comparable EBITDA + compensation of employees.
-#   (Net other taxes on production less subsidies are omitted — small, and not
-#   separable from Neste's segment accounts.)
+#   GVA (income approach) = comparable EBITDA + compensation of employees, split
+#   into components: wages = allocated personnel, capital = comparable EBITDA,
+#   tls = 0 (net other taxes on production less subsidies are omitted — small,
+#   and not separable from Neste's segment accounts — so tls is a genuine 0, not
+#   apportioned or grossed up).
 #   Employee cost is reported only for the whole group, so the segment's share is
 #   allocated by its share of group average headcount. Comparable EBITDA strips
 #   inventory-holding gains, matching the national-accounts GVA concept.
@@ -17,7 +19,8 @@
 #   intensity[y] = (comparable_EBITDA[y] + allocated_personnel[y]) [MEUR]
 #                  ------------------------------------------------
 #                            RP sales volume[y]                    [Mt]
-#                = EUR per tonne  ->  x ECB FX  ->  USD per tonne.
+#                = EUR per tonne  ->  x ECB FX  ->  USD per tonne,
+#   with a per-component intensity (wages / capital / tls) summing to it.
 #
 # Each model year uses its own Neste year; the all-years median is a fallback for
 # any year with no Neste figure.
@@ -120,16 +123,32 @@ neste[, gva_meur    := comp_ebitda + personnel]        # income-approach GVA, ME
 neste[, intensity_eur_t := gva_meur / sales_mt]        # MEUR / Mt == EUR / t
 neste[, intensity_usd_t := intensity_eur_t * fx_usd_eur]
 
-median_usd_t <- median(neste$intensity_usd_t)
+# Per-component per-tonne intensity: wages = allocated personnel, capital =
+# comparable EBITDA, tls = 0 (genuine 0). They sum to intensity_usd_t.
+neste[, intensity_wages_usd_t   := (personnel   / sales_mt) * fx_usd_eur]
+neste[, intensity_capital_usd_t := (comp_ebitda / sales_mt) * fx_usd_eur]
+neste[, intensity_tls_usd_t     := 0]
+
+median_usd_t   <- median(neste$intensity_usd_t)
+median_wages   <- median(neste$intensity_wages_usd_t)
+median_capital <- median(neste$intensity_capital_usd_t)
 
 # Each model year uses its own Neste intensity; the all-years median is a fallback
-# for any year with no Neste figure.
+# for any year with no Neste figure.  For a fallback year the (unchanged) total is
+# split by the median wages:capital ratio so the three components always sum to it.
+w_ratio <- median_wages / (median_wages + median_capital)
 intensity_by_year <- data.table(year = years)
-intensity_by_year[neste, own := i.intensity_usd_t, on = "year"]
+intensity_by_year[neste, `:=`(own = i.intensity_usd_t,
+                              own_w = i.intensity_wages_usd_t,
+                              own_c = i.intensity_capital_usd_t), on = "year"]
 intensity_by_year[, `:=`(
   intensity_usd_t = fifelse(is.na(own), median_usd_t, own),
   intensity_basis = fifelse(is.na(own), "median_all_neste_years", "neste_own_year"))]
-intensity_by_year[, own := NULL]
+intensity_by_year[, `:=`(
+  intensity_wages_usd_t   = fifelse(is.na(own_w), intensity_usd_t * w_ratio,        own_w),
+  intensity_capital_usd_t = fifelse(is.na(own_c), intensity_usd_t * (1 - w_ratio),  own_c),
+  intensity_tls_usd_t     = 0)]
+intensity_by_year[, c("own", "own_w", "own_c") := NULL]
 
 
 # --- model physical output for the bundle ------------------------------------
@@ -157,19 +176,39 @@ X_long[, output_t := fcase(
   unit == "tonnes",      output,
   default = NA_real_)]
 
-X_long[intensity_by_year, `:=`(intensity_usd_t = i.intensity_usd_t,
-                               intensity_basis  = i.intensity_basis), on = "year"]
+X_long[intensity_by_year, `:=`(intensity_usd_t         = i.intensity_usd_t,
+                               intensity_wages_usd_t   = i.intensity_wages_usd_t,
+                               intensity_capital_usd_t = i.intensity_capital_usd_t,
+                               intensity_tls_usd_t     = i.intensity_tls_usd_t,
+                               intensity_basis         = i.intensity_basis), on = "year"]
 
 X_long[, value_added_usd := fcase(
   is.na(output_t) | is.na(intensity_usd_t), NA_real_,
   output_t == 0,                            0,
   default = output_t * intensity_usd_t)]
 
+for (comp in c("wages", "capital", "tls")) {
+  icol <- sprintf("intensity_%s_usd_t", comp)
+  vcol <- sprintf("value_added_%s_usd", comp)
+  X_long[, (vcol) := fcase(
+    is.na(output_t) | is.na(get(icol)), NA_real_,
+    output_t == 0,                      0,
+    default = output_t * get(icol))]
+}
+
+# Invariant: the three components sum to the total in every valued cell.
+if (X_long[is.finite(value_added_usd) &
+           abs(value_added_wages_usd + value_added_capital_usd + value_added_tls_usd -
+               value_added_usd) > 1e-6 * pmax(1, abs(value_added_usd)), .N])
+  stop("33: Neste components do not sum to the total.")
+
 
 # --- assemble ----------------------------------------------------------------
 out <- X_long[, .(iso3c, area_code, comm_code, item, year,
                   output, unit, output_t,
-                  intensity_usd_t, intensity_basis, value_added_usd)]
+                  intensity_usd_t, intensity_basis,
+                  value_added_wages_usd, value_added_capital_usd,
+                  value_added_tls_usd, value_added_usd)]
 setorder(out, iso3c, comm_code, year)
 
 
@@ -179,9 +218,12 @@ intensity_diag <- merge(
             hc_share = round(hc_share, 4), personnel = round(personnel, 1),
             gva_meur = round(gva_meur, 1), sales_mt,
             intensity_eur_t = round(intensity_eur_t), fx_usd_eur,
-            intensity_usd_t = round(intensity_usd_t))],
+            intensity_usd_t         = round(intensity_usd_t),
+            intensity_wages_usd_t   = round(intensity_wages_usd_t),
+            intensity_capital_usd_t = round(intensity_capital_usd_t),
+            intensity_tls_usd_t     = intensity_tls_usd_t)],
   neste_src, by = "year")
-intensity_diag[, alloc_key := ALLOC_KEY]
+intensity_diag[, `:=`(alloc_key = ALLOC_KEY, tls_note = "genuine 0 (omitted, not grossed up)")]
 
 coverage <- X_long[, .(cells = .N,
                        valued  = sum(is.finite(value_added_usd)),
@@ -207,5 +249,5 @@ cat("\nNeste GVA intensity (USD/t), by Neste year\n")
 print(neste[, .(year, gva_meur = round(gva_meur), sales_mt,
                 intensity_usd_t = round(intensity_usd_t))])
 cat(sprintf("\nMedian intensity across Neste years (fallback only): %.0f USD/t\n", median_usd_t))
-message(sprintf("34_bcp_value_added_neste: %d rows, %d valued -> %s",
+message(sprintf("33_bcp_value_added_neste: %d rows, %d valued -> %s",
                 nrow(out), out[is.finite(value_added_usd), .N], rds_path))

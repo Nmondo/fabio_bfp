@@ -3,11 +3,14 @@
 # Standalone value-added extension for fabio-bcp: writes V.rds + v_labels.csv to
 # output_dir_bcp, parallel to E.rds/ex_labels.csv (NOT mixed into them).
 #
-# V.rds = year-keyed list of 2 x N matrices, rows value_added_gloria /
-# value_added_exiobase, columns = target_order (same grid/order as E, X, L),
-# zero-filled where uncovered.  Each row = per-(iso3c,comm_code,year) total VA:
+# V.rds = year-keyed list of 8 x N matrices, rows = the two aggregate totals
+# (value_added_gloria / value_added_exiobase) plus the six components
+# value_added_{wages,capital,tls}_{gloria,exiobase}, columns = target_order (same
+# grid/order as E, X, L), zero-filled where uncovered.  Each row = per-
+# (iso3c,comm_code,year) VA:
 #   (A) FABIO commodities  -> E_bamboo VA strands, ISIC-A or ISIC-C per commodity
 #   (B) bio-based commodities -> bcp_value_added_combined_<base>.rds
+# The total rows equal the sum of their three components per cell.
 #
 # Self-contained: run AFTER R/16 (reads the E.rds + io_labels.csv it produces).
 # =============================================================================
@@ -52,41 +55,57 @@ remap_extension <- function(ext_list, remap_dt) {
 # --- helpers -----------------------------------------------------------------
 # Read a per-base combined bio-based VA table from intermediate_data.
 read_combined_va <- function(file_key) {
-  as.data.table(readRDS(tag(sprintf(
+  dt <- as.data.table(readRDS(tag(sprintf(
     "intermediate_data/bcp_value_added_combined_%s.rds", file_key))))
+  need <- c("iso3c", "comm_code", "year", "value_added_usd",
+            sprintf("value_added_%s_usd", c("wages", "capital", "tls")))
+  miss <- setdiff(need, names(dt))
+  if (length(miss))
+    stop("combined ", file_key, " table is missing column(s): ",
+         paste(miss, collapse = ", "), " -- re-run 34.")
+  dt
 }
 
-# Sum a named numeric vector over duplicate names.
-.agg_by_name <- function(v) if (length(v)) tapply(v, names(v), sum) else v
+VA_COMPONENTS <- c("wages", "capital", "tls")
 
-# Build the single-row VA extension for one base.
+# Build the total + three component VA rows for one base.
 #   base         "gloria" / "exiobase"
 #   E_bamboo     year-keyed stressor x N matrices (v123 comm_code columns),
 #                carrying VA_{wages,capital,tls}_isic_{a,c}_<base> rows
-#   combined_dt  bio-based combined table (iso3c, comm_code, year, value_added_usd)
+#   combined_dt  bio-based combined table (iso3c, comm_code, year,
+#                value_added_usd + value_added_{wages,capital,tls}_usd)
 #   items_isic   named vector comm_code -> ISIC ("A"/"C"/NA), v123 convention
 #   target_order bcp column order (== E/X/L)
 #   year_names   years to emit (aligned, zero-filled)
+# Returns a year-keyed list of 4 x N matrices (rows: total, wages, capital, tls).
 build_va_extension <- function(base, E_bamboo, combined_dt, items_isic,
                                target_order, year_names) {
   
-  row_nm <- paste0("value_added_", base)
-  a_rows <- sprintf("VA_%s_isic_a_%s", c("wages", "capital", "tls"), base)
-  c_rows <- sprintf("VA_%s_isic_c_%s", c("wages", "capital", "tls"), base)
+  rowtypes <- c("total", VA_COMPONENTS)
+  row_nm   <- c(total = paste0("value_added_", base),
+                setNames(sprintf("value_added_%s_%s", VA_COMPONENTS, base), VA_COMPONENTS))
+  a_rows   <- sprintf("VA_%s_isic_a_%s", VA_COMPONENTS, base)
+  c_rows   <- sprintf("VA_%s_isic_c_%s", VA_COMPONENTS, base)
   
-  # (A) FABIO commodities: strand-sum + ISIC-column A/C/none selection, on v123 columns.
+  # (A) FABIO commodities: per-component A/C-column selection (no strand-sum),
+  # total = sum of the three, on v123 columns.
   yrs_a <- intersect(year_names, names(E_bamboo))
   va_v123 <- lapply(yrs_a, function(yr) {
     m <- E_bamboo[[yr]]
     stopifnot(all(c(a_rows, c_rows) %in% rownames(m)))
-    a_sum <- colSums(m[a_rows, , drop = FALSE])
-    c_sum <- colSums(m[c_rows, , drop = FALSE])
-    comm  <- sub("^[^_]+_", "", colnames(m))
-    isic  <- items_isic[match(comm, names(items_isic))]
-    sel   <- numeric(ncol(m))
-    sel[isic %in% "A"] <- a_sum[isic %in% "A"]
-    sel[isic %in% "C"] <- c_sum[isic %in% "C"]
-    matrix(sel, nrow = 1, dimnames = list(row_nm, colnames(m)))
+    comm <- sub("^[^_]+_", "", colnames(m))
+    isic <- items_isic[match(comm, names(items_isic))]
+    is_a <- isic %in% "A"; is_c <- isic %in% "C"
+    sel_comp <- function(comp) {
+      s <- numeric(ncol(m))
+      s[is_a] <- m[sprintf("VA_%s_isic_a_%s", comp, base), ][is_a]
+      s[is_c] <- m[sprintf("VA_%s_isic_c_%s", comp, base), ][is_c]
+      s
+    }
+    w <- sel_comp("wages"); cap <- sel_comp("capital"); tl <- sel_comp("tls")
+    mat <- rbind(w + cap + tl, w, cap, tl)
+    dimnames(mat) <- list(row_nm[rowtypes], colnames(m))
+    mat
   })
   names(va_v123) <- yrs_a
   va_bcp <- if (length(va_v123)) remap_extension(va_v123, remap_v123) else list()
@@ -97,33 +116,41 @@ build_va_extension <- function(base, E_bamboo, combined_dt, items_isic,
   
   out <- lapply(seq_along(year_names), function(i) {
     yr <- year_names[i]
-    v  <- setNames(numeric(length(target_order)), target_order)
+    M  <- matrix(0, nrow = length(rowtypes), ncol = length(target_order),
+                 dimnames = list(row_nm[rowtypes], target_order))
     
-    a_vec <- if (!is.null(va_bcp[[yr]]))
-      .agg_by_name(setNames(as.numeric(va_bcp[[yr]]), colnames(va_bcp[[yr]]))) else numeric(0)
-    a_keys <- names(a_vec)[names(a_vec) %in% target_order]
+    a_keys <- character(0)
+    if (!is.null(va_bcp[[yr]])) {
+      am     <- va_bcp[[yr]]
+      am_agg <- t(rowsum(t(am), group = colnames(am)))   # sum duplicate columns per row
+      a_keys <- colnames(am_agg)[colnames(am_agg) %in% target_order]
+      if (length(a_keys)) M[, a_keys] <- am_agg[, a_keys]
+    }
     
-    b  <- combined_dt[year == as.integer(yr)]
+    b <- combined_dt[year == as.integer(yr)]
     na_dropped <- sum(!is.finite(b$value_added_usd))
-    b  <- b[is.finite(value_added_usd)]
-    # Group by the real columns (always length nrow) rather than by a pasted
-    # key: on an empty-year slice paste0(character(0), "_", character(0)) is
-    # "_" (length 1, recycle0 = FALSE default), which data.table rejects as a
-    # by-list length mismatch.  Build the key column after aggregating.
-    b_agg <- b[, .(v = sum(value_added_usd)), by = .(iso3c, comm_code)]
+    b <- b[is.finite(value_added_usd)]
+    b_agg <- b[, .(total   = sum(value_added_usd),
+                   wages   = sum(value_added_wages_usd),
+                   capital = sum(value_added_capital_usd),
+                   tls     = sum(value_added_tls_usd)),
+               by = .(iso3c, comm_code)]
     b_agg[, key := paste0(iso3c, "_", comm_code)]
     b_keys <- b_agg$key[b_agg$key %in% target_order]
-    
-    v[a_keys] <- a_vec[a_keys]
-    v[b_keys] <- b_agg$v[match(b_keys, b_agg$key)]   # (B) wins overlaps
+    if (length(b_keys)) {                                 # (B) wins overlaps
+      idx <- match(b_keys, b_agg$key)
+      M[row_nm["total"],   b_keys] <- b_agg$total[idx]
+      M[row_nm["wages"],   b_keys] <- b_agg$wages[idx]
+      M[row_nm["capital"], b_keys] <- b_agg$capital[idx]
+      M[row_nm["tls"],     b_keys] <- b_agg$tls[idx]
+    }
     
     overlap <- intersect(a_keys, b_keys)
     overlaps_all <<- union(overlaps_all, overlap)
     diag[[i]] <<- data.table(year = yr, from_v2 = length(a_keys),
                              from_bcp = length(b_keys), overlaps = length(overlap),
                              na_dropped = na_dropped)
-    
-    matrix(v, nrow = 1, dimnames = list(row_nm, target_order))
+    M
   })
   names(out) <- year_names
   
@@ -152,18 +179,27 @@ va_years    <- intersect(va_years, as.character(years))            # keep only t
 # the bcp E.rds is named 2011:2023 by R/16, but the
 # bio-based VA sources (R/34) only cover `years`.
 
-# --- build both bases, rbind (fixed order gloria, exiobase), guard, save ------
-bases <- c("gloria", "exiobase")
+# --- build both bases, rbind to 8 rows in a fixed order, guard, save ----------
+bases     <- c("gloria", "exiobase")
+row_order <- c(paste0("value_added_", bases),
+               unlist(lapply(bases, function(b)
+                 sprintf("value_added_%s_%s", VA_COMPONENTS, b))))
+
 V_by_base <- lapply(bases, function(b)
   build_va_extension(b, E_bamboo, read_combined_va(b), items_isic, target_order, va_years))
 names(V_by_base) <- bases
 
-V_bcp <- lapply(va_years, function(yr)
-  do.call(rbind, lapply(bases, function(b) V_by_base[[b]][[yr]])))
+V_bcp <- lapply(va_years, function(yr) {
+  m <- do.call(rbind, lapply(bases, function(b) V_by_base[[b]][[yr]]))
+  m[row_order, , drop = FALSE]
+})
 names(V_bcp) <- va_years
 
 v_labels <- fread("inst/V_labels_initial.csv")
-v_labels <- v_labels[order(match(Stressor, paste0("value_added_", bases)))]
+v_labels <- v_labels[match(row_order, Stressor)]
+if (anyNA(v_labels$Stressor))
+  stop("inst/V_labels_initial.csv is missing row(s): ",
+       paste(setdiff(row_order, v_labels$Stressor), collapse = ", "))
 
 for (yr in names(V_bcp)) {
   stopifnot(ncol(V_bcp[[yr]]) == length(target_order),
