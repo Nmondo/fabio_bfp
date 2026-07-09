@@ -1,8 +1,10 @@
 # =============================================================================
 # 33_bcp_value_added_neste.R
-# Direct value added for the renewable-diesel bundle (Renewable diesel c149 and
-# its HVO co-products Biopropane c150 / Bionaphtha c151), which carry no producer
-# price in script 30 and so receive no value added from script 31.
+# Direct value added for Renewable diesel (c149), from the Neste Renewable
+# Products segment. Its HVO co-products Biopropane (c150) and Bionaphtha (c151)
+# are valued from their producer price via scripts 30/31 and are not handled here.
+# The Neste value overwrites the script-31 MRIO base for c149 in the combination
+# (script 34).
 #
 # Method: a Gross Value Added intensity (USD per tonne) is built from Neste's
 # Renewable Products segment and multiplied by each country's physical output.
@@ -26,8 +28,8 @@
 # any year with no Neste figure.
 #
 # Co-products: the segment's GVA is jointly produced across renewable diesel,
-# naphtha and propane (+SAF) and the sales-volume denominator spans them, so the
-# same per-tonne intensity is applied to c149 + c150 + c151.
+# naphtha and propane (+SAF) and the sales-volume denominator spans them; the
+# resulting per-tonne intensity is applied to renewable diesel (c149).
 #
 # Every Neste input figure is hard-coded with its Annual Report page below.
 #
@@ -62,12 +64,14 @@ output_dir_mode <- mode_dir(output_dir_bcp)
 # Personnel allocation key. Only headcount inputs are provided below.
 ALLOC_KEY <- "headcount"
 
-# Renewable-diesel bundle commodities and their density (tonnes per 1000 L),
-# matching the model's own conversions in 07_06 / 07_10_compile_bcp.R.
-BUNDLE <- data.table(
-  comm_code   = c("c149",              "c150",       "c151"),
-  item        = c("Renewable diesel",  "Biopropane", "Bionaphtha"),
-  t_per_1000L = c(1 / 1.282,           0.51,         0.71))     # HVO 0.780 / propane / naphtha
+# Renewable diesel and its density (tonnes per 1000 L), matching the model's own
+# conversions in 07_06 / 07_10_compile_bcp.R. The Neste GVA intensity denominator
+# (RP segment sales volume) spans the whole renewable-products slate, so applying
+# it here attributes the segment's joint GVA to renewable diesel.
+renewable_diesel <- data.table(
+  comm_code   = "c149",
+  item        = "Renewable diesel",
+  t_per_1000L = 1 / 1.282)     # HVO 0.780
 
 
 # --- Neste source figures (Annual Reports 2012-2025) -------------------------
@@ -151,7 +155,7 @@ intensity_by_year[, `:=`(
 intensity_by_year[, c("own", "own_w", "own_c") := NULL]
 
 
-# --- model physical output for the bundle ------------------------------------
+# --- model physical output for renewable diesel ------------------------------
 X         <- readRDS(file.path(output_dir_mode, "X.rds"))
 io_labels <- fread(file.path(output_dir_mode, "io_labels.csv"))
 io_labels[, row_id := paste(iso3c, comm_code, sep = "_")]
@@ -163,13 +167,13 @@ X_long <- merge(
   X_long, io_labels[, .(row_id, iso3c, area_code, comm_code, unit)],
   by = "row_id", all.x = TRUE)
 
-X_long <- X_long[comm_code %in% BUNDLE$comm_code & year %in% as.character(years)]
+X_long <- X_long[comm_code %in% renewable_diesel$comm_code & year %in% as.character(years)]
 X_long[, year := as.integer(year)]
-X_long <- merge(X_long, BUNDLE, by = "comm_code")
+X_long <- merge(X_long, renewable_diesel, by = "comm_code")
 
 
 # --- output -> tonnes -> value added -----------------------------------------
-# Bundle output is in "1000 liters"; match the exact unit string so any unexpected
+# Renewable diesel output is in "1000 liters"; match the exact unit string so any unexpected
 # unit falls to NA and surfaces in the coverage diagnostic rather than being mis-scaled.
 X_long[, output_t := fcase(
   unit == "1000 liters", output * t_per_1000L,

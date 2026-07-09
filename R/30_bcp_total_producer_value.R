@@ -319,6 +319,18 @@ X_main[, pcode := NULL]
 X_long <- rbind(X_main, X_bio, use.names = TRUE)
 
 
+# --- universal assumed price for the HVO co-products (c149/c150/c151) ---------
+# These carry no trade-based producer price, so the fallback ladder above leaves
+# them unpriced. Assign ONE flat USD/t price each (from 00_system_variables.R),
+# constant across countries and years, wherever the ladder produced no price.
+# Applied after the ladder so the assumed constant is never itself capped or
+# trade-weighted; tagged as its own source tier for the fill-mix diagnostic.
+X_long[universal_bcp_prices, `:=`(
+  price        = fifelse(is.na(price), i.price_usd_t, price),
+  price_source = fifelse(is.na(price), "assumption_universal", price_source)),
+  on = "comm_code"]
+
+
 # --- price fallback-ladder fill-mix ------------------------------------------
 # How each priced (area x commodity x year) cell got its price. Biogasoline
 # cells carry a per-country blend tag; bucket those together so the mix stays
@@ -342,6 +354,11 @@ tcf_kl <- tcf_kl[is.finite(output_qty) & output_qty > 0,
 
 X_long[biofuel_bridge, fuel := i.fuel, on = "comm_code"]
 X_long[tcf_kl, kl_per_t := i.kl_per_t, on = "fuel"]
+
+# HVO co-products (c149/c150/c151): "1000 liters" output with no tcf fuel bridge
+# -> attach the density directly by comm_code (kl per t = 1 / t_per_1000L), so the
+# qty_t reconciliation below converts their output to tonnes.
+X_long[universal_bcp_prices, kl_per_t := 1 / i.t_per_1000L, on = "comm_code"]
 
 # tonnes: direct where unit == "tonnes"; X / (kl per tonne) where unit == "1000 liters".
 X_long[, qty_t := fcase(
