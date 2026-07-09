@@ -8,8 +8,6 @@ if (!nzchar(fabio_root)) {
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
 setwd(fabio_root)
-setwd(fabio_root)
-
 
 #############################################################################
 ########### LOADING PACKAGES #################
@@ -31,7 +29,7 @@ source("R/19_plot_definitions.R")
 input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
 regions <- fread(file="inst/regions_full.csv")[current==TRUE]
 
-allocation <- "value"
+allocation <- "mass"
 
 ## ---------------------------------------------------------------------------
 ## Load BOTH model versions in parallel:
