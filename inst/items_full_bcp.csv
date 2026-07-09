@@ -121,7 +121,7 @@ c141,97,Triticale,tonnes,NA,0.14,crops,Cereals,A
 c142,165,Molasses,tonnes,NA,0.2,crops,"Sugar, sweeteners",C
 c143,265,Castor oil seeds,tonnes,NA,0.08,crops,Oil crops,A
 c144,266,Oil of castor beans,tonnes,NA,NA,NA,Vegetable oils,C
-c145,1274,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",tonnes,NA,NA,NA,Waste,E
+c145,1274,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",tonnes,NA,NA,NA,Waste,C
 c146,NA,Biogasoline,1000 liters,NA,NA,NA,Biofuels,
 c147,NA,Biodiesel,1000 liters,NA,NA,NA,Biofuels,
 c148,NA,"Glycerol, crude",tonnes,NA,NA,NA,Building blocks,
@@ -147,6 +147,6 @@ c167,NA,PET,tonnes,NA,NA,NA,Biopolymers,
 c168,NA,PBAT,tonnes,NA,NA,NA,Biopolymers,
 c169,NA,PBS,tonnes,NA,NA,NA,Biopolymers,
 c170,NA,Epoxy resins,tonnes,NA,NA,NA,Biopolymers,
-c171,654,Brewing or distilling dregs and waste,tonnes,NA,NA,Feed,NA,
+c171,654,Brewing or distilling dregs and waste,tonnes,NA,NA,cakes,NA,
 c901,NA,"Other, Waste",tonnes,NA,NA,NA,Waste,
 c999,NA,"Other, Unknown",tonnes,NA,NA,NA,Unknown,

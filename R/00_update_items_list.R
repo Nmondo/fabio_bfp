@@ -198,7 +198,7 @@ items_full_bcp <- bind_rows(items, items_extension) %>%
            item == "Castor oil seeds"    ~ "A",   # crop production
            item == "Molasses"            ~ "C",   # manufacture of sugar
            item == "Oil of castor beans" ~ "C",   # manufacture of vegetable oils
-           item == "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils" ~ "E",
+           item == "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils" ~ "C",
            TRUE                          ~ ""      # incl. HS 1518 fats/oils (see note)
          ))
 
