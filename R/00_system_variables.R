@@ -24,6 +24,18 @@ dir.create(output_dir_bcp, recursive = TRUE, showWarnings = FALSE)
 years <- 2012:2022
 
 
+# Universal assumed producer prices for the HVO co-product bundle -------------
+# Renewable diesel (c149) and its HVO co-products biopropane (c150) and
+# bionaphtha (c151) have no reliable trade-based producer price, so we assume ONE
+# flat price each, held CONSTANT across countries and years (data-poor
+# assumption).
+universal_bcp_prices <- data.table::data.table(
+  comm_code   = c("c149",             "c150",       "c151"),
+  item        = c("Renewable diesel", "Biopropane", "Bionaphtha"),
+  price_usd_t = c(1500,               800,          950),   # USD/t
+  t_per_1000L = c(1 / 1.282,          0.51,         0.71))  # HVO 0.780 / propane / naphtha
+
+
 # Recursive sum over vectors with NA, returns NA if all values are NA
 na_sum <- function(..., rowwise = TRUE) {
   dots <- list(...)
