@@ -89,9 +89,9 @@ EXIOBASE_SECTOR_CODE <- 63L   # Chemicals nec            (default, c146+)
 # intensity from their own agricultural/processing sector rather than the
 # chemical default. Any comm_code absent here falls back to the default codes.
 BCP_AG_SECTORS <- data.table(
-  comm_code     = c("c141", "c142", "c143", "c144", "c145"),
-  gloria_code   = c(3L, 51L, 4L, 53L, 53L),   # cereals nec; sugar refining; leguminous/oilseeds; veg oils&fats; veg oils&fats
-  exiobase_code = c(3L, 42L, 5L, 39L, 39L))   # cereal grains nec; sugar refining; oil seeds; proc. veg oils&fats; proc. veg oils&fats
+  comm_code     = c("c141", "c142", "c143", "c144", "c145", "c171"),
+  gloria_code   = c(3L, 51L, 4L, 53L, 53L, 50L),   # cereals nec; sugar refining; leguminous/oilseeds; veg oils&fats; veg oils&fats; food products & feeds n.e.c.
+  exiobase_code = c(3L, 42L, 5L, 39L, 39L, 43L))   # cereal grains nec; sugar refining; oil seeds; proc. veg oils&fats; proc. veg oils&fats; processing of food products nec
 
 # Raw upstream database trees (environment-overridable).
 FINEPRINT_ROOT <- Sys.getenv("FINEPRINT_ROOT", unset = "/mnt/nfs_fineprint/tmp")

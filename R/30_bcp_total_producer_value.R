@@ -470,7 +470,7 @@ out <- X_long[, .(iso3c, area_code, comm_code, item, year,
 #                                     "trade_".
 # total_value = total_product_output * price (tonnes x USD/tonne).
 # =============================================================================
-AG_COMM_CODES          <- c("c141", "c142", "c143", "c144", "c145")
+AG_COMM_CODES          <- c("c141", "c142", "c143", "c144", "c145", "c171")
 FAO_GLOBAL_MEDIAN_AREA  <- 5000L   # FAO producer-price global-median area row
 
 # comm_code <-> item_code from the bcp item master already read above.
