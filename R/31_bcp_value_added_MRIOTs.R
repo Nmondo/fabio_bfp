@@ -1,10 +1,13 @@
 # =============================================================================
 # 31_bcp_value_added_MRIOTs.R
-# Value added for the bio-based commodities, estimated by multiplying each
-# commodity's total producer value by a chemical-sector value-added intensity
-# (VA / producer-price output) borrowed from two upstream MRIO databases:
-#   GLORIA   — sector "Basic organic chemicals"
-#   EXIOBASE — sector "Chemicals nec"
+# Value added for the bcp commodities, estimated by multiplying each commodity's
+# total producer value by a value-added intensity (VA / producer-price output)
+# borrowed from two upstream MRIO databases (GLORIA and EXIOBASE). Sectors are
+# selected by their canonical ordinal code, never by display name: GLORIA by
+# Lfd_Nr, EXIOBASE by ixi industry position. Each commodity draws from its own
+# sector — c141-c145 from their agricultural/processing sectors (BCP_AG_SECTORS),
+# every other commodity (c146+) from the default chemical sector (GLORIA "Basic
+# organic chemicals" / EXIOBASE "Chemicals nec").
 # VA is split into three components — wages (compensation of employees),
 # capital (net operating surplus + net mixed income + consumption of fixed
 # capital) and tls (taxes on production − subsidies, signed) — so one intensity
@@ -75,9 +78,20 @@ WINSOR_MIN_OBS     <- 8L    # minimum pooled obs before a winsor band is built
 # VA components, in a fixed order used for every per-component emission.
 VA_COMPONENTS <- c("wages", "capital", "tls")
 
-# Target sectors (exact label match in each base).
-GLORIA_SECTOR   <- "Basic organic chemicals"
-EXIOBASE_SECTOR <- "Chemicals nec"
+# Default target sector, selected by the database's canonical sector ordinal
+# (never by display name): GLORIA = Lfd_Nr (1..120 in v060); EXIOBASE = the ixi
+# industry position (1..163). This default is used for every commodity not named
+# in BCP_AG_SECTORS below (i.e. the bio-based commodities c146+).
+GLORIA_SECTOR_CODE   <- 68L   # Basic organic chemicals  (default, c146+)
+EXIOBASE_SECTOR_CODE <- 63L   # Chemicals nec            (default, c146+)
+
+# Per-commodity sector override, by code. Commodities c141-c145 draw their VA
+# intensity from their own agricultural/processing sector rather than the
+# chemical default. Any comm_code absent here falls back to the default codes.
+BCP_AG_SECTORS <- data.table(
+  comm_code     = c("c141", "c142", "c143", "c144", "c145"),
+  gloria_code   = c(3L, 51L, 4L, 53L, 53L),   # cereals nec; sugar refining; leguminous/oilseeds; veg oils&fats; veg oils&fats
+  exiobase_code = c(3L, 42L, 5L, 39L, 39L))   # cereal grains nec; sugar refining; oil seeds; proc. veg oils&fats; proc. veg oils&fats
 
 # Raw upstream database trees (environment-overridable).
 FINEPRINT_ROOT <- Sys.getenv("FINEPRINT_ROOT", unset = "/mnt/nfs_fineprint/tmp")
@@ -235,8 +249,10 @@ intensity_to_area <- function(d, area_conc_path, region_col) {
 }
 
 
-# --- GLORIA intensity: total VA / X for one sector, per region x year --------
-gloria_intensity <- function(load_years) {
+# --- GLORIA intensity: total VA / X per sector, per region x year ------------
+# Builds the raw VA/X intensity for each requested GLORIA sector code (Lfd_Nr),
+# tagging every region x year x component row with its `sector_code`.
+gloria_intensity <- function(load_years, sector_codes) {
   for (pkg in c("readxl", "qs2"))
     if (!requireNamespace(pkg, quietly = TRUE))
       stop("The GLORIA base needs the '", pkg, "' package.")
@@ -251,9 +267,17 @@ gloria_intensity <- function(load_years) {
   n_sectors <- nrow(sectors)
   n_va      <- nrow(va_fd)
   
-  sec_pos <- which(trimws(as.character(sectors$Sector_names)) == GLORIA_SECTOR)
-  if (length(sec_pos) != 1L)
-    stop("GLORIA sector '", GLORIA_SECTOR, "' not found (or not unique) in the ReadMe Sectors sheet.")
+  # Locate each requested sector by its canonical ordinal (Lfd_Nr), never by
+  # display name. Fail loud (naming the code) if a code is not a unique Lfd_Nr,
+  # so no commodity is silently dropped.
+  sector_codes <- sort(unique(as.integer(sector_codes)))
+  sec_pos_by_code <- vapply(sector_codes, function(code) {
+    pos <- which(sectors$Lfd_Nr == code)
+    if (length(pos) != 1L)
+      stop("GLORIA sector code ", code, " is not a unique Lfd_Nr in the ReadMe Sectors sheet.")
+    pos
+  }, integer(1))
+  names(sec_pos_by_code) <- as.character(sector_codes)
   
   # Identify the value-added rows: the ReadMe column carrying the most known VA
   # labels is the label column; assign each VA row to its component.
@@ -267,7 +291,9 @@ gloria_intensity <- function(load_years) {
     if (!length(rows_by_component[[comp]]))
       stop("GLORIA component '", comp, "' matched no VA-row label in the ReadMe sheet.")
   
-  target_cols <- (seq_len(n_regions) - 1L) * n_sectors + sec_pos
+  # One region-indexed column vector per requested sector.
+  target_cols_by_code <- lapply(sec_pos_by_code,
+                                function(sp) (seq_len(n_regions) - 1L) * n_sectors + sp)
   
   process_year <- function(yr) {
     v_path <- file.path(GLORIA_V_DIR, sprintf("V_%d.qs2", yr))
@@ -279,13 +305,17 @@ gloria_intensity <- function(load_years) {
               ncol(V_mat) == n_regions * n_sectors,
               length(X_vec) == n_regions * n_sectors)
     X_vec[X_vec < 0] <- 0
-    x  <- X_vec[target_cols]
-    rbindlist(lapply(VA_COMPONENTS, function(comp) {
-      sel <- rows_by_component[[comp]]
-      va  <- vapply(seq_len(n_regions), function(r)
-        sum(V_mat[(r - 1L) * n_va + sel, target_cols[r]]), numeric(1))
-      data.table(region_code = as.character(regions$Region_acronyms),
-                 va_component = comp, year = yr, va = va, x = x)
+    rbindlist(lapply(seq_along(sector_codes), function(k) {
+      code        <- sector_codes[k]
+      target_cols <- target_cols_by_code[[k]]
+      x <- X_vec[target_cols]
+      rbindlist(lapply(VA_COMPONENTS, function(comp) {
+        sel <- rows_by_component[[comp]]
+        va  <- vapply(seq_len(n_regions), function(r)
+          sum(V_mat[(r - 1L) * n_va + sel, target_cols[r]]), numeric(1))
+        data.table(region_code = as.character(regions$Region_acronyms),
+                   sector_code = code, va_component = comp, year = yr, va = va, x = x)
+      }))
     }))
   }
   
@@ -302,20 +332,38 @@ gloria_intensity <- function(load_years) {
 }
 
 
-# --- EXIOBASE intensity: total VA / producer-price X for one sector ----------
-exiobase_intensity <- function(load_years) {
+# --- EXIOBASE intensity: total VA / producer-price X per sector --------------
+# Builds the raw VA/X intensity for each requested EXIOBASE ixi sector code,
+# tagging every region x year x component row with its `sector_code`.
+exiobase_intensity <- function(load_years, sector_codes) {
   common <- as.data.table(readRDS(file.path(EXIOBASE_DIR, "IOT_2022_ixi", "unit.rds")))
-  region_col <- names(common)[grep("^reg",        tolower(names(common)))[1]]
-  sector_col <- names(common)[grep("^(sec|prod)", tolower(names(common)))[1]]
-  if (is.na(region_col) || is.na(sector_col))
-    stop("Could not locate region / sector columns in the EXIOBASE common unit labels.")
+  region_col <- names(common)[grep("^reg", tolower(names(common)))[1]]
+  if (is.na(region_col))
+    stop("Could not locate the region column in the EXIOBASE common unit labels.")
   
+  # The label table is in canonical (region-major, ixi-sector) order, so a
+  # sector's ixi code is its position within each region block. Select sectors
+  # by that position (rowid within region), never by display name.
   labels <- data.table(col         = seq_len(nrow(common)),
-                       region_code = as.character(common[[region_col]]),
-                       sector_name = as.character(common[[sector_col]]))
-  target <- labels[sector_name == EXIOBASE_SECTOR]
-  if (nrow(target) == 0L)
-    stop("EXIOBASE sector '", EXIOBASE_SECTOR, "' not found in the common unit labels.")
+                       region_code = as.character(common[[region_col]]))
+  labels[, sec_idx := rowid(region_code)]
+  n_reg              <- uniqueN(labels$region_code)
+  sectors_per_region <- max(labels$sec_idx)
+  
+  # Fail loud (naming the code) if a code is outside 1..sectors_per_region or
+  # does not select exactly one industry per region, so no commodity is dropped.
+  sector_codes <- sort(unique(as.integer(sector_codes)))
+  bad <- sector_codes[sector_codes < 1L | sector_codes > sectors_per_region]
+  if (length(bad))
+    stop("EXIOBASE sector code(s) ", paste(bad, collapse = ", "),
+         " outside 1..", sectors_per_region, " (sectors per region).")
+  targets_by_code <- lapply(sector_codes, function(code) {
+    tgt <- labels[sec_idx == code]
+    if (nrow(tgt) != n_reg)
+      stop("EXIOBASE sector code ", code, " does not select exactly one industry per region.")
+    tgt
+  })
+  names(targets_by_code) <- as.character(sector_codes)
   
   max_va_row <- max(unlist(EXIOBASE_ROWS_BY_COMPONENT, use.names = FALSE))
   
@@ -335,13 +383,16 @@ exiobase_intensity <- function(load_years) {
     if (nrow(F_mat) < max_va_row)
       stop("EXIOBASE F for year ", yr, " has fewer than ", max_va_row, " factor rows.")
     
-    cols <- target$col
-    x_pp <- X_vec[cols] + F_mat[EXIOBASE_LIFT_ROW, cols]
-    x_pp[x_pp < 0] <- 0
-    rbindlist(lapply(VA_COMPONENTS, function(comp) {
-      va <- colSums(F_mat[EXIOBASE_ROWS_BY_COMPONENT[[comp]], cols, drop = FALSE])
-      data.table(region_code = target$region_code,
-                 va_component = comp, year = yr, va = va, x = x_pp)
+    rbindlist(lapply(seq_along(sector_codes), function(k) {
+      code <- sector_codes[k]
+      cols <- targets_by_code[[k]]$col
+      x_pp <- X_vec[cols] + F_mat[EXIOBASE_LIFT_ROW, cols]
+      x_pp[x_pp < 0] <- 0
+      rbindlist(lapply(VA_COMPONENTS, function(comp) {
+        va <- colSums(F_mat[EXIOBASE_ROWS_BY_COMPONENT[[comp]], cols, drop = FALSE])
+        data.table(region_code = targets_by_code[[k]]$region_code,
+                   sector_code = code, va_component = comp, year = yr, va = va, x = x_pp)
+      }))
     }))
   }
   
@@ -366,13 +417,42 @@ buffer_years <- c(seq(min(keep_years) - HAMPEL_HALF_WINDOW, min(keep_years) - 1L
                   seq(max(keep_years) + 1L, max(keep_years) + HAMPEL_HALF_WINDOW))
 load_years   <- if (APPLY_INTENSITY_FILTER) sort(union(keep_years, buffer_years)) else keep_years
 
-message("Building GLORIA intensity ('", GLORIA_SECTOR, "') ...")
-gloria_reg  <- clean_intensity(gloria_intensity(load_years))[year %in% keep_years]
-gloria_area <- intensity_to_area(gloria_reg, GLORIA_AREA_CONC, GLORIA_REGION_COL)
+# The distinct set of sector codes actually needed per base: the chemical
+# default plus every code named in BCP_AG_SECTORS.
+gloria_codes   <- sort(unique(c(GLORIA_SECTOR_CODE,   BCP_AG_SECTORS$gloria_code)))
+exiobase_codes <- sort(unique(c(EXIOBASE_SECTOR_CODE, BCP_AG_SECTORS$exiobase_code)))
 
-message("Building EXIOBASE intensity ('", EXIOBASE_SECTOR, "') ...")
-exiobase_reg  <- clean_intensity(exiobase_intensity(load_years))[year %in% keep_years]
-exiobase_area <- intensity_to_area(exiobase_reg, EXIOBASE_AREA_CONC, EXIOBASE_REGION_COL)
+# Clean (Hampel + winsor) and map-to-area SEPARATELY per sector code -- so the
+# per-series cleaning never pools different sectors -- then stack the results,
+# each region/area row tagged with its sector_code.
+build_base_intensity <- function(raw, area_conc, region_col, codes) {
+  regs  <- vector("list", length(codes))
+  areas <- vector("list", length(codes))
+  for (i in seq_along(codes)) {
+    code <- codes[i]
+    reg  <- clean_intensity(raw[sector_code == code])[year %in% keep_years]
+    reg[, sector_code := code]
+    area <- intensity_to_area(reg, area_conc, region_col)
+    area[, sector_code := code]
+    regs[[i]]  <- reg
+    areas[[i]] <- area
+  }
+  list(reg = rbindlist(regs), area = rbindlist(areas))
+}
+
+message("Building GLORIA intensities for sector codes: ",
+        paste(gloria_codes, collapse = ", "), " ...")
+gloria_built <- build_base_intensity(gloria_intensity(load_years, gloria_codes),
+                                     GLORIA_AREA_CONC, GLORIA_REGION_COL, gloria_codes)
+gloria_reg  <- gloria_built$reg
+gloria_area <- gloria_built$area
+
+message("Building EXIOBASE intensities for sector codes: ",
+        paste(exiobase_codes, collapse = ", "), " ...")
+exiobase_built <- build_base_intensity(exiobase_intensity(load_years, exiobase_codes),
+                                       EXIOBASE_AREA_CONC, EXIOBASE_REGION_COL, exiobase_codes)
+exiobase_reg  <- exiobase_built$reg
+exiobase_area <- exiobase_built$area
 
 
 # --- producer values -> value added ------------------------------------------
@@ -381,16 +461,27 @@ pv[, year := as.integer(year)]
 
 bases <- c("gloria", "exiobase")
 
+# Per-row sector code for each base: the BCP_AG_SECTORS override where the
+# commodity is listed (c141-c145), the chemical default otherwise (c146+).
+pv[BCP_AG_SECTORS, `:=`(gloria_code = i.gloria_code, exiobase_code = i.exiobase_code),
+   on = "comm_code"]
+pv[is.na(gloria_code),   gloria_code   := GLORIA_SECTOR_CODE]
+pv[is.na(exiobase_code), exiobase_code := EXIOBASE_SECTOR_CODE]
+
 # Attach the per-component area intensities for one base as
-# va_intensity_{wages,capital,tls}_<base>.
-attach_intensities <- function(pv, area_long, base) {
-  aw <- dcast(area_long, area_code + year ~ va_component, value.var = "va_intensity")
+# va_intensity_{wages,capital,tls}_<base>, matching each producer-value row to
+# its own area, year AND the sector code its comm_code resolves to.
+attach_intensities <- function(pv, area_long, base, code_col) {
+  aw <- dcast(area_long, area_code + year + sector_code ~ va_component, value.var = "va_intensity")
   for (comp in VA_COMPONENTS) if (!comp %in% names(aw)) aw[, (comp) := NA_real_]
   setnames(aw, VA_COMPONENTS, sprintf("va_intensity_%s_%s", VA_COMPONENTS, base))
-  merge(pv, aw, by = c("area_code", "year"), all.x = TRUE, sort = FALSE)
+  merge(pv, aw,
+        by.x = c("area_code", "year", code_col),
+        by.y = c("area_code", "year", "sector_code"),
+        all.x = TRUE, sort = FALSE)
 }
-pv <- attach_intensities(pv, gloria_area,   "gloria")
-pv <- attach_intensities(pv, exiobase_area, "exiobase")
+pv <- attach_intensities(pv, gloria_area,   "gloria",   "gloria_code")
+pv <- attach_intensities(pv, exiobase_area, "exiobase", "exiobase_code")
 
 # Per-component VA = intensity x producer value; aggregate total + aggregate
 # intensity are the row-wise sums of the three components (NA if any missing).
@@ -441,11 +532,11 @@ dir.create(DIAG_DIR, recursive = TRUE, showWarnings = FALSE)
 diag_path <- function(name) file.path(DIAG_DIR, paste0(name, mode_tag, ".csv"))
 
 write_intensity_diag <- function(reg, base) {
-  dg <- reg[, .(region_code, va_component, year, va, x,
+  dg <- reg[, .(sector_code, region_code, va_component, year, va, x,
                 va_intensity, va_intensity_hampel,
                 window_median, series_mad, hampel_z, is_spike,
                 va_intensity_winsor, cap_lower, cap_upper, mad_z, winsorized)]
-  setorder(dg, va_component, region_code, year)
+  setorder(dg, sector_code, va_component, region_code, year)
   fwrite(dg, diag_path(sprintf("bcp_value_added_intensity_%s", base)))
 }
 write_intensity_diag(gloria_reg,   "gloria")

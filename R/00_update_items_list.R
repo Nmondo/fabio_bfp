@@ -4,6 +4,7 @@
 
 library(readr)
 library(readxl)
+library(dplyr)
 
 ###########################################################
 ########### LOADING DATA #########
@@ -42,14 +43,14 @@ items_extension <- data.frame(
   item_code  = c(97, 165, 265, 266, 1274, NA, NA, NA, NA, NA,
                  NA, NA, NA, NA, NA, NA, NA, NA, NA, NA,
                  NA, NA, NA, NA, NA, NA, NA, NA, NA, NA,
-                 NA, NA, NA),
+                 654, NA, NA),
   item       = c("Triticale","Molasses","Castor oil seeds","Oil of castor beans","Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Biogasoline",
                  "Biodiesel","Glycerol, crude","Renewable diesel","Biopropane","Bionaphtha",
                  "L-LA","Sebacic acid","Succinic acid","11-AA","Ethylene",
                  "Propylene","1,3-PDO","1,4-BDO","MEG","MPG",
                  "ECH","PLA","PE","PP",
                  "PTT","PET","PBAT","PBS","Epoxy resins",
-                 "Dried distillers grains with solubles","Other, Waste","Other, Unknown"),
+                 "Brewing or distilling dregs and waste","Other, Waste","Other, Unknown"),
   unit       = c("tonnes","tonnes","tonnes","tonnes","tonnes","1000 liters",
                  "1000 liters","tonnes","1000 liters","1000 liters","1000 liters",
                  rep("tonnes", 22)),
@@ -68,14 +69,14 @@ items_supply_extension <- data.frame(
                 "c151","c152","c153","c154","c155","c156","c157","c158","c159","c160",
                 "c161","c162","c163","c164","c165","c166","c167","c168","c169","c170",
                 "c171","c901","c999"),
-  item_code = c(97, 165, 265, 266, 1274, rep(NA, 28)),
+  item_code = c(97, 165, 265, 266, 1274, rep(NA, 25), 654, NA, NA),
   item      = c("Triticale","Molasses","Castor oil seeds","Oil of castor beans","Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils","Biogasoline",
                 "Biodiesel","Glycerol, crude","Renewable diesel","Biopropane","Bionaphtha",
                 "L-LA","Sebacic acid","Succinic acid","11-AA","Ethylene",
                 "Propylene","1,3-PDO","1,4-BDO","MEG","MPG",
                 "ECH","PLA","PE","PP",
                 "PTT","PET","PBAT","PBS","Epoxy resins",
-                "Dried distillers grains with solubles","Other, Waste","Other, Unknown"),
+                "Brewing or distilling dregs and waste","Other, Waste","Other, Unknown"),
   proc_code = c("p121","p065","p122","p123","p124","p125","p126","p126","p127","p127","p127",
                 "p128","p129","p130","p131","p132","p133","p134","p135","p136","p137",
                 "p138","p139","p140","p141","p142","p143","p144","p145","p146",
@@ -186,7 +187,7 @@ items_full_bcp <- bind_rows(items, items_extension) %>%
                               item == "Castor oil seeds" ~ 0.080,
                               TRUE ~ moisture),
          feedtype = case_when(item %in% c("Triticale","Molasses","Castor oil seeds") ~ "crops",
-                              item == "Dried distillers grains with solubles" ~ "Feed",
+                              item == "Brewing or distilling dregs and waste" ~ "Feed",
                               TRUE ~ feedtype))
 
 # List of items supplied by process

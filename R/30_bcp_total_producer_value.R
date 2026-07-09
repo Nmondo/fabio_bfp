@@ -1,8 +1,13 @@
 # =============================================================================
 # 30_bcp_total_producer_value.R
-# Producer total value = total product output x unit price, for the newly added
-# bio-based commodities only (comm_group in Biofuels / Building blocks /
-# Biopolymers), at (area x commodity x year) grain.
+# Producer total value = total product output x unit price, at (area x commodity
+# x year) grain, for two disjoint commodity sets:
+#   * the bio-based commodities (comm_group in Biofuels / Building blocks /
+#     Biopolymers), priced from the bilateral-flow producer prices; and
+#   * the plain-tonne commodities c141-c145 (Triticale, Molasses, Castor oil
+#     seeds, Oil of castor beans, chemically modified fats/oils), priced in
+#     USD/tonne from the FABIO v2 price outputs on a FAO-then-trade ladder (see
+#     the dedicated block near the output section).
 #
 # Inputs :  <output_dir_mode>/X.rds            total product output (rows = iso3c_commcode)
 #           <output_dir_mode>/io_labels.csv    row-aligned labels for X
@@ -11,6 +16,9 @@
 #           inst/items_full_bcp.csv            in-scope commodity master
 #           intermediate_data/tcf_table_clean.rds  biofuel volume<->mass factors
 #           intermediate_data/biogasoline_blend_shares.rds  per-country ETBE/eth shares
+#           <FABIO v2>/data/total_value/Prices_E_All_Data_with_USD.csv  FAO producer prices (USD/tonne)
+#           <FABIO v2>/data/total_value/bilateral_trade_prices.rds      trade prices (USD/unit)
+#           inst/value_added/concordance_areas_fao_producer_prices_fabio.csv  FAO->FABIO area map
 # Outputs:  intermediate_data/bcp_producer_total_values.rds / .csv
 #           intermediate_data/value_added_diagnostics/bcp_producer_total_values_diagnostics.csv
 #             Summary table: input-filtering funnel, winsor-cap counts,
@@ -421,6 +429,142 @@ diagnostics <- rbindlist(list(
 out <- X_long[, .(iso3c, area_code, comm_code, item, year,
                   total_product_output, unit, price, price_source,
                   total_value, total_value_source)]
+
+
+# =============================================================================
+# Plain-tonne commodities c141-c145 (Triticale, Molasses, Castor oil seeds,
+# Oil of castor beans, chemically modified fats/oils). These are priced in
+# USD/tonne straight from the FABIO v2 price outputs and carry no biofuel
+# volume/blend machinery, so they are valued in a self-contained block scoped
+# to their five comm_codes and appended to `out` with the same schema.
+#
+# Price per (area_code, comm_code, year) is filled on a three-rung ladder,
+# FAO producer price always preferred over trade price:
+#   1. fao_producer                -- FAO producer price for the own bcp area.
+#   2. fao_producer_global_median  -- FAO producer global-median row (area 5000)
+#                                     for that item/year, when the country has
+#                                     no own FAO price.
+#   3. trade_<src>                 -- bilateral trade price (area x item x year);
+#                                     the catch-all, and the only source for the
+#                                     Molasses / castor-oil / modified-fats items
+#                                     (item_codes 165 / 266 / 1274), which FAOSTAT
+#                                     never prices. The trade file's own
+#                                     price_source is carried through, prefixed
+#                                     "trade_".
+# total_value = total_product_output * price (tonnes x USD/tonne).
+# =============================================================================
+AG_COMM_CODES          <- c("c141", "c142", "c143", "c144", "c145")
+FAO_GLOBAL_MEDIAN_AREA  <- 5000L   # FAO producer-price global-median area row
+
+# comm_code <-> item_code from the bcp item master already read above.
+ag_map <- unique(items[comm_code %in% AG_COMM_CODES, .(comm_code, item_code = as.integer(item_code))])
+
+# FABIO v2 price outputs. Paths follow the v2 repo's 00_value_added_config.R
+# resolution: FABIO_ROOT (default ~/fabio, with FABIO_DATA_ROOT honoured as a
+# fallback) and the price handoffs under data/total_value; VA_PRICE_OUTPUT_DIR
+# overrides that directory. Empty-string env values are treated as unset.
+va_env <- function(var, default) {
+  v <- Sys.getenv(var, unset = "")
+  if (!nzchar(v)) v <- default
+  path.expand(v)
+}
+fabio_v2_root     <- va_env("FABIO_ROOT", Sys.getenv("FABIO_DATA_ROOT", unset = "~/fabio"))
+va_price_dir      <- va_env("VA_PRICE_OUTPUT_DIR", file.path(fabio_v2_root, "data", "total_value"))
+fao_prices_path   <- file.path(va_price_dir, "Prices_E_All_Data_with_USD.csv")
+trade_prices_path <- file.path(va_price_dir, "bilateral_trade_prices.rds")
+
+# Total product output for the five commodities, pulled straight from X (bypasses
+# the IN_SCOPE_GROUPS-filtered, biofuel-mutated X_long entirely).
+X_ag <- melt(as.data.table(X, keep.rownames = "row_id"),
+             id.vars        = "row_id",
+             variable.name   = "year",
+             value.name      = "total_product_output",
+             variable.factor = FALSE)
+X_ag <- merge(X_ag, io_labels[, .(row_id, iso3c, area_code, comm_code, item, unit)],
+              by = "row_id", all.x = TRUE)
+X_ag <- X_ag[comm_code %in% AG_COMM_CODES & year %in% as.character(years)]
+X_ag[ag_map, item_code := i.item_code, on = "comm_code"]
+X_ag[, area_code := as.integer(area_code)]
+
+# --- rung 1 & 2: FAO producer prices (mirror 13_3's load recipe) --------------
+fao_raw <- fread(fao_prices_path)
+setnames(fao_raw, old = c("Area Code", "Item Code"), new = c("area_code", "item_code"))
+fao_yr_cols <- grep("^[A-Z][0-9]{4}$", names(fao_raw), value = TRUE)   # "Y2010"
+setnames(fao_raw, old = fao_yr_cols, new = sub("^[A-Z]", "", fao_yr_cols))
+fao_price_yr <- grep("^[0-9]{4}$", names(fao_raw), value = TRUE)
+fao_long <- melt(fao_raw[Unit == "USD"],
+                 id.vars        = setdiff(names(fao_raw), fao_price_yr),
+                 measure.vars   = fao_price_yr,
+                 variable.name   = "year",
+                 value.name      = "price",
+                 variable.factor = FALSE)[, .(area_code = as.integer(area_code),
+                                              item_code = as.integer(item_code),
+                                              year, price)]
+fao_long <- fao_long[!is.na(price) & item_code %in% ag_map$item_code]
+
+# Only item_codes 97 (Triticale) and 265 (Castor oil seeds) are ever priced by
+# FAOSTAT; 165 / 266 / 1274 never appear and fall through to trade.
+fao_gm <- fao_long[area_code == FAO_GLOBAL_MEDIAN_AREA,
+                   .(price = median(price)), by = .(item_code, year)]
+
+# FAO area_code -> FABIO (== bcp) area_code via the producer-price concordance.
+conc_areas <- fread("inst/value_added/concordance_areas_fao_producer_prices_fabio.csv",
+                    encoding = "UTF-8")
+if ("comments; second area" %in% names(conc_areas)) conc_areas[, `comments; second area` := NULL]
+conc_areas[, `:=`(FAO_area_code = as.integer(FAO_area_code),
+                  FABIO_area_code = as.integer(FABIO_area_code))]
+fao_own <- merge(fao_long[area_code != FAO_GLOBAL_MEDIAN_AREA], conc_areas,
+                 by.x = "area_code", by.y = "FAO_area_code")
+fao_own <- fao_own[, .(price = median(price)),
+                   by = .(area_code = FABIO_area_code, item_code, year)]
+
+# --- rung 3: bilateral trade prices (catch-all) ------------------------------
+trade <- as.data.table(readRDS(trade_prices_path))
+trade <- trade[, .(area_code = as.integer(area_code), item_code = as.integer(item_code),
+                   year = as.character(year), price, price_source)]
+
+# --- fallback ladder (FAO own -> FAO global median -> trade) ------------------
+X_ag[, `:=`(price = NA_real_, price_source = NA_character_)]
+X_ag[fao_own, `:=`(price = i.price, price_source = "fao_producer"),
+     on = .(area_code, item_code, year)]
+X_ag[fao_gm, `:=`(
+  price        = fifelse(is.na(price), i.price, price),
+  price_source = fifelse(is.na(price), "fao_producer_global_median", price_source)),
+  on = .(item_code, year)]
+X_ag[trade, `:=`(
+  price        = fifelse(is.na(price) & is.finite(i.price), i.price, price),
+  price_source = fifelse(is.na(price) & is.finite(i.price),
+                         paste0("trade_", i.price_source), price_source)),
+  on = .(area_code, item_code, year)]
+
+X_ag[, total_value := fifelse(is.finite(price) & is.finite(total_product_output),
+                              total_product_output * price, NA_real_)]
+X_ag[, total_value_source := fifelse(is.finite(total_value), "output_x_price", NA_character_)]
+
+# --- coverage diagnostic (ladder rung mix + any commodity left unpriced) ------
+cat("\nProducer value for plain-tonne commodities c141-c145 (USD/tonne)\n")
+ag_cov <- X_ag[, .(cells  = .N,
+                   priced = sum(is.finite(price)),
+                   valued = sum(is.finite(total_value))), by = .(comm_code, item)]
+setorder(ag_cov, comm_code)
+print(ag_cov)
+ag_rung <- X_ag[is.finite(price), .(cells = .N), by = .(rung = fcase(
+  price_source == "fao_producer",               "fao_producer",
+  price_source == "fao_producer_global_median", "fao_producer_global_median",
+  default                                       = "trade"))][order(-cells)]
+cat("  Cells priced by ladder rung:\n")
+print(ag_rung)
+ag_unpriced <- X_ag[, .(unpriced = sum(!is.finite(price))), by = comm_code][unpriced > 0]
+if (nrow(ag_unpriced))
+  cat("  Commodities with unpriced cells: ",
+      paste(sprintf("%s(%d)", ag_unpriced$comm_code, ag_unpriced$unpriced), collapse = ", "),
+      "\n", sep = "")
+
+out_ag <- X_ag[, .(iso3c, area_code, comm_code, item, year,
+                   total_product_output, unit, price, price_source,
+                   total_value, total_value_source)]
+out <- rbind(out, out_ag, use.names = TRUE)
+
 setorder(out, iso3c, comm_code, year)
 
 dir.create("intermediate_data", showWarnings = FALSE)
