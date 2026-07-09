@@ -35,19 +35,21 @@
 #            EMBED the co-product (DDGS + corn distillers oil) value added and
 #            cannot be reported net of it -- see the US_REPORTS_VA block below.
 #
-#   FILL overlay (the base has NO row for these commodities -- they carry no
-#   producer price in script 30, so script 31 never values them -- so this is
-#   the sole source and is UNIONED in, not overwritten):
 #     33_bcp_value_added_neste.R       Neste segment GVA intensity x physical
-#            (bcp_value_added_neste.rds)   output for the renewable-diesel bundle
-#                                          c149 / c150 / c151 (`value_added_usd`).
+#            (bcp_value_added_neste.rds)   output for RENEWABLE DIESEL c149
+#                                          (`value_added_usd`).  c149 is valued in
+#                                          the base from its producer price, and
+#                                          the Neste company GVA is preferred and
+#                                          overwrites it.  Its HVO co-products
+#                                          c150 / c151 are valued from the base
+#                                          and are not touched by Neste.
 #
 # PRIORITY (per iso3c x comm_code x year):
-#     direct national/company measurement  >  Neste fill  >  MRIO base
-#   The two overwrite overlays never collide (Brazil = BRA c146/c147, US = USA
-#   c146) and the Neste fill only touches commodities absent from the base, so
-#   the ladder is unambiguous; it is still applied explicitly so any future
-#   overlap resolves deterministically and is surfaced in the diagnostics.
+#     direct national measurement  >  Neste company GVA  >  MRIO base
+#   The three overwrite overlays never collide (Brazil = BRA c146/c147, US = USA
+#   c146, Neste = c149), so the ladder is unambiguous; it is still applied
+#   explicitly so any future overlap resolves deterministically and is surfaced
+#   in the diagnostics.
 #
 # Currency: every source is already USD, so `value_added_usd` is USD throughout
 # with no conversion here.
@@ -112,7 +114,12 @@ BASES <- list(
 # va_source labels for the overlays.
 SRC_BRAZIL <- "National SUT: Brazil (IBGE)"
 SRC_US     <- "National reports: US (RFA/ABF)"
-SRC_NESTE  <- "Company GVA: Neste (renewable-diesel bundle)"
+SRC_NESTE  <- "Company GVA: Neste (renewable diesel)"
+
+# Sources that OVERWRITE the MRIO base for the cells they cover. Neste covers
+# renewable diesel (c149), which is valued in the base from its producer price;
+# the Neste company GVA is preferred for that commodity.
+OVERWRITE_SRCS <- c(SRC_BRAZIL, SRC_US, SRC_NESTE)
 
 # US Biogasoline (c146) direct value added, nominal USD millions, one figure per
 # year from the annual RFA / ABF Economics (Urbanchuk) US ethanol economic-
@@ -250,13 +257,30 @@ us_ov <- US_REPORTS_VA[year %in% keep_years,
                          overlay_tls     = NA_real_,
                          overlay_source = SRC_US, priority = 1L)]
 
-# -- The two OVERWRITE overlays, stacked and de-duplicated by an explicit
-#    priority (lower wins).  Both are direct national measurements (priority 1)
-#    and their key sets are disjoint (Brazil = BRA c146/c147, US = USA c146), so
-#    nothing is actually dropped; the ladder is applied explicitly so any future
-#    overlap resolves deterministically rather than by sort order, and is
-#    reported below.
-overwrite_ov <- rbindlist(list(us_ov, brazil_ov), use.names = TRUE)
+# -- Neste OVERWRITE overlay (renewable diesel c149).  c149 is valued in the MRIO
+#    base from its producer price; the Neste company GVA is preferred and
+#    overwrites it.  R/33 carries all three components (tls a genuine 0), so no
+#    apportionment fallback is needed.
+if (!"value_added_usd" %in% names(neste))
+  stop("bcp_value_added_neste.rds has no `value_added_usd` column.")
+for (cc in sprintf("value_added_%s_usd", VA_COMPONENTS))
+  if (!cc %in% names(neste))
+    stop("bcp_value_added_neste.rds has no `", cc, "` column -- re-run 33.")
+neste_ov <- neste[is.finite(value_added_usd) & year %in% keep_years,
+                  .(iso3c, comm_code, item, year = as.integer(year),
+                    overlay_value   = value_added_usd,
+                    overlay_wages   = value_added_wages_usd,
+                    overlay_capital = value_added_capital_usd,
+                    overlay_tls     = value_added_tls_usd,
+                    overlay_source = SRC_NESTE, priority = 2L)]
+
+# -- The three OVERWRITE overlays, stacked and de-duplicated by an explicit
+#    priority (lower wins).  Brazil / US are direct national measurements
+#    (priority 1); Neste is company GVA (priority 2).  Their key sets are disjoint
+#    (Brazil = BRA c146/c147, US = USA c146, Neste = c149), so nothing is actually
+#    dropped; the ladder is applied explicitly so any future overlap resolves
+#    deterministically rather than by sort order, and is reported below.
+overwrite_ov <- rbindlist(list(us_ov, brazil_ov, neste_ov), use.names = TRUE)
 setorderv(overwrite_ov, c(JOIN_KEYS, "priority"))
 n_ow_raw <- nrow(overwrite_ov)
 overwrite_ov <- unique(overwrite_ov, by = JOIN_KEYS)  # keeps lowest priority per key
@@ -264,21 +288,6 @@ overwrite_ov[, priority := NULL]
 if (nrow(overwrite_ov) != n_ow_raw)
   message(sprintf("  note: %d overlapping direct-overlay cell(s) resolved by priority.",
                   n_ow_raw - nrow(overwrite_ov)))
-
-# -- Neste FILL rows (renewable-diesel bundle; absent from the MRIO base).  R/33
-#    already carries all three components (tls a genuine 0), so no fallback.
-if (!"value_added_usd" %in% names(neste))
-  stop("bcp_value_added_neste.rds has no `value_added_usd` column.")
-for (cc in sprintf("value_added_%s_usd", VA_COMPONENTS))
-  if (!cc %in% names(neste))
-    stop("bcp_value_added_neste.rds has no `", cc, "` column -- re-run 33.")
-neste_fill <- neste[is.finite(value_added_usd) &
-                      year %in% keep_years,
-                    .(iso3c, area_code, comm_code, item, year = as.integer(year),
-                      value_added_usd,
-                      value_added_wages_usd, value_added_capital_usd, value_added_tls_usd,
-                      va_source = SRC_NESTE,
-                      total_product_output = output, unit)]
 
 
 # --- combine, once per base --------------------------------------------------
@@ -353,10 +362,10 @@ combine_one_base <- function(base) {
                value_added_tls_usd     = i.overlay_tls,
                va_source               = i.overlay_source),
           on = JOIN_KEYS]
-  n_overwritten <- base_dt[va_source %in% c(SRC_BRAZIL, SRC_US), .N]
+  n_overwritten <- base_dt[va_source %in% OVERWRITE_SRCS, .N]
   
-  # Direct overlays that matched no base cell (would silently vanish) -> warn.
-  matched <- unique(base_dt[va_source %in% c(SRC_BRAZIL, SRC_US), ..JOIN_KEYS])
+  # Overlays that matched no base cell (would silently vanish) -> warn.
+  matched <- unique(base_dt[va_source %in% OVERWRITE_SRCS, ..JOIN_KEYS])
   unmatched_ov <- overwrite_ov[!matched, on = JOIN_KEYS]
   if (nrow(unmatched_ov))
     message(sprintf("  WARNING: %d direct-overlay cell(s) matched no %s base row (dropped): %s",
@@ -364,41 +373,11 @@ combine_one_base <- function(base) {
                     paste(unmatched_ov[, paste0(iso3c, "/", comm_code, "/", year)],
                           collapse = ", ")))
   
-  # 3. Neste FILL: the renewable-diesel bundle (c149/c150/c151) carries no
-  #    producer price in script 30, so script 31 never *values* it -- but script
-  #    30 still emits an in-scope placeholder ROW per bundle key (it keeps every
-  #    in-group row, priced or not: the bundle is comm_group "Biofuels"), and
-  #    that row flows through the base with NA total_value / NA VA.  Neste is the
-  #    sole VA source for these keys, so the un-valued placeholder base rows are
-  #    dropped and the Neste rows unioned in their place.  Give the Neste rows the
-  #    same columns as the base; total_value has no meaning here (no price).
-  neste_rows <- copy(neste_fill)
-  neste_rows[, `:=`(total_value = NA_real_, base_value_added_usd = NA_real_)]
-  neste_keys <- unique(neste_rows[, ..JOIN_KEYS])
+  # All measured overlays (Brazil / US / Neste) are applied as overwrites in step
+  #    2 above, so the base carries the combined VA directly.
+  combined <- copy(base_dt)
   
-  # Overlap between the base and the Neste keys.  An un-valued placeholder is
-  # expected and simply superseded; a *valued* base row on a Neste key is a
-  # genuine conflict (the bundle somehow acquired a producer price upstream) and
-  # is surfaced rather than silently discarded.
-  base_on_neste <- base_dt[neste_keys, on = JOIN_KEYS, nomatch = 0L]
-  valued_clash  <- base_on_neste[is.finite(value_added_usd)]
-  if (nrow(valued_clash))
-    stop("Neste fill keys carry a *valued* row in the ", base$label,
-         " base -- the RD bundle was expected to be un-valued (no producer price). ",
-         "Resolve the overlap explicitly before unioning.  Keys: ",
-         paste(valued_clash[, paste0(iso3c, "/", comm_code, "/", year)], collapse = ", "))
-  
-  n_placeholder <- nrow(base_on_neste)
-  if (n_placeholder) {
-    base_dt <- base_dt[!neste_keys, on = JOIN_KEYS]   # drop un-valued placeholders
-    message(sprintf(paste0("  note: superseded %d un-valued RD-bundle placeholder ",
-                           "row(s) in the %s base with the Neste fill."),
-                    n_placeholder, base$label))
-  }
-  
-  combined <- rbindlist(list(base_dt, neste_rows), use.names = TRUE, fill = TRUE)
-  
-  # 3b. APPORTIONMENT FALLBACK: fill any component left NA under a finite total
+  # 3. APPORTIONMENT FALLBACK: fill any component left NA under a finite total
   #     (the US overlay's capital/tls) from the residual, by this base's ratio.
   combined <- apportion_missing(combined)
   
@@ -481,8 +460,8 @@ combine_one_base <- function(base) {
                     rel_diff_vs_base = round(rel_diff_vs_base, 3))])
   }
   
-  message(sprintf("34_bcp_value_added_combination [%s]: %d rows (%d overwritten, %d Neste fill) -> %s",
-                  base$label, nrow(combined), n_overwritten, nrow(neste_rows), rds_path))
+  message(sprintf("34_bcp_value_added_combination [%s]: %d rows (%d overwritten) -> %s",
+                  base$label, nrow(combined), n_overwritten, rds_path))
   invisible(combined)
 }
 
