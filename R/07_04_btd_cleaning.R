@@ -30,7 +30,7 @@ if (!nzchar(fabio_root)) {
   if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
-setwd(fabio_root)
+
 setwd(fabio_root)
 
 ########### FABIO regions #########
@@ -39,14 +39,10 @@ regions <- read.csv("inst/regions_full.csv", fileEncoding = "latin1") %>% filter
 
 ########### BACI trade data #########
 
-setwd("/home/bruckner2/fabio/")
-
 # baci_hs07 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs07.rds")
 baci_hs12 <- readRDS("/mnt/nfs_fineprint/tmp/baci/baci_hs12.rds")
 
 ########### Trade data from Eurostat #########
-
-setwd(fabio_root)
 
 ### Combined Eurostat API request: biofuels + biopolymers ###
 
@@ -132,6 +128,8 @@ bilateral_bf_bp_eu <- fetch_comext(url_data) %>%
   rename(FLOW = flow)
 
 ########### Total imports and exports by product for Sweden #########
+
+setwd(fabio_root)
 
 SWE_raw <- read_excel("own_data/swe_data_2018_2022.xlsx", skip = 2, n_max = 8, na = "..")
 
@@ -532,7 +530,7 @@ regions_temp <- regions %>%
 
 clean_baci <- function(df) {
   df %>%
-    filter(k %in% c(220710,220720,271019,271020,290919,382490,382600) & t %in% 2010:2022) %>%
+    filter(k %in% c(220710,220720,271019,271020,290919,382490,382600,230330) & t %in% 2010:2022) %>%
     mutate(across(c(i, j), ~ case_when(
       .x == 380 ~ 381, .x == 710 ~ 711,
       .x %in% c(531,533,534,535) ~ 530,
@@ -564,7 +562,7 @@ clean_baci <- function(df) {
 # --- Biofuels: HS12 ---
 
 baci_hs12_base <- clean_baci(baci_hs12) %>%
-  filter(k %in% c(220710,220720,271019,271020,290919,382600) & t %in% 2012:2022)
+  filter(k %in% c(220710,220720,271019,271020,290919,382600,230330) & t %in% 2012:2022)
 
 baci_hs12_base %<>%
   left_join(regions_temp %>% select(iso3c, baci), by = c("i" = "baci")) %>% rename(exporter_iso3 = iso3c) %>%
@@ -605,6 +603,7 @@ baci_comtrade_named <- bind_rows(baci_hs12_clean, bilateral_comtrade_clean) %>%
     est_blend    = replace(est_blend, is.na(est_blend) & product == 382600L, 0),
     product_code = product,
     product = case_when(
+      product_code == 230330                      ~ "Dried distillers grains with solubles",
       product_code == 152000                      ~ "Glycerol, crude",
       product_code %in% c(271020, 382600, 382490) ~ "Biodiesel",
       product_code %in% c(220710, 220720)         ~ "Bioethanol",
@@ -701,17 +700,17 @@ eur_usd <- request("https://data-api.ecb.europa.eu/service/data/EXR/A.USD.EUR.SP
 bf_bp_eu_prices$product <- as.integer(bf_bp_eu_prices$product)
 bf_bp_eu_prices <- bf_bp_eu_prices %>%
   mutate(product = case_when(
-  product %in% c(38260010, 38260090)         ~ "Biodiesel",
-  product == 2207                            ~ "Bioethanol",
-  product == 29171310                        ~ "Sebacic acid",
-  product == 29171920                        ~ "Succinic acid",
-  product == 29053926                        ~ "1,4-butanediol",
-  product == 29053995                        ~ "1,3-propanediol",
-  product == 29012190                        ~ "Ethylene",
-  product == 29012290                        ~ "Propylene",
-  product == 29091910                        ~ "ETBE",
-  product %in% c(39121100, 39121200)         ~ "Cellulose acetate"
-))
+    product %in% c(38260010, 38260090)         ~ "Biodiesel",
+    product == 2207                            ~ "Bioethanol",
+    product == 29171310                        ~ "Sebacic acid",
+    product == 29171920                        ~ "Succinic acid",
+    product == 29053926                        ~ "1,4-butanediol",
+    product == 29053995                        ~ "1,3-propanediol",
+    product == 29012190                        ~ "Ethylene",
+    product == 29012290                        ~ "Propylene",
+    product == 29091910                        ~ "ETBE",
+    product %in% c(39121100, 39121200)         ~ "Cellulose acetate"
+  ))
 
 str(prices_comtrade)
 prices_comtrade <- prices_comtrade %>% 
@@ -729,6 +728,7 @@ prices_comtrade <- prices_comtrade %>%
 
 prices_baci_hs12 <- prices_baci_hs12 %>% 
   mutate(product = case_when(
+    product == 230330                      ~ "Dried distillers grains with solubles",
     product %in% c(382600) ~ "Biodiesel",
     product %in% c(220710, 220720)         ~ "Bioethanol",
     product == 290919                      ~ "ETBE",
@@ -857,4 +857,3 @@ saveRDS(prices, "intermediate_data/prices_bcp.rds")
 # Removing temporary objects
 
 rm(list = ls())
-

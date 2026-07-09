@@ -33,7 +33,7 @@ agg <- function(x) { as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x
 
 
 # Load multi-regional supply and use tables ---
-# mr_sup_m <- readRDS(file.path(output_dir_mode,"mr_sup_mass.rds"))  # list of industry × product in mass units
+mr_sup_m <- readRDS(file.path(output_dir_mode,"mr_sup_mass.rds"))  # list of industry × product in mass units
 mr_sup_v <- readRDS(file.path(output_dir_mode,"mr_sup_value.rds")) # list of industry × product in monetary units
 mr_use <- readRDS(file.path(output_dir_mode,"mr_use.rds"))         # list of product × industry in mass units
 
@@ -44,23 +44,23 @@ mr_use <- readRDS(file.path(output_dir_mode,"mr_use.rds"))         # list of pro
 #1. With mass allocation
 ###########################################################
 
-# # --- Step 1: Normalize supply (industry shares of products) ---
-# trans_m <- mclapply(mr_sup_m, function(x) {
-#   rs <- rowSums(x)                # row sums (industry outputs)
-#   rs[rs == 0] <- 1                # avoid division by zero
-#   out <- x
-#   out@x <- out@x / rs[out@i + 1]
-#   out
-# }, mc.cores = detectCores() - 2)
-# 
-# # --- Step 2: Compute symmetric product × product tables ---
-# Z_m <- mcmapply(function(use, trans) {
-#   out <- use %*% trans
-#   out[!is.finite(out)] <- 0  # just in case
-#   out
-# }, mr_use, trans_m, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
-# 
-# Z_m <- lapply(Z_m, round)
+# --- Step 1: Normalize supply (industry shares of products) ---
+trans_m <- mclapply(mr_sup_m, function(x) {
+  rs <- rowSums(x)                # row sums (industry outputs)
+  rs[rs == 0] <- 1                # avoid division by zero
+  out <- x
+  out@x <- out@x / rs[out@i + 1]
+  out
+}, mc.cores = detectCores() - 2)
+
+# --- Step 2: Compute symmetric product × product tables ---
+Z_m <- mcmapply(function(use, trans) {
+  out <- use %*% trans
+  out[!is.finite(out)] <- 0  # just in case
+  out
+}, mr_use, trans_m, SIMPLIFY = FALSE, mc.cores = detectCores() - 2)
+
+Z_m <- lapply(Z_m, round)
 
 
 
@@ -154,7 +154,7 @@ for(year in years){
   
   print(year)
   
-  #  Zmi <- Z_m[[as.character(year)]]
+  Zmi <- Z_m[[as.character(year)]]
   Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
@@ -198,7 +198,7 @@ for(year in years){
   }
   
   # Save back results
-  #  Z_m[[as.character(year)]] <- Zmi
+  Z_m[[as.character(year)]] <- Zmi
   Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
@@ -216,7 +216,7 @@ for(year in years){
   
   print(year)
   
-  #  Zmi <- Z_m[[as.character(year)]]
+  Zmi <- Z_m[[as.character(year)]]
   Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   
@@ -226,14 +226,14 @@ for(year in years){
   
   
   # Save back results
-  #  Z_m[[as.character(year)]] <- Zmi
+  Z_m[[as.character(year)]] <- Zmi
   Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
 }
 
 
 # Store X, Y, Z variables
-# saveRDS(Z_m, file.path(output_dir_mode,"Z_mass.rds"))
+saveRDS(Z_m, file.path(output_dir_mode,"Z_mass.rds"))
 saveRDS(Z_v, file.path(output_dir_mode,"Z_value.rds"))
 saveRDS(Y, file.path(output_dir_mode,"Y.rds"))
 saveRDS(X, file.path(output_dir_mode,"X.rds"))
@@ -278,10 +278,10 @@ for(year in years){
   combined_matrix <- do.call(cbind, matrix_list)
   combined_matrix <- as(combined_matrix, "dgCMatrix")
   
-  # # add losses to the main diagonals of each submatrix of Z_m
-  # Zi <- Z_m[[as.character(year)]]
-  # Zi <- Zi + combined_matrix
-  # Z_m[[as.character(year)]] <- Zi
+  # add losses to the main diagonals of each submatrix of Z_m
+  Zi <- Z_m[[as.character(year)]]
+  Zi <- Zi + combined_matrix
+  Z_m[[as.character(year)]] <- Zi
   
   # add losses to the main diagonals of each submatrix of Z_v
   Zi <- Z_v[[as.character(year)]]
@@ -303,7 +303,7 @@ for(year in years){
   
   print(year)
   
-  # Zmi <- Z_m[[as.character(year)]]
+  Zmi <- Z_m[[as.character(year)]]
   Zvi <- Z_v[[as.character(year)]]
   Yi <- Y[[as.character(year)]]
   Xi <- X[,as.character(year)]
@@ -346,7 +346,7 @@ for(year in years){
   }
   
   # Save back results
-  # Z_m[[as.character(year)]] <- Zmi
+  Z_m[[as.character(year)]] <- Zmi
   Z_v[[as.character(year)]] <- Zvi
   Y[[as.character(year)]] <- Yi
   X[,as.character(year)] <- Xi
@@ -356,7 +356,7 @@ for(year in years){
 
 saveRDS(X, file.path(output_dir_mode,"losses/X.rds"))
 saveRDS(Y, file.path(output_dir_mode,"losses/Y.rds"))
-# saveRDS(Z_m, file.path(output_dir_mode,"losses/Z_mass.rds"))
+saveRDS(Z_m, file.path(output_dir_mode,"losses/Z_mass.rds"))
 saveRDS(Z_v, file.path(output_dir_mode,"losses/Z_value.rds"))
 
 
@@ -418,6 +418,3 @@ for(i in seq_along(Y)){
 
 saveRDS(Y_new, file.path(output_dir_mode,"Y.rds"))
 saveRDS(Y_l_new, file.path(output_dir_mode,"losses/Y.rds"))
-
-
-

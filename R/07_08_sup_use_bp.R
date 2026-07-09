@@ -1267,7 +1267,7 @@ complete_rows <- full_compile_supply %>% filter(!is.na(other_industry_use)) %>% 
   mutate(exports = coalesce(exports, required_exports),
          imports = coalesce(imports, required_imports)) %>%
   select(-required_exports, -required_imports) 
-  
+
 
 # Incomplete rows for which we will use Monetary MRIO allocation
 incomplete_rows <- full_compile_supply %>% filter(is.na(other_industry_use)) %>% select(-imports, -exports, -btd_balancing, -required_remaining, -output_balancing) 
@@ -1320,12 +1320,12 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
       select(iso3c, year, input = product, use = bp_feedstock_use),
     by = c("iso3c", "year", "input"),
     unmatched = "ignore"
-    ) %>%
+  ) %>%
   filter(!(input == "Sebacic acid"),
          !(input == "11-AA"),
          year %in% 2012:2022)
 
-  
+
 ###########################################################
 #2. Joining processes  ##########
 ###########################################################
@@ -1348,7 +1348,7 @@ use_bb_bp_intermediate <- use_bb_bp_intermediate %>%
 ###########################################################
 
 btd_intermediate_other <- btd_intermediate_other %>% 
-  filter(product %in% c("L-LA","Glycerol, crude", "PLA", "1,4-BDO", "Sebacic acid", "Succinic acid", "ECH", "11-AA", "MEG"))
+  filter(product %in% c("L-LA","Glycerol, crude", "PLA", "1,4-BDO", "Sebacic acid", "Succinic acid", "ECH", "11-AA", "MEG", "Dried distillers grains with solubles"))
 
 
 

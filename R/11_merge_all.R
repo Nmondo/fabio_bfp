@@ -420,6 +420,53 @@ sup_full <- sup_full %>%
   bind_rows(c901_sup %>% select(any_of(names(sup_full))))
 
 
+###########################################################
+########### DDGS OUTPUT FROM BIOGASOLINE FEEDSTOCK USE ####
+###########################################################
+# DDGS (c171) is the dry-mill co-product of grain bioethanol. Model its supply as
+# a fixed 0.3 t DDGS per t of *cereal-grain* feedstock used in Biogasoline
+# production (p125); sugar / starch-root / waste feedstocks yield no distillers
+# grains and are excluded. The whole DDGS output is attributed to p125.
+# Feedstock use is read from use_full AFTER the lambda rescale above, so DDGS is
+# consistent with the reconciled ethanol throughput. Placed after the c901 rebuild
+# so c171 stays out of the imbalance redistribution and the self-flow/BTD loop
+# (supply-only, as specified).
+
+ddgs_feedstocks <- c(
+  "c141",  # Triticale
+  "c002",  # Wheat and products
+  "c003",  # Barley and products
+  "c004",  # Maize and products
+  "c005",  # Rye and products
+  "c008",  # Sorghum and products
+  "c001"   # Rice and products
+)
+ddgs_yield <- 0.3   # t DDGS per t grain feedstock (dry-mill co-product ratio)
+
+ddgs_meta <- items_supply_bcp %>%
+  filter(comm_code == "c171") %>%
+  distinct(across(any_of(c("item", "item_code", "comm_code", "proc", "proc_code"))))
+if (nrow(ddgs_meta) != 1)
+  stop("DDGS (c171) supply metadata not found/unique in items_supply_bcp - ",
+       "re-run 00_update_items_list.R so c171 (p125) is present before script 11.")
+
+# 0.3 x grain feedstock use in Biogasoline production (p125), per area x year
+ddgs_sup <- as.data.table(as.data.frame(use_full))[
+  proc_code == "p125" & comm_code %in% ddgs_feedstocks,
+  .(supply = ddgs_yield * sum(use, na.rm = TRUE)),
+  by = .(area_code, year)
+][supply > 0]
+
+ddgs_sup <- as_tibble(ddgs_sup) %>%
+  mutate(!!!as.list(ddgs_meta[1, ]), price = 1) %>%
+  left_join(regions %>% select(area_code = code, area = name), by = "area_code")
+
+# filter guard makes the block idempotent if c171 ever pre-exists in sup_final_bcp
+sup_full <- sup_full %>%
+  filter(comm_code != "c171") %>%
+  bind_rows(ddgs_sup %>% select(any_of(names(sup_full))))
+
+
 
 
 ###########################################################
@@ -552,10 +599,6 @@ btd_full <- btd_full %>%
 
 setwd(fabio_root)
 
-# Ensure data.table class on disk: 12_a (and 12_b/13) consume these with
-# data.table syntax `dt[, .(...)]`, which fails on a plain data.frame with
-# "could not find function '.'". use_full / use_fd_full come off bind_rows()/
-# as_tibble() as tibbles, so normalise all four before writing.
 setDT(sup_full); setDT(use_full); setDT(use_fd_full); setDT(btd_full)
 
 saveRDS(sup_full, tag("data/sup_final_merged.rds"))

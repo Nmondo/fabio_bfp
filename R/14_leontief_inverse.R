@@ -11,7 +11,7 @@ if (!nzchar(fabio_root)) {
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
 setwd(fabio_root)
-setwd(fabio_root)
+
 library(data.table)
 library(Matrix)
 source("R/00_system_variables.R")
@@ -38,7 +38,7 @@ prep_solve <- function(year, Z, X,
 }
 years_singular <- 0 #c(2011,2013)
 years_singular_losses <- 2010 #c(2011,2013,2021,2022)
-# Z_m <- readRDS(file.path(output_dir_mode,"Z_mass.rds"))
+Z_m <- readRDS(file.path(output_dir_mode,"Z_mass.rds"))
 Z_v <- readRDS(file.path(output_dir_mode,"Z_value.rds"))
 Y <- readRDS(file.path(output_dir_mode,"Y.rds"))
 X <- readRDS(file.path(output_dir_mode,"X.rds"))
@@ -46,10 +46,10 @@ X <- readRDS(file.path(output_dir_mode,"X.rds"))
 for(year in years){
   print(year)
   adjust <- ifelse(year %in% years_singular, TRUE, FALSE)
-  # L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
-  #                 X = X[, as.character(year)], adj_diag = adjust)
-  # L[L<0] <- 0
-  # saveRDS(L, paste0(output_dir_mode,"/", year, "_L_mass.rds"))
+  L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
+                  X = X[, as.character(year)], adj_diag = adjust)
+  L[L<0] <- 0
+  saveRDS(L, paste0(output_dir_mode,"/", year, "_L_mass.rds"))
   L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
                   X = X[, as.character(year)], adj_diag = adjust)
   L[L<0] <- 0
@@ -58,16 +58,16 @@ for(year in years){
 # L inverse for losses version of fabio ---
 X <- readRDS(file.path(output_dir_mode,"losses/X.rds"))
 Y <- readRDS(file.path(output_dir_mode,"losses/Y.rds"))
-# Z_m <- readRDS(file.path(output_dir_mode,"losses/Z_mass.rds"))
+Z_m <- readRDS(file.path(output_dir_mode,"losses/Z_mass.rds"))
 Z_v <- readRDS(file.path(output_dir_mode,"losses/Z_value.rds"))
 #year <- 2022
 for(year in years){
   print(year)
   adjust_losses <- ifelse(year %in% years_singular_losses, TRUE, FALSE)
-  # L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
-  #                 X = X[, as.character(year)], adj_diag = adjust_losses)
-  # L[L<0] <- 0
-  # saveRDS(L, paste0(output_dir_mode,"/losses/", year, "_L_mass.rds"))
+  L <- prep_solve(year = year, Z = Z_m[[as.character(year)]],
+                  X = X[, as.character(year)], adj_diag = adjust_losses)
+  L[L<0] <- 0
+  saveRDS(L, paste0(output_dir_mode,"/losses/", year, "_L_mass.rds"))
   L <- prep_solve(year = year, Z = Z_v[[as.character(year)]],
                   X = X[, as.character(year)], adj_diag = adjust_losses)
   L[L<0] <- 0

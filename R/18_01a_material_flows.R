@@ -1,4 +1,17 @@
-# 18 - Calculate footprints from FABIO MRIO
+# 18a - Material-flow tables from FABIO-BCP MRIO  (MASS allocation)
+# ------------------------------------------------------------------------------
+# Physical product flows only: feedstock tonnes and biofuel output.
+# NO environmental extensions here (extension = NULL everywhere), so this script
+# uses the MASS-allocated inter-industry flows (Z_mass) and, wherever a Leontief
+# inverse is needed, <year>_L_mass.
+#
+# E / E_bar are deliberately NOT loaded: material-flow tables carry no stressor.
+#
+# Companion script: 18b_extension_footprints.R  (VALUE allocation, stressors).
+# NOTE: fp_trade_breakdown_feedstock() and the filename helpers are duplicated in
+#       both scripts. If you edit that function, edit it in both (or factor the
+#       shared core into an 18_00_footprint_core.R that both source()).
+# ------------------------------------------------------------------------------
 
 # Setup ------------------------------------------------------------------------
 library(data.table)
@@ -16,16 +29,11 @@ if (!nzchar(fabio_root)) {
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
 setwd(fabio_root)
-setwd(fabio_root)
 
 # ---- MODEL VERSION -----------------------------------------------------------
-# Which FABIO-BCP MRIO to load, and where results are written:
-#   "rescaled" (default) -> RED-rescaled tables at the base v2_bcp/ paths;
-#                           footprint CSVs written to output/.
-#   "bypass"             -> non-rescaled counterfactual under v2_bcp/bypass/;
-#                           CSVs to output/bypass/ (never clobbers the rescaled set).
-# Rescaled is the default, so behaviour is byte-identical to before. Flip this one
-# line (or export FABIO_RUN_MODE=bypass) only to regenerate the non-rescaled run.
+# "rescaled" (default) -> RED-rescaled tables at v2_bcp/, CSVs to output/.
+# "bypass"             -> non-rescaled counterfactual under v2_bcp/bypass/,
+#                         CSVs to output/bypass/. Flip via FABIO_RUN_MODE=bypass.
 model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
 model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
 
@@ -33,44 +41,43 @@ base_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"          # version-invariant
 MRIO_PATH <- if (model_version == "bypass")
   paste0(sub("/+$", "", base_path), "/bypass/") else base_path   # version-specific MRIO
 OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-message(sprintf(">>> [18_01] model_version = '%s'  (MRIO: %s | out: %s)",
+message(sprintf(">>> [18a material] model_version = '%s'  (MRIO: %s | out: %s)",
                 model_version, MRIO_PATH, OUT_DIR))
 
 # Read labels ------------------------------------------------------------------
-input_path <- MRIO_PATH                                     # rescaled MRIO by default
+input_path <- MRIO_PATH
 regions <- fread(file="inst/regions_full.csv") %>% filter(current==TRUE)
 io <- fread(paste0(input_path,"io_labels.csv"))
 items <- fread(file="inst/items_full_bcp.csv") %>% filter(comm_code %in% unique(io$comm_code))
 fd <- fread(file=paste0(input_path,"losses/fd_labels.csv"))
-ex <- fread(file=paste0(base_path,"ex_labels.csv"))         # shared across versions
+ex <- fread(file=paste0(base_path,"ex_labels.csv"))         # shared across versions (only for the unused `ex` arg)
 
-# Create output directory ----------------------------------------
+# Technical conversion factors (feedstock use -> biofuel supply) --------------
+# Used by bf_supply_chain_flows() to convert stage-1 rows from feedstock tonnes
+# to biofuel-output-equivalent BEFORE saving, so the producer node balances.
+tcf <- readRDS("intermediate_data/tcf_table_final.rds")
+setDT(tcf)
+tcf[, item := trimws(item)]        # strip stray whitespace that breaks the join to io$item
+tcf[, biofuel_code := fcase(
+  grepl("Biogasoline",      proc), "c146",
+  grepl("Biodiesel",        proc), "c147",
+  grepl("Renewable diesel", proc), "c149",
+  default = NA_character_)]
+tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
+
+# Create output directory ------------------------------------------------------
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
-# Load static data once (all years, value allocation) -------------------------
-# X, Y, Z, E are year-independent containers and only need to be read once.
-# L is year-specific and is loaded inside each function call.
-allocation <- "value"
+# Load static data once (MASS allocation) --------------------------------------
+# X, Y, Z are year-independent containers, read once. L is year-specific and is
+# loaded inside each function call (as <year>_L_mass, driven by `allocation`).
+allocation <- "mass"
 
 X <- readRDS(paste0(input_path, "losses/X.rds"))
 Y <- readRDS(paste0(input_path, "losses/Y.rds"))
-Z <- readRDS(paste0(input_path, "losses/Z_", allocation, ".rds"))
-E <- readRDS(paste0(base_path, "E.rds"))                    # extensions: shared across versions
+Z <- readRDS(paste0(input_path, "losses/Z_", allocation, ".rds"))   # Z_mass
 
-# Make E_bar, 3-years average of the environmental extensions.
-yrs_E_bar <- as.character(2012:2022)
-E_bar <- vector("list", length(yrs_E_bar))
-names(E_bar) <- yrs_E_bar
-
-for (yr in yrs_E_bar) {
-  y <- as.integer(yr)
-  E_bar[[yr]] <- (E[[as.character(y - 1)]] + E[[as.character(y)]] + E[[as.character(y + 1)]]) / 3
-} 
-
-
-
-
-#### Making general vectors 
+#### Making general vectors
 bf_set <- c("c146", "c147", "c149", "c150", "c151")
 bp_set <- paste0("c", 152:170)
 
@@ -118,210 +125,17 @@ build_filename <- function(prefix, ext = "csv", ...) {
 }
 
 
-
-
 ######################################################################################################################
-############################## MAKING FUNCTIONS TO EXTRACT RESULTS #######################
+############################## MATERIAL-FLOW FUNCTIONS #######################
 ######################################################################################################################
 
 ###########################################################
-########### CONSUMPTION-BASED IMPACT 
+########### CONSUMPTION-BASED FLOW
 ########### OF SELECTED COUNTRIES (default: all)
 ########### OF SELECTED COMMODITIES
-########### BY CONTINENT WHERE IMPACTS OCCUR
-########### BY FEEDSTOCK (DIRECT REQUIREMENT) RESPONSIBLE FOR THE IMPACT
-###########################################################
-
-fp_feedstock <- function(country       = NULL,
-                         year,
-                         extension     = NULL,
-                         commodity,
-                         allocation    = "value",
-                         input_path    = MRIO_PATH,
-                         losses        = TRUE,
-                         by_commodity  = TRUE,
-                         by_country    = TRUE,
-                         top_n         = NULL,        # NEW: keep top-N feedstocks per (country, commodity); NULL = all
-                         drop_zero     = TRUE,        # NEW: drop zero-value entries early
-                         save          = FALSE,
-                         output_dir    = OUT_DIR,
-                         regions, io, fd, ex,
-                         X = NULL, Y = NULL, Z = NULL, E = NULL, L = NULL,
-                         return_full   = FALSE) {
-  
-  sub <- if (losses) "losses/" else ""
-  
-  # --- Load only what wasn't passed in ---------------------------------------
-  if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
-  if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
-  if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
-  if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(base_path, "E.rds"))
-  if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
-  
-  Xi <- X[, as.character(year)]
-  Yi <- Y[[as.character(year)]]
-  Zi <- Z[[as.character(year)]]
-  Ei <- if (!is.null(extension)) E[[as.character(year)]] else NULL
-  
-  # --- Extension intensity ---------------------------------------------------
-  if (!is.null(extension)) {
-    if (!extension %in% rownames(Ei))
-      stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
-    ext <- as.numeric(Ei[extension, ]) / as.vector(Xi)
-    ext[!is.finite(ext)] <- 0
-  } else {
-    ext <- rep(1, length(Xi))
-  }
-  MP <- ext * L
-  
-  # --- Resolve country list -------------------------------------------------
-  if (is.null(country)) country <- unique(fd$iso3c)
-  unknown <- setdiff(country, fd$iso3c)
-  if (length(unknown) > 0) {
-    warning("Unknown countries dropped: ", paste(unknown, collapse = ", "))
-    country <- setdiff(country, unknown)
-  }
-  if (length(country) == 0) stop("No valid countries supplied.")
-  
-  # --- Validate commodity input ---------------------------------------------
-  unknown_c <- setdiff(commodity, io$comm_code)
-  if (length(unknown_c) > 0) {
-    warning("Unknown comm_codes dropped: ", paste(unknown_c, collapse = ", "))
-    commodity <- intersect(commodity, io$comm_code)
-  }
-  if (length(commodity) == 0) stop("No valid comm_codes supplied.")
-  
-  io_label <- paste0(io$iso3c, "_", io$item)
-  
-  # --- Helper: per-country, per-commodity footprint -------------------------
-  compute_for <- function(ctry, cc) {
-    # Country final demand
-    Y_country <- Yi[, fd$iso3c == ctry, drop = FALSE]
-    y_full <- as.vector(rowSums(as.matrix(Y_country)))
-    
-    comm_idx <- io$comm_code == cc
-    y_comm <- y_full
-    y_comm[!comm_idx] <- 0
-    
-    if (sum(y_comm) == 0) return(NULL)              # early skip: no demand
-    
-    x_triggered <- as.vector(L %*% y_comm)
-    x_comm <- x_triggered
-    x_comm[!comm_idx] <- 0
-    
-    denom <- Xi[comm_idx]
-    denom[denom == 0] <- 1
-    f <- as.vector(Zi[, comm_idx] %*% (x_comm[comm_idx] / denom))
-    
-    if (sum(f) == 0) return(NULL)
-    
-    # --- top-N filter on f BEFORE expanding to FP ---------------------------
-    # f is the per-target feedstock loading; aggregating by feedstock item
-    # gives one number per feedstock, which is what top_n should rank on.
-    if (!is.null(top_n) && top_n < length(unique(io$item))) {
-      f_by_item <- tapply(f, io$item, sum)
-      keep_items <- names(sort(f_by_item, decreasing = TRUE))[seq_len(top_n)]
-      f[!(io$item %in% keep_items)] <- 0
-      if (sum(f) == 0) return(NULL)
-    }
-    
-    # --- footprint matrix, sparse from the start --------------------------
-    # build directly as a TsparseMatrix to avoid the dense intermediate
-    nz_target <- which(f != 0)
-    if (length(nz_target) == 0) return(NULL)
-    
-    MP_sub <- MP[, nz_target, drop = FALSE]
-    FP_sub <- t(t(MP_sub) * f[nz_target])           # only nonzero target columns
-    FP_sub <- as(FP_sub, "TsparseMatrix")
-    
-    if (FP_sub@x |> length() == 0) return(NULL)
-    
-    target_lbl <- io_label[nz_target]
-    dt <- data.table(
-      country_consumer = ctry,
-      commodity        = cc,
-      origin           = io_label[FP_sub@i + 1],
-      target           = target_lbl[FP_sub@j + 1],
-      value            = FP_sub@x
-    )
-    
-    if (drop_zero) dt <- dt[value != 0]
-    dt
-  }
-  
-  # --- Loop over (country, commodity) ---------------------------------------
-  grid <- CJ(ctry = country, cc = commodity, sorted = FALSE)
-  per_cell <- rbindlist(
-    Map(compute_for, grid$ctry, grid$cc),
-    use.names = TRUE, fill = TRUE
-  )
-  
-  if (nrow(per_cell) == 0) {
-    warning("Empty footprint for year ", year, " / countries: ",
-            paste(country, collapse = ","), " / commodities: ",
-            paste(commodity, collapse = ","))
-    return(per_cell)
-  }
-  
-  # --- Annotate --------------------------------------------------------------
-  indicator_label <- if (!is.null(extension)) extension else "material"
-  
-  per_cell[, `:=`(
-    year             = year,
-    indicator        = indicator_label,
-    allocation       = allocation,
-    country_origin   = substr(origin, 1, 3),
-    item_origin      = substr(origin, 5, 100),
-    country_target   = substr(target, 1, 3),
-    item_target      = substr(target, 5, 100)
-  )]
-  per_cell[, continent_origin :=
-             regions$continent[match(country_origin, regions$iso3c)]]
-  
-  # --- Aggregate -------------------------------------------------------------
-  group_cols <- c("year", "indicator", "allocation",
-                  "feedstock", "continent_origin")
-  if (by_country)   group_cols <- c("country_consumer", group_cols)
-  if (by_commodity) group_cols <- c(group_cols, "commodity")
-  
-  agg_results <- per_cell[, .(value = sum(value)),
-                          by = c(setdiff(group_cols, "feedstock"), "item_target")]
-  setnames(agg_results, "item_target", "feedstock")
-  setcolorder(agg_results, group_cols)
-  
-  if (drop_zero) agg_results <- agg_results[value != 0]
-  
-  if (save) {
-    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-    fname <- build_filename("FABIO_feedstock",
-                            country   = if (length(country) > 4) NULL else country,
-                            year      = year,
-                            indicator = indicator_label,
-                            alloc     = allocation,
-                            comm      = commodity,
-                            topN      = top_n,
-                            byCountry = by_country,
-                            byComm    = by_commodity)
-    fwrite(agg_results, file.path(output_dir, fname))
-    message("Wrote ", file.path(output_dir, fname))
-  }
-  
-  if (return_full) list(results = per_cell, agg = agg_results) else agg_results
-}
-
-
-
-###########################################################
-########### CONSUMPTION-BASED IMPACT
-########### OF SELECTED COUNTRIES (default: all)
-########### OF SELECTED COMMODITIES
-########### BY CONTINENT WHERE IMPACTS OCCUR
+########### BY CONTINENT WHERE FLOWS OCCUR
 ########### FULL UPSTREAM, INCL. INDIRECT REQUIREMENTS
 ###########################################################
-# Counterpart to fp_feedstock(): instead of decomposing the footprint via
-# the first-degree feedstock column A[,target] and then propagating through
-# L, this function uses the full Leontief inverse directly:
 
 fp_indirect <- function(country       = NULL,
                         year,
@@ -332,7 +146,7 @@ fp_indirect <- function(country       = NULL,
                         losses        = TRUE,
                         by_commodity  = TRUE,
                         by_country    = TRUE,
-                        top_n         = NULL,        # keep top-N origin sectors per (country, commodity)
+                        top_n         = NULL,
                         drop_zero     = TRUE,
                         save          = FALSE,
                         output_dir    = OUT_DIR,
@@ -343,9 +157,6 @@ fp_indirect <- function(country       = NULL,
   sub <- if (losses) "losses/" else ""
   
   # --- Load only what wasn't passed in ---------------------------------------
-  # NOTE: Z is intentionally NOT loaded here. The whole point of the "all-the-way"
-  # version is to skip the explicit A[,target] step and let L handle every stage
-  # of the upstream chain.
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (!is.null(extension) && is.null(E))
@@ -398,9 +209,6 @@ fp_indirect <- function(country       = NULL,
     if (sum(y_comm) == 0) return(NULL)
     
     # --- footprint matrix: full Leontief, no Z step -----------------------
-    # Columns of FP_sub correspond to non-zero entries of y_comm (producer
-    # countries of the consumed commodity). Rows correspond to all sectors;
-    # the actual non-zero rows after sparsification are the impact origins.
     nz_target <- which(y_comm != 0)
     if (length(nz_target) == 0) return(NULL)
     
@@ -453,9 +261,6 @@ fp_indirect <- function(country       = NULL,
              regions$continent[match(country_origin, regions$iso3c)]]
   
   # --- Aggregate -------------------------------------------------------------
-  # Attribution dimension: item_origin (where the impact physically occurs
-  # after the full upstream chain), replacing the "feedstock" (= 1st-degree
-  # input item) used in fp_feedstock().
   group_cols <- c("year", "indicator", "allocation",
                   "item_origin", "continent_origin")
   if (by_country)   group_cols <- c("country_consumer", group_cols)
@@ -467,9 +272,6 @@ fp_indirect <- function(country       = NULL,
   if (drop_zero) agg_results <- agg_results[value != 0]
   
   # --- top-N filter on aggregated origin sectors ----------------------------
-  # Done post-aggregation: with full L there is no compact pre-FP vector to
-  # rank on (unlike `f` in fp_feedstock). Ranking is per (consumer, commodity)
-  # if those dimensions are kept; otherwise global.
   if (!is.null(top_n)) {
     keep_grp <- c(if (by_country)   "country_consumer",
                   if (by_commodity) "commodity")
@@ -500,10 +302,8 @@ fp_indirect <- function(country       = NULL,
 }
 
 
-
-
 ###########################################################
-########### CONSUMPTION-BASED IMPACT
+########### CONSUMPTION-BASED FLOW
 ########### OF SELECTED COMMODITIES
 ########### TRADE BREAKDOWN OR BILATERAL FLOWS
 ########### BY 1ST-DEGREE FEEDSTOCK
@@ -578,7 +378,7 @@ fp_trade_breakdown_feedstock <- function(year,
   )
   
   # --- Pre-aggregate origin: G[r, j] = sum_{i in country r} ext[i] * M[i, j]
-  #   indirect = TRUE  -> M = L : feedstock + its full upstream chain   [original]
+  #   indirect = TRUE  -> M = L : feedstock + its full upstream chain
   #   indirect = FALSE -> M = I : stop at Z, direct feedstock only
   if (indirect) {
     MP <- if (!is.null(extension)) Diagonal(x = ext) %*% L else L
@@ -747,281 +547,14 @@ fp_trade_breakdown_feedstock <- function(year,
 }
 
 
-
-
-######################################################################################################################
-############################## HOW TO USE THE FUNCTIONS: EXAMPLE #######################
-######################################################################################################################
-
-
-
-## 2012-2022, saving impacts embodied in each year's bilateral trade, with feedstock breakdown
-ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
-# FD_EQ_terrestrial_stressors <- unique(ex[grepl("^FD_EQ.*terrestrial", Stressor), Stressor])
-extensions_choice <- as.list(c(ibif_stressors,
-                               "LCIM_EQ_terrestrial_climate","LCIM_EQ_terrestrial_acidification",
-                               "land_harv")
-)
-
-
-
-
-######################################################################################################################
-############################## LOOPS TO EXTRACT THE RESULTS #######################
-######################################################################################################################
-
-# Silenced loops are those which have already run.
-
-for (yr in 2012:2022) {
-  for (ext in extensions_choice) {
-    ext_val <- ext
-    message("--- ", yr, " | ext: ", ext, " ---")
-    fp_trade_breakdown_feedstock(
-      year         = yr,
-      extension    = ext_val,
-      commodity    = c("c146", "c147", "c149"),
-      by_commodity = TRUE,
-      by_feedstock = TRUE,
-      bilateral    = TRUE,
-      save         = TRUE,
-      regions = regions, io = io, fd = fd, ex = ex,
-      X = X, Y = Y, Z = Z, E = E_bar
-    )
-  }
-}
-
-extensions_choice <- as.list(c("ibif_total", "LCIM_EQ_terrestrial_acidification", "LCIM_EQ_terrestrial_climate", "land_harv"))
-
-for (yr in 2012:2022) {
-  for (ext in extensions_choice) {
-    ext_val <- ext
-    message("--- ", yr, " | ext: ", ext, " ---")
-    fp_feedstock(
-      country      = NULL, #all countries
-      year = yr,
-      extension    = ext_val,
-      commodity    = c("c146", "c147", "c149"),
-      by_commodity = TRUE,
-      save = TRUE,
-      regions = regions, io = io, fd = fd, ex = ex,
-      X = X, Y = Y, Z = Z, E = E_bar
-    )
-  }
-}
-
-
-
-for (yr in 2012:2022) {
-  message("--- ", yr, " ---")
-  fp_indirect(
-    year         = yr,
-    extension    = NULL,
-    commodity    = c("c146", "c147", "c149"),
-    by_commodity = TRUE,
-    by_country   = TRUE,
-    drop_zero    = TRUE,
-    save         = TRUE,
-    output_dir  = OUT_DIR,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, E = E_bar
-  )
-}
-
-
-
-for (yr in 2012:2022) {  
-  fp_trade_breakdown_feedstock(
-    year         = yr,
-    extension    = NULL,           # material mode -> feedstock tonnes (E ignored here)
-    commodity    =  c("c146", "c147", "c149"),
-    allocation   = "value",
-    by_commodity = TRUE,
-    by_feedstock = TRUE,
-    indirect     = FALSE,        
-    bilateral    = TRUE,
-    drop_zero    = TRUE,
-    save         = TRUE,
-    output_dir   = OUT_DIR,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, Z = Z,
-    E = E_bar,                    
-    L = NULL                       
-  )
-}
-
-
-
-
-
-
-########## Biopolymers ##########
-
-for (yr in 2012:2022) {
-  message("--- ", yr, " ---")
-  fp_trade_breakdown_feedstock(
-    year         = yr,
-    extension    = "ibif_total",
-    commodity    = bp_set,
-    by_commodity = TRUE,
-    by_feedstock = TRUE,
-    bilateral    = TRUE,
-    save         = TRUE,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, Z = Z, E = E_bar
-  )
-}
-
-
-
-
-
-
-
-######################################################################################################################
-############################## SAVE DESCRIPTIVE STATISTICS (BIOFUEL CONSUMPTION, FEEDSTOCK COMPOSITION) #######################
-######################################################################################################################
-
-extract_Y_long <- function(Y, commodities = c("c146", "c147", "c149"),
-                           uses = c("fuel", "other_industrial")) {
-  
-  # build patterns once
-  row_pattern <- paste0("_(", paste(commodities, collapse = "|"), ")$")
-  col_pattern <- paste0("_(", paste(uses, collapse = "|"), ")$")
-  
-  out <- rbindlist(lapply(names(Y), function(yr) {
-    M <- Y[[yr]]
-    
-    # subset rows (commodities) and cols (uses)
-    row_idx <- grep(row_pattern, rownames(M))
-    col_idx <- grep(col_pattern, colnames(M))
-    
-    if (length(row_idx) == 0 || length(col_idx) == 0) return(NULL)
-    
-    M_sub <- M[row_idx, col_idx, drop = FALSE]
-    
-    # aggregate uses (fuel + other_industrial) per target_country
-    target_country <- substr(colnames(M_sub), 1, 3)
-    M_agg <- t(rowsum(t(as.matrix(M_sub)), group = target_country))
-    
-    # melt to long
-    dt <- as.data.table(as.table(M_agg))
-    setnames(dt, c("row_id", "target_country", "value"))
-    
-    # parse row_id -> origin_country + comm_code
-    dt[, `:=`(
-      origin_country = substr(row_id, 1, 3),
-      comm_code      = sub(".*_", "", row_id),
-      year           = as.integer(yr)
-    )]
-    
-    dt[value > 0, .(year, origin_country, target_country, comm_code, value)]
-  }))
-  
-  out
-}
-
-# usage
-dt_Y_long <- extract_Y_long(Y)
-dt_Y_BP <- extract_Y_long(Y, commodities = c("c060", "c146", "c148", c(paste0("c",150:170))),
-                          uses = c("other_industrial", "unknown"))
-
-fwrite(dt_Y_long, file.path(OUT_DIR, "Y_summary_c146_c147_c149.csv"))
-fwrite(dt_Y_BP, file.path(OUT_DIR, "Y_summary_BP.csv"))
-
-
-
-extract_Z_long <- function(Z, commodities = c("c146", "c147", "c149")) {
-  
-  col_pattern <- paste0("_(", paste(commodities, collapse = "|"), ")$")
-  
-  out <- rbindlist(lapply(names(Z), function(yr) {
-    M <- Z[[yr]]
-    
-    # subset cols (target = selected commodities)
-    col_idx <- grep(col_pattern, colnames(M))
-    if (length(col_idx) == 0) return(NULL)
-    
-    M_sub <- M[, col_idx, drop = FALSE]
-    
-    # keep only non-zero rows
-    row_keep <- which(rowSums(abs(M_sub)) > 0)
-    if (length(row_keep) == 0) return(NULL)
-    M_sub <- M_sub[row_keep, , drop = FALSE]
-    
-    # extract non-zero elements directly from sparse triplet form
-    trip <- as(M_sub, "TsparseMatrix")
-    
-    dt <- data.table(
-      origin_id = rownames(M_sub)[trip@i + 1L],
-      target_id = colnames(M_sub)[trip@j + 1L],
-      value     = trip@x
-    )
-    
-    # parse ids
-    dt[, `:=`(
-      origin_country = substr(origin_id, 1, 3),
-      origin_comm    = sub(".*_", "", origin_id),
-      target_country = substr(target_id, 1, 3),
-      target_comm    = sub(".*_", "", target_id),
-      year           = as.integer(yr)
-    )]
-    
-    dt[, .(year, origin_country, origin_comm, target_country, target_comm, value)]
-  }))
-  
-  # join commodity names for origin_comm
-  out <- merge(
-    out,
-    items[, .(origin_comm = comm_code, origin_comm_name = item)],
-    by = "origin_comm",
-    all.x = TRUE,
-    sort = FALSE
-  )
-  
-  setcolorder(out, c("year", "origin_country", "origin_comm", "origin_comm_name",
-                     "target_country", "target_comm", "value"))
-  out[]
-}
-
-# usage
-dt_Z_long <- extract_Z_long(Z)
-
-fwrite(dt_Z_long, file.path(OUT_DIR, "Z_summary_c146_c147_c149.csv"))
-
-
-
-
-
-
-
 ######################################################################################################################
 ############################## DIRECT BIOFUEL SUPPLY-CHAIN FLOWS (3-TIER, CONTINENT) ##################################
 ######################################################################################################################
 # Builds the two DIRECT linkages of the biofuel supply chain while keeping the
-# biofuel PRODUCER as an explicit middle node (this is what fp_trade_breakdown_feedstock
-# cannot give you: it multiplies feedstock by X_comm_norm and integrates the producer out,
-# so feedstock lands on the *final consumer*). Here the producer is preserved:
-#
-#   Stage 1  feedstock_to_producer : 1st-degree feedstock m, origin i  -> producer p
-#            direct tier-1 input, straight from Z[ m-rows , cc-cols ].  Unit: feedstock tonnes.
-#   Stage 2  producer_to_consumer  : biofuel cc,             producer p -> consumer k
-#            "final_demand" -> Y_country[cc,] (same basis as y_sourcing_shares, fully direct)
-#            "consumption"  -> (L %*% Y_masked)[cc,]  (L-allocated, captures biofuel used indirectly)
-#            Unit: biofuel output.
-#
-# The producer is the SHARED node, so the two legs connect into one chain.
-#
-# Domestic vs intra-regional is resolved at COUNTRY level BEFORE continent aggregation,
-# so a within-continent flow keeps its split:
-#   domestic       : same iso3c
-#   intra_regional : same continent, different iso3c
-#   inter_regional : different continent
-#
-# Output is long & flow-chart ready (source_node / target_node carry the tier so the three
-# tiers stay distinct in a left->right Sankey; producer-tier nodes are shared across stages).
-#
-# NB on units: stage-1 (feedstock tonnes) and stage-2 (biofuel output) do NOT balance at the
-# producer node. Keep them as two stacked sub-flows, or normalise per stage, when you draw it.
+# biofuel PRODUCER as an explicit middle node.
+#   Stage 1  feedstock_to_producer : feedstock m, origin i -> producer p  (Z, feedstock tonnes)
+#   Stage 2  producer_to_consumer  : biofuel cc, producer p -> consumer k (Y or L%*%Y, biofuel output)
+# Pass `tcf` to convert stage-1 to biofuel-output-equivalent so the producer node balances.
 
 bf_supply_chain_flows <- function(years,
                                   biofuel,                         # cc codes, e.g. c("c146","c147","c149")
@@ -1036,7 +569,17 @@ bf_supply_chain_flows <- function(years,
                                   save            = FALSE,
                                   output_dir      = OUT_DIR,
                                   regions, io, fd,
-                                  X = NULL, Y = NULL, Z = NULL, L = NULL) {
+                                  X = NULL, Y = NULL, Z = NULL, L = NULL,
+                                  # --- TCF conversion of stage-1 (feedstock use -> biofuel supply) ---------------
+                                  tcf            = NULL,                    # data.table of conversion factors
+                                  tcf_stage      = "feedstock_to_producer", # which `stage` carries feedstock-use rows
+                                  tcf_feed_col   = "item",                  # column in `tcf` holding the feedstock id
+                                  tcf_bf_col     = "biofuel_code",          # column in `tcf` holding the biofuel id
+                                  tcf_val_col    = "output_qty",            # column in `tcf` holding the conversion factor
+                                  feed_join      = "feedstock",             # column in the flows matched to tcf_feed_col
+                                  bf_join        = "biofuel",               # column in the flows matched to tcf_bf_col
+                                  tcf_invert     = FALSE,                   # TRUE if tcf = feedstock-per-biofuel (input coeff)
+                                  tcf_on_missing = "warn") {                # "warn" | "drop" | "error"
   
   sub <- if (losses) "losses/" else ""
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
@@ -1112,6 +655,54 @@ bf_supply_chain_flows <- function(years,
   })
   
   dt <- rbindlist(per_year, use.names = TRUE, fill = TRUE)
+  
+  # ---- TCF: feedstock USE -> biofuel SUPPLY on stage-1 rows ------------------------------
+  if (!is.null(tcf)) {
+    tcf <- as.data.table(tcf)
+    need <- c(tcf_feed_col, tcf_bf_col, tcf_val_col)
+    if (!all(need %in% names(tcf)))
+      stop("`tcf` is missing column(s): ", paste(setdiff(need, names(tcf)), collapse = ", "),
+           ". Set tcf_feed_col / tcf_bf_col / tcf_val_col to match names(tcf).")
+    if (!all(c(feed_join, bf_join) %in% names(dt)))
+      stop("flows have no `", feed_join, "` / `", bf_join,
+           "` column \u2014 stage-1 rows must carry feedstock & biofuel ids to attach a tcf.")
+    
+    tcf_lu <- unique(tcf[, .(feed = trimws(as.character(get(tcf_feed_col))),
+                             bf   = as.character(get(tcf_bf_col)),
+                             cf   = as.numeric(get(tcf_val_col)))])
+    tcf_lu <- tcf_lu[!is.na(cf) & !is.na(feed) & !is.na(bf)]
+    dup <- tcf_lu[, .N, by = .(feed, bf)][N > 1L]
+    if (nrow(dup))
+      stop(nrow(dup), " (feedstock, biofuel) pair(s) map to more than one tcf value \u2014 ",
+           "collapse `tcf` to one factor per pair before passing it in.")
+    if (isTRUE(tcf_invert)) tcf_lu[, cf := 1 / cf]
+    
+    s1_idx <- which(dt$stage == tcf_stage)
+    if (length(s1_idx)) {
+      key    <- data.table(feed = trimws(as.character(dt[[feed_join]][s1_idx])),
+                           bf   = as.character(dt[[bf_join]][s1_idx]))
+      cf_vec <- tcf_lu[key, on = c("feed", "bf"), cf]   # one cf per stage-1 row, key order; NA = no match
+      
+      na_i <- is.na(cf_vec)
+      if (any(na_i)) {
+        bad <- unique(key[na_i])
+        msg <- sprintf("TCF: %d stage-1 row(s) across %d feedstock\u00d7biofuel pair(s) have no match",
+                       sum(na_i), nrow(bad))
+        if (tcf_on_missing == "error") stop(msg, ".")
+        if (tcf_on_missing == "drop")  warning(msg, " \u2014 dropped from the flows.")
+        if (tcf_on_missing == "warn")  warning(msg,
+                                               " \u2014 left in feedstock units; the producer node will not balance for these.")
+      }
+      
+      keep <- !na_i
+      if (any(keep)) {
+        dt[s1_idx[keep], value := value * cf_vec[keep]]
+        if ("unit" %in% names(dt)) dt[s1_idx[keep], unit := "biofuel output (via tcf)"]
+      }
+      if (any(na_i) && tcf_on_missing == "drop") dt <- dt[-s1_idx[na_i]]
+    }
+  }
+  
   if (clamp_neg) dt[value < 0, value := 0]
   if (drop_zero) dt <- dt[value != 0]
   if (nrow(dt) == 0) { warning("No flows produced."); return(dt[]) }
@@ -1131,8 +722,6 @@ bf_supply_chain_flows <- function(years,
     keys <- c("stage", "tier_from", "tier_to", "year", "biofuel", "feedstock", "unit",
               "source_continent", "target_continent", "flow_class")
     dt <- dt[, .(value = sum(value)), by = keys]
-    # tier-tagged node ids so the 3 tiers stay distinct in a left->right flow chart;
-    # producer-tier nodes are identical across the two stages -> they connect.
     dt[, `:=`(source_node = paste(source_continent, tier_from, sep = " | "),
               target_node = paste(target_continent, tier_to,   sep = " | "))]
     setcolorder(dt, c("stage", "year", "biofuel", "feedstock",
@@ -1162,26 +751,11 @@ bf_supply_chain_flows <- function(years,
 }
 
 
-# --- Call -------------------------------------------------------------------------
-bf_supply_chain_flows(
-  years        = 2012:2022,
-  biofuel      = c("c146", "c147", "c149"),
-  stage2_basis = "final_demand",
-  level        = "continent",
-  regions = regions, io = io, fd = fd,
-  X = X, Y = Y, Z = Z,          
-  save = TRUE
-)
-
-
-
-
 ######################################################################################################################
 ############################## FINAL-DEMAND SOURCING SHARES (DIRECT FROM Y) ###########################################
 ######################################################################################################################
-# For each year & commodity: rows of Y filtered to `commodity` (origin = iso3 prefix),
-# columns summed within consumer iso3 (across all FD components). Share = each origin's
-# supply / consumer's total final consumption of that commodity. Global, country detail.
+# Y-based, allocation-invariant (no Z / L), but a physical descriptive statistic
+# so it lives with the material tables.
 
 y_sourcing_shares <- function(years,
                               commodity,
@@ -1271,215 +845,181 @@ y_sourcing_shares <- function(years,
 }
 
 
-y_sourcing_shares(years = 2012:2022, 
-                  commodity = bf_set,
-                  io = io, 
-                  fd = fd, 
-                  Y = Y, 
-                  save = TRUE)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ######################################################################################################################
-################# FUNCTIONS NOT CURRENTLY USED (kept in case we want to re-use them) ##################################
+############################## DESCRIPTIVE STATISTICS (Y / Z DUMPS) ###################################################
 ######################################################################################################################
 
+extract_Y_long <- function(Y, commodities = c("c146", "c147", "c149"),
+                           uses = c("fuel", "other_industrial")) {
+  
+  # build patterns once
+  row_pattern <- paste0("_(", paste(commodities, collapse = "|"), ")$")
+  col_pattern <- paste0("_(", paste(uses, collapse = "|"), ")$")
+  
+  out <- rbindlist(lapply(names(Y), function(yr) {
+    M <- Y[[yr]]
+    
+    # subset rows (commodities) and cols (uses)
+    row_idx <- grep(row_pattern, rownames(M))
+    col_idx <- grep(col_pattern, colnames(M))
+    
+    if (length(row_idx) == 0 || length(col_idx) == 0) return(NULL)
+    
+    M_sub <- M[row_idx, col_idx, drop = FALSE]
+    
+    # aggregate uses (fuel + other_industrial) per target_country
+    target_country <- substr(colnames(M_sub), 1, 3)
+    M_agg <- t(rowsum(t(as.matrix(M_sub)), group = target_country))
+    
+    # melt to long
+    dt <- as.data.table(as.table(M_agg))
+    setnames(dt, c("row_id", "target_country", "value"))
+    
+    # parse row_id -> origin_country + comm_code
+    dt[, `:=`(
+      origin_country = substr(row_id, 1, 3),
+      comm_code      = sub(".*_", "", row_id),
+      year           = as.integer(yr)
+    )]
+    
+    dt[value > 0, .(year, origin_country, target_country, comm_code, value)]
+  }))
+  
+  out
+}
 
-# ###########################################################
-# ########### ENVIRONMENTAL INTENSITY (per unit of output)
-# ########### OF SELECTED COMMODITIES PRODUCED IN COUNTRIES
-# ########### BY FEEDSTOCK (DIRECT REQUIREMENT)
-# ########### BY CONTINENT WHERE IMPACTS OCCUR
-# ###########################################################
-# 
-# intensity_feedstock <- function(country         = NULL,
-#                                 year,
-#                                 extension,
-#                                 commodity,
-#                                 allocation      = "value",
-#                                 input_path      = MRIO_PATH,
-#                                 losses          = TRUE,
-#                                 by_origin       = TRUE,
-#                                 drop_zero       = TRUE,
-#                                 save            = FALSE,
-#                                 output_dir      = OUT_DIR,
-#                                 regions, io, ex,
-#                                 X = NULL, Z = NULL, E = NULL, L = NULL,
-#                                 return_full     = FALSE) {
-#   
-#   sub <- if (losses) "losses/" else ""
-#   
-#   # --- Load only what wasn't passed in ---------------------------------------
-#   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
-#   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
-#   if (!is.null(extension) && is.null(E))
-#     E <- readRDS(paste0(base_path, "E.rds"))
-#   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
-#   
-#   Xi <- X[, as.character(year)]
-#   Zi <- Z[[as.character(year)]]
-#   Ei <- if (!is.null(extension)) E[[as.character(year)]] else NULL
-#   
-#   # --- Direct extension intensity (per unit output) -------------------------
-# if (!is.null(extension)) {
-#   if (!extension %in% rownames(Ei))
-#     stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
-#   ext <- as.numeric(Ei[extension, ]) / as.vector(Xi)
-#   ext[!is.finite(ext)] <- 0
-# } else {
-#   ext <- rep(1, length(Xi))
-# }
-#   MP <- ext * L                        # MP[origin, sector] = total ext per unit FD of sector
-#   
-#   # --- Validate commodity input ---------------------------------------------
-#   unknown_c <- setdiff(commodity, io$comm_code)
-#   if (length(unknown_c) > 0) {
-#     warning("Unknown comm_codes dropped: ", paste(unknown_c, collapse = ", "))
-#     commodity <- intersect(commodity, io$comm_code)
-#   }
-#   if (length(commodity) == 0) stop("No valid comm_codes supplied.")
-#   
-#   # --- Resolve producer country list ----------------------------------------
-#   if (is.null(country)) country <- unique(io$iso3c)
-#   unknown <- setdiff(country, io$iso3c)
-#   if (length(unknown) > 0) {
-#     warning("Unknown countries dropped: ", paste(unknown, collapse = ", "))
-#     country <- setdiff(country, unknown)
-#   }
-#   if (length(country) == 0) stop("No valid countries supplied.")
-#   
-#   io_label <- paste0(io$iso3c, "_", io$item)
-#   
-#   # --- Helper: per-producer, per-commodity intensity ------------------------
-#   compute_for <- function(ctry, cc) {
-#     target_idx <- which(io$iso3c == ctry & io$comm_code == cc)
-#     if (length(target_idx) == 0) return(NULL)
-#     
-#     x_target <- Xi[target_idx]
-#     if (x_target == 0) return(NULL)               # no output -> no intensity defined
-#     
-#     # Technical coefficient column: a[, target] = Z[, target] / X[target]
-#     a_vec   <- as.vector(Zi[, target_idx]) / x_target
-#     nz_feed <- which(a_vec != 0)
-#     if (length(nz_feed) == 0) return(NULL)
-#     
-#     # Intensity[origin, feedstock] = ext[origin] * L[origin, feedstock] * a[feedstock, target]
-#     MP_sub  <- MP[, nz_feed, drop = FALSE]
-#     Int_sub <- t(t(MP_sub) * a_vec[nz_feed])
-#     Int_sub <- as(Int_sub, "TsparseMatrix")
-#     
-#     if (length(Int_sub@x) == 0) return(NULL)
-#     
-#     feed_lbl <- io_label[nz_feed]
-#     dt <- data.table(
-#       country_producer = ctry,
-#       commodity        = cc,
-#       origin           = io_label[Int_sub@i + 1],
-#       feedstock_full   = feed_lbl[Int_sub@j + 1],
-#       value            = Int_sub@x
-#     )
-#     
-#     if (drop_zero) dt <- dt[value != 0]
-#     dt
-#   }
-#   
-#   # --- Loop over (country_producer, commodity) ------------------------------
-#   grid <- CJ(ctry = country, cc = commodity, sorted = FALSE)
-#   per_cell <- rbindlist(
-#     Map(compute_for, grid$ctry, grid$cc),
-#     use.names = TRUE, fill = TRUE
-#   )
-#   
-#   if (nrow(per_cell) == 0) {
-#     warning("Empty intensity for year ", year, " / countries: ",
-#             paste(country, collapse = ","), " / commodities: ",
-#             paste(commodity, collapse = ","))
-#     return(per_cell)
-#   }
-#   
-#   # --- Annotate --------------------------------------------------------------
-#   indicator_label <- if (!is.null(extension)) extension else "material"
-#   
-#   per_cell[, `:=`(
-#     year              = year,
-#     indicator         = indicator_label,
-#     allocation        = allocation,
-#     country_origin    = substr(origin, 1, 3),
-#     item_origin       = substr(origin, 5, 100),
-#     country_feedstock = substr(feedstock_full, 1, 3),
-#     feedstock         = substr(feedstock_full, 5, 100)
-#   )]
-#   per_cell[, continent_origin :=
-#              regions$continent[match(country_origin, regions$iso3c)]]
-#   
-#   # --- Aggregate to country_producer x year x commodity x feedstock --------
-#   group_cols <- c("country_producer", "year", "indicator", "allocation",
-#                   "commodity", "feedstock")
-#   if (by_origin) group_cols <- c(group_cols, "continent_origin")
-#   
-#   agg_results <- per_cell[, .(value = sum(value)), by = group_cols]
-#   setcolorder(agg_results, group_cols)
-#   
-#   if (drop_zero) agg_results <- agg_results[value != 0]
-#   
-#   if (save) {
-#     dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
-#     fname <- build_filename("FABIO_intensity",
-#                             country   = if (length(country) > 4) NULL else country,
-#                             year      = year,
-#                             indicator = indicator_label,
-#                             alloc     = allocation,
-#                             comm      = commodity,
-#                             byOrigin  = by_origin)
-#     fwrite(agg_results, file.path(output_dir, fname))
-#     message("Wrote ", file.path(output_dir, fname))
-#   }
-#   
-#   if (return_full) list(results = per_cell, agg = agg_results) else agg_results
-# }
-# 
-# # --- Run intensities for biogasoline / biodiesel / renewable diesel ---------
-# years_to_run <- 2012:2022
-# 
-# intensity_land_bcp <- rbindlist(
-#   lapply(years_to_run, function(yr) {
-#     intensity_feedstock(
-#       year       = yr,
-#       extension  = "land_harv",
-#       commodity  = c("c146", "c147", "c149"),
-#       allocation = allocation,
-#       input_path = input_path,
-#       regions    = regions, io = io, ex = ex,
-#       X = X, Z = Z, E = E_bar,
-#       save       = FALSE
-#     )
-#   }),
-#   use.names = TRUE, fill = TRUE
-# )
-# 
-# fname <- build_filename(
-#   "FABIO_intensity",
-#   years     = paste0(min(years_to_run), "-", max(years_to_run)),
-#   indicator = "land_harv",
-#   alloc     = allocation,
-#   comm      = c("c146", "c147", "c149"),
-#   byOrigin  = TRUE
-# )
-# fwrite(intensity_land_bcp, file.path(OUT_DIR, fname))
-# message("Wrote ", file.path(OUT_DIR, fname))
+extract_Z_long <- function(Z, commodities = c("c146", "c147", "c149"), io) {
+  
+  col_pattern <- paste0("_(", paste(commodities, collapse = "|"), ")$")
+  
+  # canonical labels in MRIO row/col order: <iso3c>_<comm_code> (e.g. "AUT_c147")
+  io_lab <- paste0(io$iso3c, "_", io$comm_code)
+  
+  yrs <- names(Z)
+  if (is.null(yrs)) stop("Z has no names(); expected a per-year named list ",
+                         "(set names(Z) <- as.character(2012:2022)).")
+  
+  out <- rbindlist(lapply(yrs, function(yr) {
+    M <- Z[[yr]]
+    
+    # mass Z may be saved without dimnames -> reattach from io (order-aligned)
+    if (is.null(rownames(M)) || is.null(colnames(M))) {
+      if (nrow(M) != length(io_lab) || ncol(M) != length(io_lab))
+        stop("Z[['", yr, "']] is ", nrow(M), "x", ncol(M),
+             " but io has ", length(io_lab), " rows - can't align labels.")
+      dimnames(M) <- list(io_lab, io_lab)
+    }
+    
+    col_idx <- grep(col_pattern, colnames(M))
+    if (length(col_idx) == 0) return(NULL)
+    
+    M_sub <- M[, col_idx, drop = FALSE]
+    row_keep <- which(rowSums(abs(M_sub)) > 0)
+    if (length(row_keep) == 0) return(NULL)
+    M_sub <- M_sub[row_keep, , drop = FALSE]
+    
+    trip <- as(M_sub, "TsparseMatrix")
+    dt <- data.table(
+      origin_id = rownames(M_sub)[trip@i + 1L],
+      target_id = colnames(M_sub)[trip@j + 1L],
+      value     = trip@x
+    )
+    dt[, `:=`(
+      origin_country = substr(origin_id, 1, 3),
+      origin_comm    = sub(".*_", "", origin_id),
+      target_country = substr(target_id, 1, 3),
+      target_comm    = sub(".*_", "", target_id),
+      year           = as.integer(yr)
+    )]
+    dt[, .(year, origin_country, origin_comm, target_country, target_comm, value)]
+  }))
+  
+  if (nrow(out) == 0) {
+    warning("extract_Z_long: no columns matched ", paste(commodities, collapse = ","),
+            " in any year - returning empty.")
+    return(out)
+  }
+  
+  out <- merge(
+    out,
+    items[, .(origin_comm = comm_code, origin_comm_name = item)],
+    by = "origin_comm", all.x = TRUE, sort = FALSE
+  )
+  setcolorder(out, c("year", "origin_country", "origin_comm", "origin_comm_name",
+                     "target_country", "target_comm", "value"))
+  out[]
+}
+
+######################################################################################################################
+############################## RUN: MATERIAL FLOWS (mass allocation) ##################################################
+######################################################################################################################
+
+## Full upstream requirements (total-requirement material flow) --------------
+for (yr in 2012:2022) {
+  message("--- ", yr, " ---")
+  fp_indirect(
+    year         = yr,
+    extension    = NULL,           # material flows
+    allocation   = "mass",         # -> loads <year>_L_mass
+    commodity    = c("c146", "c147", "c149"),
+    by_commodity = TRUE,
+    by_country   = TRUE,
+    drop_zero    = TRUE,
+    save         = TRUE,
+    output_dir   = OUT_DIR,
+    regions = regions, io = io, fd = fd, ex = ex,
+    X = X, Y = Y                    # E not needed: no extension
+  )
+}
+
+## Direct (tier-1) feedstock trade breakdown, bilateral ----------------------
+for (yr in 2012:2022) {
+  fp_trade_breakdown_feedstock(
+    year         = yr,
+    extension    = NULL,           # material mode -> feedstock tonnes
+    commodity    = c("c146", "c147", "c149"),
+    allocation   = "mass",
+    by_commodity = TRUE,
+    by_feedstock = TRUE,
+    indirect     = FALSE,
+    bilateral    = TRUE,
+    drop_zero    = TRUE,
+    save         = TRUE,
+    output_dir   = OUT_DIR,
+    regions = regions, io = io, fd = fd, ex = ex,
+    X = X, Y = Y, Z = Z,           # Z_mass
+    L = NULL
+  )
+}
+
+## Direct 3-tier biofuel supply-chain flows (feedstock -> producer -> consumer)
+bf_supply_chain_flows(
+  years        = 2012:2022,
+  biofuel      = c("c146", "c147", "c149"),
+  stage2_basis = "final_demand",
+  level        = "continent",
+  allocation   = "mass",
+  regions = regions, io = io, fd = fd,
+  X = X, Y = Y, Z = Z,             # Z_mass
+  tcf          = tcf,              # convert stage-1 feedstock use -> biofuel supply before saving
+  tcf_val_col  = "output_qty",
+  save = TRUE
+)
+
+## Final-demand sourcing shares (Y-based, allocation-invariant) --------------
+y_sourcing_shares(
+  years     = 2012:2022,
+  commodity = bf_set,
+  io = io, fd = fd, Y = Y,
+  save = TRUE
+)
+
+## Descriptive Y / Z dumps ---------------------------------------------------
+dt_Y_long <- extract_Y_long(Y)
+dt_Y_BP   <- extract_Y_long(Y, commodities = c("c060", "c146", "c148", c(paste0("c",150:170))),
+                            uses = c("other_industrial", "unknown"))
+fwrite(dt_Y_long, file.path(OUT_DIR, "Y_summary_c146_c147_c149.csv"))
+fwrite(dt_Y_BP,   file.path(OUT_DIR, "Y_summary_BP.csv"))
+
+dt_Z_long <- extract_Z_long(Z, io = io)     # Z_mass
+fwrite(dt_Z_long, file.path(OUT_DIR, "Z_summary_c146_c147_c149.csv"))
