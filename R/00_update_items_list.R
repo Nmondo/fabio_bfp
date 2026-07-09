@@ -188,7 +188,19 @@ items_full_bcp <- bind_rows(items, items_extension) %>%
                               TRUE ~ moisture),
          feedtype = case_when(item %in% c("Triticale","Molasses","Castor oil seeds") ~ "crops",
                               item == "Brewing or distilling dregs and waste" ~ "Feed",
-                              TRUE ~ feedtype))
+                              TRUE ~ feedtype),
+         # ISIC Rev.4 SECTION: A = Agriculture, forestry & fishing (raw crops);
+         # C = Manufacturing (processed products); "" = none. The HS 1518 item is a
+         # used-cooking-oil / waste stream -> ISIC section E, outside A/C -> none;
+         # set it to "C" instead if reading it as the manufactured chem-modified oil.
+         ISIC = case_when(
+           item == "Triticale"           ~ "A",   # crop production
+           item == "Castor oil seeds"    ~ "A",   # crop production
+           item == "Molasses"            ~ "C",   # manufacture of sugar
+           item == "Oil of castor beans" ~ "C",   # manufacture of vegetable oils
+           item == "Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils" ~ "C",
+           TRUE                          ~ ""      # incl. HS 1518 fats/oils (see note)
+         ))
 
 # List of items supplied by process
 items_supply_bcp <- bind_rows(items_supply, items_supply_extension) %>%

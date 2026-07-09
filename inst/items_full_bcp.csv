@@ -1,152 +1,152 @@
 comm_code,item_code,item,unit,group,moisture,feedtype,comm_group,ISIC
-c001,2807,Rice and products,tonnes,Primary crops,0.14,crops,Cereals,A
-c002,2511,Wheat and products,tonnes,Primary crops,0.14,crops,Cereals,A
-c003,2513,Barley and products,tonnes,Primary crops,0.14,crops,Cereals,A
-c004,2514,Maize and products,tonnes,Primary crops,0.14,crops,Cereals,A
-c005,2515,Rye and products,tonnes,Primary crops,0.14,crops,Cereals,A
-c006,2516,Oats,tonnes,Primary crops,0.14,crops,Cereals,A
-c007,2517,Millet and products,tonnes,Primary crops,0.12,crops,Cereals,A
-c008,2518,Sorghum and products,tonnes,Primary crops,0.11,crops,Cereals,A
-c010,2531,Potatoes and products,tonnes,Primary crops,0.78,crops,Roots and tubers,A
-c011,2532,Cassava and products,tonnes,Primary crops,0.7,crops,Roots and tubers,A
-c012,2533,Sweet potatoes,tonnes,Primary crops,0.7,crops,Roots and tubers,A
-c013,2534,"Roots, Other",tonnes,Primary crops,0.75,crops,Roots and tubers,A
-c014,2535,Yams,tonnes,Primary crops,0.74,crops,Roots and tubers,A
-c015,2536,Sugar cane,tonnes,Primary crops,0.825,crops,Sugar crops,A
-c016,2537,Sugar beet,tonnes,Primary crops,0.77,crops,Sugar crops,A
-c017,2546,Beans,tonnes,Primary crops,0.8,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c018,2547,Peas,tonnes,Primary crops,0.83,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c019,2549,"Pulses, Other and products",tonnes,Primary crops,0.1,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c020,2551,Nuts and products,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c021,2555,Soyabeans,tonnes,Primary crops,0.1,crops,Oil crops,A
-c022,2552,Groundnuts,tonnes,Primary crops,0.06,crops,Oil crops,A
-c023,2557,Sunflower seed,tonnes,Primary crops,0.07,crops,Oil crops,A
-c024,2558,Rape and Mustardseed,tonnes,Primary crops,0.12,crops,Oil crops,A
-c025,328,Seed cotton,tonnes,Primary crops,0.1,crops,Oil crops,A
-c026,2560,Coconuts - Incl Copra,tonnes,Primary crops,0.4,crops,Oil crops,A
-c027,2561,Sesame seed,tonnes,Primary crops,0.06,crops,Oil crops,A
-c028,254,"Oil, palm fruit",tonnes,Primary crops,0.47,crops,Oil crops,A
-c029,2563,Olives (including preserved),tonnes,Primary crops,0,crops,Oil crops,A
-c031,2601,Tomatoes and products,tonnes,Primary crops,0.94,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c032,2602,Onions,tonnes,Primary crops,0.89,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c033,2605,"Vegetables, Other",tonnes,Primary crops,0.95,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c034,2611,"Oranges, Mandarines",tonnes,Primary crops,0.86,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c035,2612,"Lemons, Limes and products",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c036,2613,Grapefruit and products,tonnes,Primary crops,0.88,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c037,2614,"Citrus, Other",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c038,2615,Bananas,tonnes,Primary crops,0.75,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c039,2616,Plantains,tonnes,Primary crops,0.66,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c040,2617,Apples and products,tonnes,Primary crops,0.85,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c041,2618,Pineapples and products,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c042,2619,Dates,tonnes,Primary crops,0.22,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c043,2620,Grapes and products (excl wine),tonnes,Primary crops,0.81,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c044,2625,"Fruits, Other",tonnes,Primary crops,0.85,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c045,2630,Coffee and products,tonnes,Primary crops,0,crops,"Coffee, tea, cocoa",A
-c046,2633,Cocoa Beans and products,tonnes,Primary crops,0.1,crops,"Coffee, tea, cocoa",A
-c047,2635,Tea (including mate),tonnes,Primary crops,0.1,crops,"Coffee, tea, cocoa",A
-c048,677,Hops,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c049,2640,Pepper,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c050,2641,Pimento,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c051,2642,Cloves,tonnes,Primary crops,0.05,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c052,2645,"Spices, Other",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",A
-c053,2662,Jute,tonnes,Primary crops,0,crops,Fibre crops,A
-c054,2663,Jute-Like Fibres,tonnes,Primary crops,0,crops,Fibre crops,A
-c055,2664,"Soft-Fibres, Other",tonnes,Primary crops,0,crops,Fibre crops,A
-c056,2665,Sisal,tonnes,Primary crops,0,crops,Fibre crops,A
-c057,2666,Abaca,tonnes,Primary crops,0,crops,Fibre crops,A
-c058,2667,"Hard Fibres, Other",tonnes,Primary crops,0,crops,Fibre crops,A
-c059,2671,Tobacco,tonnes,Primary crops,0,crops,"Tobacco, rubber",A
-c060,2672,Rubber,tonnes,Primary crops,0,crops,"Tobacco, rubber",A
-c061,2000,Fodder crops,tonnes,Primary crops,0.85,fodder,Fodder crops,A
+c001,2807,Rice and products,tonnes,Primary crops,0.14,crops,Cereals,
+c002,2511,Wheat and products,tonnes,Primary crops,0.14,crops,Cereals,
+c003,2513,Barley and products,tonnes,Primary crops,0.14,crops,Cereals,
+c004,2514,Maize and products,tonnes,Primary crops,0.14,crops,Cereals,
+c005,2515,Rye and products,tonnes,Primary crops,0.14,crops,Cereals,
+c006,2516,Oats,tonnes,Primary crops,0.14,crops,Cereals,
+c007,2517,Millet and products,tonnes,Primary crops,0.12,crops,Cereals,
+c008,2518,Sorghum and products,tonnes,Primary crops,0.11,crops,Cereals,
+c010,2531,Potatoes and products,tonnes,Primary crops,0.78,crops,Roots and tubers,
+c011,2532,Cassava and products,tonnes,Primary crops,0.7,crops,Roots and tubers,
+c012,2533,Sweet potatoes,tonnes,Primary crops,0.7,crops,Roots and tubers,
+c013,2534,"Roots, Other",tonnes,Primary crops,0.75,crops,Roots and tubers,
+c014,2535,Yams,tonnes,Primary crops,0.74,crops,Roots and tubers,
+c015,2536,Sugar cane,tonnes,Primary crops,0.825,crops,Sugar crops,
+c016,2537,Sugar beet,tonnes,Primary crops,0.77,crops,Sugar crops,
+c017,2546,Beans,tonnes,Primary crops,0.8,crops,"Vegetables, fruit, nuts, pulses, spices",
+c018,2547,Peas,tonnes,Primary crops,0.83,crops,"Vegetables, fruit, nuts, pulses, spices",
+c019,2549,"Pulses, Other and products",tonnes,Primary crops,0.1,crops,"Vegetables, fruit, nuts, pulses, spices",
+c020,2551,Nuts and products,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c021,2555,Soyabeans,tonnes,Primary crops,0.1,crops,Oil crops,
+c022,2552,Groundnuts,tonnes,Primary crops,0.06,crops,Oil crops,
+c023,2557,Sunflower seed,tonnes,Primary crops,0.07,crops,Oil crops,
+c024,2558,Rape and Mustardseed,tonnes,Primary crops,0.12,crops,Oil crops,
+c025,328,Seed cotton,tonnes,Primary crops,0.1,crops,Oil crops,
+c026,2560,Coconuts - Incl Copra,tonnes,Primary crops,0.4,crops,Oil crops,
+c027,2561,Sesame seed,tonnes,Primary crops,0.06,crops,Oil crops,
+c028,254,"Oil, palm fruit",tonnes,Primary crops,0.47,crops,Oil crops,
+c029,2563,Olives (including preserved),tonnes,Primary crops,0,crops,Oil crops,
+c031,2601,Tomatoes and products,tonnes,Primary crops,0.94,crops,"Vegetables, fruit, nuts, pulses, spices",
+c032,2602,Onions,tonnes,Primary crops,0.89,crops,"Vegetables, fruit, nuts, pulses, spices",
+c033,2605,"Vegetables, Other",tonnes,Primary crops,0.95,crops,"Vegetables, fruit, nuts, pulses, spices",
+c034,2611,"Oranges, Mandarines",tonnes,Primary crops,0.86,crops,"Vegetables, fruit, nuts, pulses, spices",
+c035,2612,"Lemons, Limes and products",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c036,2613,Grapefruit and products,tonnes,Primary crops,0.88,crops,"Vegetables, fruit, nuts, pulses, spices",
+c037,2614,"Citrus, Other",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c038,2615,Bananas,tonnes,Primary crops,0.75,crops,"Vegetables, fruit, nuts, pulses, spices",
+c039,2616,Plantains,tonnes,Primary crops,0.66,crops,"Vegetables, fruit, nuts, pulses, spices",
+c040,2617,Apples and products,tonnes,Primary crops,0.85,crops,"Vegetables, fruit, nuts, pulses, spices",
+c041,2618,Pineapples and products,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c042,2619,Dates,tonnes,Primary crops,0.22,crops,"Vegetables, fruit, nuts, pulses, spices",
+c043,2620,Grapes and products (excl wine),tonnes,Primary crops,0.81,crops,"Vegetables, fruit, nuts, pulses, spices",
+c044,2625,"Fruits, Other",tonnes,Primary crops,0.85,crops,"Vegetables, fruit, nuts, pulses, spices",
+c045,2630,Coffee and products,tonnes,Primary crops,0,crops,"Coffee, tea, cocoa",
+c046,2633,Cocoa Beans and products,tonnes,Primary crops,0.1,crops,"Coffee, tea, cocoa",
+c047,2635,Tea (including mate),tonnes,Primary crops,0.1,crops,"Coffee, tea, cocoa",
+c048,677,Hops,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c049,2640,Pepper,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c050,2641,Pimento,tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c051,2642,Cloves,tonnes,Primary crops,0.05,crops,"Vegetables, fruit, nuts, pulses, spices",
+c052,2645,"Spices, Other",tonnes,Primary crops,0,crops,"Vegetables, fruit, nuts, pulses, spices",
+c053,2662,Jute,tonnes,Primary crops,0,crops,Fibre crops,
+c054,2663,Jute-Like Fibres,tonnes,Primary crops,0,crops,Fibre crops,
+c055,2664,"Soft-Fibres, Other",tonnes,Primary crops,0,crops,Fibre crops,
+c056,2665,Sisal,tonnes,Primary crops,0,crops,Fibre crops,
+c057,2666,Abaca,tonnes,Primary crops,0,crops,Fibre crops,
+c058,2667,"Hard Fibres, Other",tonnes,Primary crops,0,crops,Fibre crops,
+c059,2671,Tobacco,tonnes,Primary crops,0,crops,"Tobacco, rubber",
+c060,2672,Rubber,tonnes,Primary crops,0,crops,"Tobacco, rubber",
+c061,2000,Fodder crops,tonnes,Primary crops,0.85,fodder,Fodder crops,
 c062,2001,Grazing,tonnes,Primary crops,0.8,grass,Grazing,
 c063,2559,Cottonseed,tonnes,Crop products,0.1,crops,Fibre crops,
 c064,2562,Palm kernels,tonnes,Crop products,0.1,crops,Oil crops,
-c065,2541,Sugar non-centrifugal,tonnes,Crop products,0.01,crops,"Sugar, sweeteners",C
-c066,2542,Sugar (Raw Equivalent),tonnes,Crop products,0,crops,"Sugar, sweeteners",C
-c068,2571,Soyabean Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c069,2572,Groundnut Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c070,2573,Sunflowerseed Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c071,2574,Rape and Mustard Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c072,2575,Cottonseed Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c073,2576,Palmkernel Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c074,2577,Palm Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c075,2578,Coconut Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c076,2579,Sesameseed Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c077,2580,Olive Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c078,2581,Ricebran Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c079,2582,Maize Germ Oil,tonnes,Crop products,0,crops,Vegetable oils,C
-c081,2590,Soyabean Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c082,2591,Groundnut Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c083,2592,Sunflowerseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c084,2593,Rape and Mustard Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c085,2594,Cottonseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c086,2595,Palmkernel Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c087,2596,Copra Cake,tonnes,Crop products,0.12,cakes,Oil cakes,C
-c088,2597,Sesameseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,C
-c089,2598,"Oilseed Cakes, Other",tonnes,Crop products,0.1,cakes,Oil cakes,C
-c090,2655,Wine,tonnes,Crop products,0.85,crops,Alcohol,C
-c091,2656,Beer,tonnes,Crop products,0.95,crops,Alcohol,C
-c092,2657,"Beverages, Fermented",tonnes,Crop products,0.9,crops,Alcohol,C
-c093,2658,"Beverages, Alcoholic",tonnes,Crop products,0.8,crops,Alcohol,C
+c065,2541,Sugar non-centrifugal,tonnes,Crop products,0.01,crops,"Sugar, sweeteners",
+c066,2542,Sugar (Raw Equivalent),tonnes,Crop products,0,crops,"Sugar, sweeteners",
+c068,2571,Soyabean Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c069,2572,Groundnut Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c070,2573,Sunflowerseed Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c071,2574,Rape and Mustard Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c072,2575,Cottonseed Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c073,2576,Palmkernel Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c074,2577,Palm Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c075,2578,Coconut Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c076,2579,Sesameseed Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c077,2580,Olive Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c078,2581,Ricebran Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c079,2582,Maize Germ Oil,tonnes,Crop products,0,crops,Vegetable oils,
+c081,2590,Soyabean Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c082,2591,Groundnut Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c083,2592,Sunflowerseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c084,2593,Rape and Mustard Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c085,2594,Cottonseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c086,2595,Palmkernel Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c087,2596,Copra Cake,tonnes,Crop products,0.12,cakes,Oil cakes,
+c088,2597,Sesameseed Cake,tonnes,Crop products,0.1,cakes,Oil cakes,
+c089,2598,"Oilseed Cakes, Other",tonnes,Crop products,0.1,cakes,Oil cakes,
+c090,2655,Wine,tonnes,Crop products,0.85,crops,Alcohol,
+c091,2656,Beer,tonnes,Crop products,0.95,crops,Alcohol,
+c092,2657,"Beverages, Fermented",tonnes,Crop products,0.9,crops,Alcohol,
+c093,2658,"Beverages, Alcoholic",tonnes,Crop products,0.8,crops,Alcohol,
 c095,2661,Cotton lint,tonnes,Crop products,0.1,crops,Fibre crops,
-c096,866,Cattle,animals,Livestock,0,,Live animals,A
-c097,946,Buffaloes,animals,Livestock,0,,Live animals,A
-c098,976,Sheep,animals,Livestock,0,,Live animals,A
-c099,1016,Goats,animals,Livestock,0,,Live animals,A
-c100,1034,Pigs,animals,Livestock,0,,Live animals,A
-c101,2029,Poultry Birds,1000 animals,Livestock,0,,Live animals,A
-c102,1096,Horses,animals,Livestock,0,,Live animals,A
-c103,1107,Asses,animals,Livestock,0,,Live animals,A
-c104,1110,Mules,animals,Livestock,0,,Live animals,A
-c105,1126,Camels,animals,Livestock,0,,Live animals,A
-c106,1157,"Camelids, other",animals,Livestock,0,,Live animals,A
-c107,1140,Rabbits and hares,1000 animals,Livestock,0,,Live animals,A
-c108,1150,"Rodents, other",1000 animals,Livestock,0,,Live animals,A
-c109,2848,Milk - Excluding Butter,tonnes,Livestock products,0.875,animals,Milk,A
-c110,2740,"Butter, Ghee",tonnes,Livestock products,0.15,animals,Milk,C
-c111,2744,Eggs,tonnes,Livestock products,0.744,animals,Eggs,A
-c112,2746,Wool (Clean Eq.),tonnes,Livestock products,0,animals,"Hides, skins, wool",A
-c113,2731,Bovine Meat,tonnes,Livestock products,0.65,animals,Meat,C
-c114,2732,Mutton & Goat Meat,tonnes,Livestock products,0.6,animals,Meat,C
-c115,2733,Pigmeat,tonnes,Livestock products,0.6,animals,Meat,C
-c116,2734,Poultry Meat,tonnes,Livestock products,0.6,animals,Meat,C
-c117,2735,"Meat, Other",tonnes,Livestock products,0.65,animals,Meat,C
-c118,2736,"Offals, Edible",tonnes,Livestock products,0.65,animals,Meat,C
-c119,2737,"Fats, Animals, Raw",tonnes,Livestock products,0.01,animals,Waste,C
-c120,2748,Hides and skins,tonnes,Livestock products,0,animals,"Hides, skins, wool",C
-c121,2745,Honey,tonnes,Livestock products,0.17,animals,Honey,A
-c122,2747,Silk,tonnes,Livestock products,0,animals,"Hides, skins, wool",A
-c123,2960,"Fish, Seafood",tonnes,Fish,0.7,animals,Fish,A
-c141,97,Triticale,tonnes,NA,0.14,crops,Cereals,NA
-c142,165,Molasses,tonnes,NA,0.2,crops,"Sugar, sweeteners",NA
-c143,265,Castor oil seeds,tonnes,NA,0.08,crops,Oil crops,NA
-c144,266,Oil of castor beans,tonnes,NA,NA,NA,Vegetable oils,NA
-c145,1274,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",tonnes,NA,NA,NA,Waste,NA
-c146,NA,Biogasoline,1000 liters,NA,NA,NA,Biofuels,NA
-c147,NA,Biodiesel,1000 liters,NA,NA,NA,Biofuels,NA
-c148,NA,"Glycerol, crude",tonnes,NA,NA,NA,Building blocks,NA
-c149,NA,Renewable diesel,1000 liters,NA,NA,NA,Biofuels,NA
-c150,NA,Biopropane,1000 liters,NA,NA,NA,Biofuels,NA
-c151,NA,Bionaphtha,1000 liters,NA,NA,NA,Biofuels,NA
-c152,NA,L-LA,tonnes,NA,NA,NA,Building blocks,NA
-c153,NA,Sebacic acid,tonnes,NA,NA,NA,Building blocks,NA
-c154,NA,Succinic acid,tonnes,NA,NA,NA,Building blocks,NA
-c155,NA,11-AA,tonnes,NA,NA,NA,Building blocks,NA
-c156,NA,Ethylene,tonnes,NA,NA,NA,Building blocks,NA
-c157,NA,Propylene,tonnes,NA,NA,NA,Building blocks,NA
-c158,NA,"1,3-PDO",tonnes,NA,NA,NA,Building blocks,NA
-c159,NA,"1,4-BDO",tonnes,NA,NA,NA,Building blocks,NA
-c160,NA,MEG,tonnes,NA,NA,NA,Building blocks,NA
-c161,NA,MPG,tonnes,NA,NA,NA,Building blocks,NA
-c162,NA,ECH,tonnes,NA,NA,NA,Building blocks,NA
-c163,NA,PLA,tonnes,NA,NA,NA,Biopolymers,NA
-c164,NA,PE,tonnes,NA,NA,NA,Biopolymers,NA
-c165,NA,PP,tonnes,NA,NA,NA,Biopolymers,NA
-c166,NA,PTT,tonnes,NA,NA,NA,Biopolymers,NA
-c167,NA,PET,tonnes,NA,NA,NA,Biopolymers,NA
-c168,NA,PBAT,tonnes,NA,NA,NA,Biopolymers,NA
-c169,NA,PBS,tonnes,NA,NA,NA,Biopolymers,NA
-c170,NA,Epoxy resins,tonnes,NA,NA,NA,Biopolymers,NA
-c171,654,Brewing or distilling dregs and waste,tonnes,NA,NA,Feed,NA,NA
-c901,NA,"Other, Waste",tonnes,NA,NA,NA,Waste,NA
-c999,NA,"Other, Unknown",tonnes,NA,NA,NA,Unknown,NA
+c096,866,Cattle,animals,Livestock,0,,Live animals,
+c097,946,Buffaloes,animals,Livestock,0,,Live animals,
+c098,976,Sheep,animals,Livestock,0,,Live animals,
+c099,1016,Goats,animals,Livestock,0,,Live animals,
+c100,1034,Pigs,animals,Livestock,0,,Live animals,
+c101,2029,Poultry Birds,1000 animals,Livestock,0,,Live animals,
+c102,1096,Horses,animals,Livestock,0,,Live animals,
+c103,1107,Asses,animals,Livestock,0,,Live animals,
+c104,1110,Mules,animals,Livestock,0,,Live animals,
+c105,1126,Camels,animals,Livestock,0,,Live animals,
+c106,1157,"Camelids, other",animals,Livestock,0,,Live animals,
+c107,1140,Rabbits and hares,1000 animals,Livestock,0,,Live animals,
+c108,1150,"Rodents, other",1000 animals,Livestock,0,,Live animals,
+c109,2848,Milk - Excluding Butter,tonnes,Livestock products,0.875,animals,Milk,
+c110,2740,"Butter, Ghee",tonnes,Livestock products,0.15,animals,Milk,
+c111,2744,Eggs,tonnes,Livestock products,0.744,animals,Eggs,
+c112,2746,Wool (Clean Eq.),tonnes,Livestock products,0,animals,"Hides, skins, wool",
+c113,2731,Bovine Meat,tonnes,Livestock products,0.65,animals,Meat,
+c114,2732,Mutton & Goat Meat,tonnes,Livestock products,0.6,animals,Meat,
+c115,2733,Pigmeat,tonnes,Livestock products,0.6,animals,Meat,
+c116,2734,Poultry Meat,tonnes,Livestock products,0.6,animals,Meat,
+c117,2735,"Meat, Other",tonnes,Livestock products,0.65,animals,Meat,
+c118,2736,"Offals, Edible",tonnes,Livestock products,0.65,animals,Meat,
+c119,2737,"Fats, Animals, Raw",tonnes,Livestock products,0.01,animals,Waste,
+c120,2748,Hides and skins,tonnes,Livestock products,0,animals,"Hides, skins, wool",
+c121,2745,Honey,tonnes,Livestock products,0.17,animals,Honey,
+c122,2747,Silk,tonnes,Livestock products,0,animals,"Hides, skins, wool",
+c123,2960,"Fish, Seafood",tonnes,Fish,0.7,animals,Fish,
+c141,97,Triticale,tonnes,NA,0.14,crops,Cereals,A
+c142,165,Molasses,tonnes,NA,0.2,crops,"Sugar, sweeteners",C
+c143,265,Castor oil seeds,tonnes,NA,0.08,crops,Oil crops,A
+c144,266,Oil of castor beans,tonnes,NA,NA,NA,Vegetable oils,C
+c145,1274,"Animal or vegetable fats and oils and their fractions, chemically modified, except those hydrogenated, inter-esterified, re-esterified or elaidinized; inedible mixtures or preparations of animal or vegetable fats or oils",tonnes,NA,NA,NA,Waste,C
+c146,NA,Biogasoline,1000 liters,NA,NA,NA,Biofuels,
+c147,NA,Biodiesel,1000 liters,NA,NA,NA,Biofuels,
+c148,NA,"Glycerol, crude",tonnes,NA,NA,NA,Building blocks,
+c149,NA,Renewable diesel,1000 liters,NA,NA,NA,Biofuels,
+c150,NA,Biopropane,1000 liters,NA,NA,NA,Biofuels,
+c151,NA,Bionaphtha,1000 liters,NA,NA,NA,Biofuels,
+c152,NA,L-LA,tonnes,NA,NA,NA,Building blocks,
+c153,NA,Sebacic acid,tonnes,NA,NA,NA,Building blocks,
+c154,NA,Succinic acid,tonnes,NA,NA,NA,Building blocks,
+c155,NA,11-AA,tonnes,NA,NA,NA,Building blocks,
+c156,NA,Ethylene,tonnes,NA,NA,NA,Building blocks,
+c157,NA,Propylene,tonnes,NA,NA,NA,Building blocks,
+c158,NA,"1,3-PDO",tonnes,NA,NA,NA,Building blocks,
+c159,NA,"1,4-BDO",tonnes,NA,NA,NA,Building blocks,
+c160,NA,MEG,tonnes,NA,NA,NA,Building blocks,
+c161,NA,MPG,tonnes,NA,NA,NA,Building blocks,
+c162,NA,ECH,tonnes,NA,NA,NA,Building blocks,
+c163,NA,PLA,tonnes,NA,NA,NA,Biopolymers,
+c164,NA,PE,tonnes,NA,NA,NA,Biopolymers,
+c165,NA,PP,tonnes,NA,NA,NA,Biopolymers,
+c166,NA,PTT,tonnes,NA,NA,NA,Biopolymers,
+c167,NA,PET,tonnes,NA,NA,NA,Biopolymers,
+c168,NA,PBAT,tonnes,NA,NA,NA,Biopolymers,
+c169,NA,PBS,tonnes,NA,NA,NA,Biopolymers,
+c170,NA,Epoxy resins,tonnes,NA,NA,NA,Biopolymers,
+c171,654,Brewing or distilling dregs and waste,tonnes,NA,NA,cakes,NA,
+c901,NA,"Other, Waste",tonnes,NA,NA,NA,Waste,
+c999,NA,"Other, Unknown",tonnes,NA,NA,NA,Unknown,
