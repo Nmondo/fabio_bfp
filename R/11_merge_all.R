@@ -60,6 +60,53 @@ items_supply_bcp <- read_csv("inst/items_supply_bcp.csv")
 regions <- read_csv("inst/regions_full.csv") %>% filter(current == TRUE)
 source("R/00_system_variables.R")
 
+# ---- Producer prices for co-product VALUE allocation (p125, p126, p127) --------
+# 12a values supply as `supply * price`; a process supplying >1 commodity is then
+# split by the price ratio of its outputs. We attach real producer prices to every
+# co-product of the three multi-output biofuel processes so the split is value-
+# (not mass-) based. Prices are expressed to MATCH each commodity's supply unit:
+#   - liquid fuels (c146/c147/c149/c150/c151) supplied in 1000 L -> USD / 1000 L
+#   - solids       (c148 Glycerol, c171 DDGS)  supplied in tonnes -> USD / t
+# Trade-based per-year prices come from 07_04 prices_bcp.rds (Biogasoline as
+# "Bioethanol", Biodiesel, Glycerol, DDGS). The HVO bundle (RD + biopropane +
+# bionaphtha) has no trade price -> flat assumed prices from universal_bcp_prices
+# (00_system_variables.R), held constant over 2012:2022. USD/t is converted to
+# USD/1000 L with each fuel's density so only the price *ratio* within a process
+# drives the split. line ~401 otherwise pins all p125-p146 supply to price = 1.
+ETOH_T_PER_KL <- 1 / 1.267   # t per 1000 L; Bioethanol 1.267 l/kg (USDA Biofuels annual) -> c146
+FAME_T_PER_KL <- 1 / 1.136   # t per 1000 L; Biodiesel  1.136 l/kg (USDA Biofuels annual) -> c147
+
+# density (t per 1000 L) to convert USD/t -> USD/1000 L for the trade-priced liquids
+liq_dens <- tibble::tibble(
+  comm_code   = c("c146",        "c147"),
+  t_per_1000L = c(ETOH_T_PER_KL, FAME_T_PER_KL))
+
+# 1) trade-based prices from prices_bcp.rds (per year), unit-matched to supply
+prices_trade <- readRDS("intermediate_data/prices_bcp.rds") %>%
+  filter(product %in% c("Bioethanol", "Biodiesel", "Glycerol, crude",
+                        "Dried distillers grains with solubles"),
+         is.finite(unit_price), qty > 0, value > 0) %>%
+  group_by(product, year) %>%
+  summarise(price_usd_t = sum(value, na.rm = TRUE) / sum(qty, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(comm_code = dplyr::recode(product,
+                                   "Bioethanol"                            = "c146",
+                                   "Biodiesel"                             = "c147",
+                                   "Glycerol, crude"                       = "c148",
+                                   "Dried distillers grains with solubles" = "c171")) %>%
+  left_join(liq_dens, by = "comm_code") %>%
+  mutate(bcp_price = if_else(!is.na(t_per_1000L),
+                             price_usd_t * t_per_1000L,   # liquids: USD/t -> USD/1000 L
+                             price_usd_t)) %>%            # solids (c148, c171): USD/t
+  select(comm_code, year, bcp_price)
+
+# 2) flat assumed HVO-bundle prices (c149/c150/c151), constant across years
+prices_flat <- as_tibble(universal_bcp_prices) %>%
+  transmute(comm_code, bcp_price = price_usd_t * t_per_1000L) %>%  # USD/t -> USD/1000 L
+  tidyr::crossing(year = 2012:2022)
+
+bcp_price_lu <- bind_rows(prices_trade, prices_flat)
+
 # ---- c901 waste trade flows from 08_03 (source for btd + supply of c901) ----
 waste_flows <- as.data.frame(readRDS("data/waste_flows.rds"))
 waste_flows <- waste_flows[waste_flows$year %in% 2012:2022, ]
@@ -465,6 +512,30 @@ ddgs_sup <- as_tibble(ddgs_sup) %>%
 sup_full <- sup_full %>%
   filter(comm_code != "c171") %>%
   bind_rows(ddgs_sup %>% select(any_of(names(sup_full))))
+
+
+###########################################################
+########### VALUE-ALLOCATION PRICES FOR CO-PRODUCT PROCS ##
+###########################################################
+# Replace the price = 1 default (set above for p125-p146) with real producer prices
+# on the outputs of the three multi-output biofuel processes, so 12a's
+# value = supply * price splits each process by its output price ratio (not by mass):
+#   p125 Biogasoline production : c146 Biogasoline + c171 DDGS
+#   p126 Biodiesel production   : c147 Biodiesel    + c148 Glycerol, crude
+#   p127 Renewable diesel prod. : c149 RD + c150 Biopropane + c151 Bionaphtha
+# Each comm_code is supplied by exactly one of these procs, so restricting to the
+# (proc, comm) set below is unambiguous. Falls back to the existing price for any
+# (comm, year) not covered by bcp_price_lu. All other processes are single-output,
+# so their (trivial) allocation is unaffected by leaving price = 1.
+coprod_procs <- c("p125", "p126", "p127")
+coprod_comms <- c("c146", "c171", "c147", "c148", "c149", "c150", "c151")
+
+sup_full <- sup_full %>%
+  left_join(bcp_price_lu, by = c("comm_code", "year")) %>%
+  mutate(price = if_else(proc_code %in% coprod_procs & comm_code %in% coprod_comms &
+                           !is.na(bcp_price) & is.finite(bcp_price),
+                         bcp_price, price)) %>%
+  select(-bcp_price)
 
 
 
