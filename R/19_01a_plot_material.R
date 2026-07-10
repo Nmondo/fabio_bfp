@@ -67,6 +67,9 @@ tcf[, biofuel_code := fcase(
   default = NA_character_)]
 tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
 
+
+
+
 ######################################################################################################################
 ############################## HELPER FUNCTION TO EXTRACT RESULTS FILES FROM SPECIFIC PATTERN ########################
 ######################################################################################################################
@@ -101,8 +104,10 @@ fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"),
 Y_summary    <- fread(file.path(IN_DIR, "Y_summary_c146_c147_c149.csv"))
 Y_summary_BP <- fread(file.path(IN_DIR, "Y_summary_BP.csv"))
 Z_summary    <- fread(file.path(IN_DIR, "Z_summary_c146_c147_c149.csv"))
-dt_ysrc      <- fread(file.path(IN_DIR, "FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv"))
+dt_feedsrc <- fread(file.path(IN_DIR, "FABIO_feedSourcing_2012-2022_BF_byComm_inclSelf.csv"))
 sankey_flows <- fread(file.path(IN_DIR, "FABIO_bfChain_2012-2022_BF_final_demand_continent.csv"))
+trace_flows <- fread(file.path(IN_DIR, "FABIO_bfTrace_2012-2022_BF_continent.csv"))
+
 
 ## Material feedstock trade breakdown -----------------------------------------
 # Now the MASS-allocated, direct (tier-1) bilateral files written by 18a, i.e.
@@ -431,22 +436,6 @@ plot_feedstock_desc <- function(data,
   p
 }
 
-######################################################################################################################
-############################## PLOT RESULTS #########################################################################
-######################################################################################################################
-
-######################################################################################################################
-#0. Plot descriptive statistics
-######################################################################################################################
-
-# usage
-p <- plot_feedstock_desc(Z_per_year, c("c146", "c147", "c149"), c("EU","ASI","NAM","LAM"))
-
-ggsave(
-  filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
-  plot = p,
-  width = 10, height = 8, dpi = 300)
-
 
 ######################################################################################################################
 ############################## SOURCING DECOMPOSITION: Domestic / Intra- / Extra-regional ############################
@@ -468,104 +457,90 @@ sourcing_colors <- c(
   "Extra-regional" = "#FD8D3C"    # orange     -> off-continent
 )
 
-# ─── Core: classify, aggregate to continent shares, average over 2 windows ─────
+# ─── Core: classify (relative to an anchor region), aggregate to continent shares ─────
 .sourcing_shares <- function(df, regions,
-                             commodities  = NULL,
-                             continents   = NULL,
-                             period_early = 2012:2014,
-                             period_late  = 2020:2022,
-                             share_method = c("value", "year_mean")) {
+                             anchor_col    = "country_consumer", # "country_consumer" (product) | "region" (feedstock)
+                             carry         = character(0),       # extra grouping cols to keep, e.g. "basis"
+                             commodities   = NULL,
+                             continents    = NULL,
+                             period_early  = 2012:2014,
+                             period_late   = 2020:2022,
+                             single_period = NULL,               # if set (year vector) -> one window, no early/late rows
+                             share_method  = c("value", "year_mean")) {
   
   share_method <- match.arg(share_method)
   df  <- as.data.table(copy(df))
   reg <- unique(as.data.table(regions)[, .(iso3c, continent)])
   
-  ## --- attach origin & consumer continents -------------------------------
-  df <- merge(df, reg, by.x = "country_origin",   by.y = "iso3c",
-              all.x = TRUE, sort = FALSE)
+  ## origin & anchor continents
+  df <- merge(df, reg, by.x = "country_origin", by.y = "iso3c", all.x = TRUE, sort = FALSE)
   setnames(df, "continent", "continent_origin")
-  df <- merge(df, reg, by.x = "country_consumer", by.y = "iso3c",
-              all.x = TRUE, sort = FALSE)
-  setnames(df, "continent", "continent_consumer")
+  df <- merge(df, reg, by.x = anchor_col, by.y = "iso3c", all.x = TRUE, sort = FALSE)
+  setnames(df, "continent", "continent_anchor")
   
-  ## --- classify each flow into a source category -------------------------
+  ## classify each flow relative to the anchor region
   df[, category := fifelse(
     flow_type == "self", "Domestic",
-    fifelse(continent_origin == continent_consumer,
-            "Intra-regional", "Extra-regional"))]
-  # imports whose origin has no matched continent -> Extra-regional
-  df[is.na(category), category := "Extra-regional"]
+    fifelse(continent_origin == continent_anchor, "Intra-regional", "Extra-regional"))]
+  df[is.na(category), category := "Extra-regional"]   # origin w/ no matched continent -> Extra
   
-  ## --- restrict to the two comparison windows ----------------------------
-  early_lab <- sprintf("%d\u2013%d", min(as.integer(period_early)),
-                       max(as.integer(period_early)))
-  late_lab  <- sprintf("%d\u2013%d", min(as.integer(period_late)),
-                       max(as.integer(period_late)))
-  df <- df[year %in% c(period_early, period_late)]
-  df[, period := fifelse(year %in% period_early, early_lab, late_lab)]
+  ## period window(s)
+  if (!is.null(single_period)) {
+    lab <- sprintf("%d\u2013%d", min(single_period), max(single_period))
+    df  <- df[year %in% single_period][, period := lab]
+  } else {
+    early_lab <- sprintf("%d\u2013%d", min(period_early), max(period_early))
+    late_lab  <- sprintf("%d\u2013%d", min(period_late),  max(period_late))
+    df <- df[year %in% c(period_early, period_late)]
+    df[, period := fifelse(year %in% period_early, early_lab, late_lab)]
+  }
   
-  ## --- optional subsetting ----------------------------------------------
-  if (!is.null(commodities)) df <- df[commodity          %in% commodities]
-  if (!is.null(continents))  df <- df[continent_consumer %in% continents]
-  df <- df[!is.na(continent_consumer)]
-  
+  if (!is.null(commodities)) df <- df[commodity        %in% commodities]
+  if (!is.null(continents))  df <- df[continent_anchor %in% continents]
+  df <- df[!is.na(continent_anchor)]
   if (nrow(df) == 0)
     stop("No rows left after filtering for the requested commodities / continents / years.")
   
-  ## --- continent-level totals (volume-weighted across countries) ---------
-  agg <- df[, .(value = sum(value, na.rm = TRUE)),
-            by = .(continent_consumer, commodity, period, year, category)]
+  by0 <- c("continent_anchor", "commodity", "period", carry)
+  agg <- df[, .(value = sum(value, na.rm = TRUE)), by = c(by0, "year", "category")]
   
   if (share_method == "value") {
-    # volume-weighted average across years in the window
-    agg <- agg[, .(value = sum(value, na.rm = TRUE)),
-               by = .(continent_consumer, commodity, period, category)]
-    agg[, share := value / sum(value),
-        by = .(continent_consumer, commodity, period)]
+    agg <- agg[, .(value = sum(value, na.rm = TRUE)), by = c(by0, "category")]
+    agg[, share := value / sum(value), by = by0]
   } else {
-    # equal weight per year: yearly share then simple mean across years
-    agg[, share_yr := value / sum(value),
-        by = .(continent_consumer, commodity, period, year)]
-    agg <- agg[, .(share = mean(share_yr, na.rm = TRUE)),
-               by = .(continent_consumer, commodity, period, category)]
+    agg[, share_yr := value / sum(value), by = c(by0, "year")]
+    agg <- agg[, .(share = mean(share_yr, na.rm = TRUE)), by = c(by0, "category")]
   }
-  
   agg[, category := factor(category, levels = sourcing_levels)]
   agg[]
 }
 
-# ─── Core: stacked-bar plot (continent grid x period rows) ────────────────────
+# ─── Core: stacked-bar plot (row facet x continent grid) ──────────────────────
 .plot_sourcing <- function(agg,
                            items             = items_full_bcp,
                            colors            = sourcing_colors,
                            commodities_order = NULL,
                            continents_order  = NULL,
+                           row_var           = "period",   # "period" (product) | "basis" (feedstock)
                            y_lab             = "Share of consumption",
                            title             = NULL) {
   
   agg   <- as.data.table(copy(agg))
   items <- as.data.table(items)
   
-  # commodity code -> readable label, ordered as requested (or by code)
   lbl        <- setNames(items$item, items$comm_code)
-  comm_codes <- if (!is.null(commodities_order)) commodities_order
-  else sort(unique(agg$commodity))
+  comm_codes <- if (!is.null(commodities_order)) commodities_order else sort(unique(agg$commodity))
   comm_labs  <- ifelse(comm_codes %in% names(lbl), lbl[comm_codes], comm_codes)
   agg[, commodity_lab := factor(
-    ifelse(commodity %in% names(lbl), lbl[commodity], commodity),
-    levels = comm_labs)]
+    ifelse(commodity %in% names(lbl), lbl[commodity], commodity), levels = comm_labs)]
   
-  # continent ordering (governs left-to-right grouping of the bars)
-  cont_levels <- if (!is.null(continents_order)) continents_order
-  else sort(unique(agg$continent_consumer))
-  agg[, continent_consumer := factor(continent_consumer, levels = cont_levels)]
-  
-  # period rows: early label sorts before late label ("2012-2014" < "2020-2022")
-  agg[, period := factor(period, levels = sort(unique(period)))]
+  cont_levels <- if (!is.null(continents_order)) continents_order else sort(unique(agg$continent_anchor))
+  agg[, continent_anchor := factor(continent_anchor, levels = cont_levels)]
+  if (row_var == "period") agg[, period := factor(period, levels = sort(unique(period)))]
   
   ggplot(agg, aes(commodity_lab, share, fill = category)) +
     geom_col(width = 0.8, position = position_stack(reverse = TRUE)) +
-    facet_grid(period ~ continent_consumer,
+    facet_grid(reformulate("continent_anchor", row_var),
                scales = "free_x", space = "free_x") +
     scale_fill_manual(values = colors, name = "Source", drop = FALSE) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1),
@@ -585,111 +560,59 @@ sourcing_colors <- c(
 }
 
 ######################################################################################################################
-# (1) Geographic sourcing of FEEDSTOCK embodied in biofuel consumption (bilateral files)
+# (1) Geographic sourcing of FEEDSTOCK embodied in biofuel PRODUCTION vs CONSUMPTION
 ######################################################################################################################
-# Input: rbindlist of FABIO_tradeFeed_<year>_material_mass_BF_byComm_byFeed_direct_bilat.csv
-# Columns: country_origin, country_consumer, flow_type, year, indicator, allocation,
-#          feedstock, commodity, value   (feedstock is summed over automatically)
+# Input: FABIO_feedSourcing_2012-2022_BF_byComm_inclSelf.csv (from 18a, feedstock_sourcing_shares).
+#   Columns: year, basis, commodity, country_origin, region, flow_type, value
+#   basis == "production"  -> region is the biofuel PRODUCER (feedstock embodied in output)
+#   basis == "consumption" -> region is the biofuel CONSUMER (feedstock embodied in final demand)
+# Sourcing is classified relative to `region`: Domestic / Intra-regional / Extra-regional.
 
 plot_sourcing_feedstock <- function(data, regions,
-                                    commodities     = NULL,   # e.g. c("c146","c147","c149"); NULL = all
-                                    continents      = NULL,   # e.g. c("EU","ASI","NAM"); NULL = all
-                                    indicator_keep  = NULL,   # e.g. "material" (guards against double counting)
-                                    allocation_keep = NULL,   # e.g. "mass"
-                                    period_early    = 2012:2014,
-                                    period_late     = 2020:2022,
-                                    share_method    = "value",
-                                    items           = items_full_bcp,
-                                    colors          = sourcing_colors,
-                                    y_lab           = "Share of embodied feedstock",
-                                    title  = "Sourcing of feedstock embodied in biofuel consumption",
-                                    return_data     = FALSE) {
-  
-  dt <- as.data.table(copy(data))
-  if (!is.null(indicator_keep))  dt <- dt[indicator  %in% indicator_keep]
-  if (!is.null(allocation_keep)) dt <- dt[allocation %in% allocation_keep]
-  
-  agg <- .sourcing_shares(dt, regions,
-                          commodities  = commodities,
-                          continents   = continents,
-                          period_early = period_early,
-                          period_late  = period_late,
-                          share_method = share_method)
-  
-  p <- .plot_sourcing(agg, items = items, colors = colors,
-                      commodities_order = commodities,
-                      continents_order  = continents,
-                      y_lab = y_lab, title = title)
-  
-  if (return_data) list(plot = p, data = agg) else p
-}
-
-######################################################################################################################
-# (2) Geographic sourcing of the FINAL BIOFUEL PRODUCT consumed
-######################################################################################################################
-# Input: fread(file.path(IN_DIR, "FABIO_Ysourcing_2012-2022_BF_byComm_inclSelf.csv"))
-# Columns: country_consumer, year, commodity, country_origin, flow_type, value, share
-
-plot_sourcing_product <- function(data, regions,
-                                  commodities  = NULL,
-                                  continents   = NULL,
-                                  period_early = 2012:2014,
-                                  period_late  = 2020:2022,
-                                  share_method = "value",
-                                  items        = items_full_bcp,
-                                  colors       = sourcing_colors,
-                                  y_lab        = "Share of biofuel consumption",
-                                  title = "Geographic sourcing of biofuel products consumed",
-                                  return_data  = FALSE) {
+                                    commodities  = NULL,      # e.g. c("c146","c147","c149"); NULL = all
+                                    continents   = NULL,      # anchor-region continents; NULL = all
+                                    period       = 2020:2022, # single window (Production vs Consumption go in rows)
+                                    share_method = "value",
+                                    items        = items_full_bcp,
+                                    colors       = sourcing_colors,
+                                    y_lab        = "Share of embodied feedstock",
+                                    return_data  = FALSE) {
   
   agg <- .sourcing_shares(as.data.table(copy(data)), regions,
-                          commodities  = commodities,
-                          continents   = continents,
-                          period_early = period_early,
-                          period_late  = period_late,
-                          share_method = share_method)
+                          anchor_col    = "region",
+                          carry         = "basis",
+                          commodities   = commodities,
+                          continents    = continents,
+                          single_period = period,
+                          share_method  = share_method)
+  
+  agg[, basis := factor(fifelse(basis == "production", "Production", "Consumption"),
+                        levels = c("Production", "Consumption"))]
   
   p <- .plot_sourcing(agg, items = items, colors = colors,
                       commodities_order = commodities,
                       continents_order  = continents,
-                      y_lab = y_lab, title = title)
+                      row_var = "basis", y_lab = y_lab)
   
   if (return_data) list(plot = p, data = agg) else p
 }
 
-######################################################################################################################
-# EXAMPLE USAGE
-######################################################################################################################
 
-# --- (1) feedstock embodied (bilateral) -------------------------------------
-# NB: allocation_keep switched "value" -> "mass" for the material/mass split.
-p_feed_src <- plot_sourcing_feedstock(
-  dt_material, regions,
-  commodities     = c("c146", "c147", "c149"),
-  continents      = c("EU", "ASI", "NAM", "LAM"),
-  indicator_keep  = "material",
-  allocation_keep = "mass")
-
-ggsave(file.path("output", "plot", "sourcing_feedstock_BF.svg"),
-       p_feed_src, width = 11, height = 6, dpi = 300, device = svg)
-
-# --- (2) final product origin -----------------------------------------------
-p_prod_src <- plot_sourcing_product(
-  dt_ysrc, regions,
-  commodities = c("c146", "c147", "c149"),
-  continents  = c("EU", "ASI", "NAM", "LAM"))
-
-ggsave(file.path("output", "plot", "sourcing_product_BF.svg"),
-       p_prod_src, width = 11, height = 6, dpi = 300, device = svg)
 
 
 ######################################################################################################################
 ################################# FLOW CHART #######################################################################
 ######################################################################################################################
-# NB: sankey_flows (FABIO_bfChain_*.csv) is written by 18a already converted from
-# feedstock use to biofuel-output-equivalent (tcf applied there, before saving).
-# Do NOT pass `tcf` to bf_sankey_gg here too - it would apply the factor a second
-# time and silently double-convert stage-1 values.
+# NB: sankey_flows (FABIO_bfChain_*.csv) is written by 18a with the two stages in
+# DIFFERENT units and deliberately NOT mass-balanced across the conversion:
+#   stage 1 (feedstock_to_producer) = embodied feedstock USE, feedstock tonnes
+#           (total requirements, L %*% x, restricted to ISIC == "A"), and
+#   stage 2 (producer_to_consumer)  = biofuel output.
+# There is no TCF step anywhere in the pipeline now (we reverted from
+# biofuel-output-equivalent back to embodied feedstock use), so this function no
+# longer accepts or applies `tcf`. Because the two stages are in different units,
+# render with normalize = "per_stage" (each stage = 100%); "raw" would put
+# feedstock tonnes and biofuel tonnes on one shared height scale and mislead.
 
 bf_sankey_gg <- function(sankey_flows,
                          year_sel    = NULL,
@@ -702,22 +625,14 @@ bf_sankey_gg <- function(sankey_flows,
                                          intra_regional = "#6BAED6",
                                          inter_regional = "#FD8D3C"),
                          cont_order  = NULL,
+                         merge_regions = NULL,    # continents to fold into ONE display node
+                         merge_label   = "Other", # label shown for the merged node
                          node_w      = 0.04,
                          gap_frac    = 0.04,
                          curv_n      = 60,
                          alpha       = 0.8,
-                         share_min   = 0.02,   # hide labels below this share
-                         share_size  = 2.3,    # font size for share labels
-                         # --- TCF conversion of stage-1 (feedstock use -> biofuel supply) ---------------------
-                         tcf            = NULL,                    # data.table; NULL = old behaviour (no conversion)
-                         tcf_stage      = "feedstock_to_producer", # which `stage` value carries feedstock-use rows
-                         tcf_feed_col   = "item",                  # column in `tcf` holding the feedstock id
-                         tcf_bf_col     = "biofuel_code",          # column in `tcf` holding the biofuel id (c146/c147/c149)
-                         tcf_val_col    = "tcf",                   # column in `tcf` holding the conversion factor  <-- CHECK names(tcf)
-                         feed_join      = "feedstock",             # column in `sankey_flows` matched to tcf_feed_col
-                         bf_join        = "biofuel",               # column in `sankey_flows` matched to tcf_bf_col
-                         tcf_invert     = FALSE,                   # TRUE if tcf = feedstock-per-biofuel (input coeff) -> uses 1/cf
-                         tcf_on_missing = "warn") {                # "warn" (keep raw, unbalanced) | "drop" | "error"
+                         share_min   = 0.01,   # hide labels below this share
+                         share_size  = 2.3) {  # font size for share labels
   
   req <- c("stage","source_node","target_node","flow_class","value",
            "source_continent","target_continent")
@@ -726,52 +641,19 @@ bf_sankey_gg <- function(sankey_flows,
   d <- copy(as.data.table(sankey_flows))
   if (!is.null(biofuel_sel) && "biofuel" %in% names(d)) d <- d[biofuel %in% biofuel_sel]
   
-  # --- TCF: feedstock USE -> biofuel SUPPLY on stage-1 rows --------------------------------
-  if (!is.null(tcf)) {
-    tcf <- as.data.table(tcf)
-    need <- c(tcf_feed_col, tcf_bf_col, tcf_val_col)
-    if (!all(need %in% names(tcf)))
-      stop("`tcf` is missing column(s): ", paste(setdiff(need, names(tcf)), collapse = ", "),
-           ". Set tcf_feed_col / tcf_bf_col / tcf_val_col to match names(tcf).")
-    if (!all(c(feed_join, bf_join) %in% names(d)))
-      stop("`sankey_flows` has no `", feed_join, "` / `", bf_join,
-           "` column \u2014 stage-1 rows must carry feedstock & biofuel ids to attach a tcf. ",
-           "(bf_supply_chain_flows emits these; check feed_join/bf_join.)")
-    
-    tcf_lu <- unique(tcf[, .(feed = as.character(get(tcf_feed_col)),
-                             bf   = as.character(get(tcf_bf_col)),
-                             cf   = as.numeric(get(tcf_val_col)))])
-    tcf_lu <- tcf_lu[!is.na(cf) & !is.na(feed) & !is.na(bf)]
-    dup <- tcf_lu[, .N, by = .(feed, bf)][N > 1L]
-    if (nrow(dup))
-      stop(nrow(dup), " (feedstock, biofuel) pair(s) map to more than one tcf value \u2014 ",
-           "collapse `tcf` to one factor per pair before passing it in.")
-    if (isTRUE(tcf_invert)) tcf_lu[, cf := 1 / cf]
-    
-    s1_idx <- which(d$stage == tcf_stage)
-    if (length(s1_idx)) {
-      key    <- data.table(feed = as.character(d[[feed_join]][s1_idx]),
-                           bf   = as.character(d[[bf_join]][s1_idx]))
-      cf_vec <- tcf_lu[key, on = c("feed", "bf"), cf]   # one cf per stage-1 row, key order; NA = no match
-      
-      na_i <- is.na(cf_vec)
-      if (any(na_i)) {
-        bad <- unique(key[na_i])
-        msg <- sprintf("TCF: %d stage-1 row(s) across %d feedstock\u00d7biofuel pair(s) have no match",
-                       sum(na_i), nrow(bad))
-        if (tcf_on_missing == "error") stop(msg, ".")
-        if (tcf_on_missing == "drop")  warning(msg, " \u2014 dropped from the diagram.")
-        if (tcf_on_missing == "warn")  warning(msg,
-                                               " \u2014 left in feedstock units; the producer node will not balance for these.")
-      }
-      
-      keep <- !na_i
-      if (any(keep)) {
-        d[s1_idx[keep], value := value * cf_vec[keep]]
-        if ("unit" %in% names(d)) d[s1_idx[keep], unit := "biofuel output (via tcf)"]
-      }
-      if (any(na_i) && tcf_on_missing == "drop") d <- d[-s1_idx[na_i]]
-    }
+  # --- optional: collapse a set of continents into ONE display node ------------------------
+  # Purely visual. flow_class is NOT recomputed, so a domestic / intra / inter ribbon keeps
+  # its class after its continent is folded into `merge_label`; same-class flows that now
+  # share a merged (node -> node) pair are summed, different classes stay separate ribbons.
+  # (A domestic AFR->AFR flow and an inter AFR->EUR flow both live in the node but stay
+  #  coloured by their original class -- they are not treated as one region.)
+  if (!is.null(merge_regions)) {
+    d[source_continent %in% merge_regions, source_continent := merge_label]
+    d[target_continent %in% merge_regions, target_continent := merge_label]
+    d[, source_node := paste(source_continent, sub("^.*\\| ", "", source_node), sep = " | ")]
+    d[, target_node := paste(target_continent, sub("^.*\\| ", "", target_node), sep = " | ")]
+    if (!is.null(cont_order))
+      cont_order <- unique(fifelse(cont_order %in% merge_regions, merge_label, cont_order))
   }
   
   # --- year selection / averaging window ---------------------------------------------------
@@ -840,14 +722,16 @@ bf_sankey_gg <- function(sankey_flows,
   # --- ribbon endpoints --------------------------------------------------------------------
   link[, h := w * scale]
   link[, `:=`(s_mid = nodes[source_node, ymid], t_mid = nodes[target_node, ymid])]
+  link[, flow_class_f := factor(flow_class, levels = names(class_cols))]
   
-  # Source side: sort by target midpoint (unchanged — keeps source-side visually smooth)
-  setorder(link, source_node, t_mid)
+  # BOTH sides banded by flow_class in the SAME order (domestic -> intra -> inter),
+  # so every ribbon sits in its colour band on each end and blue never overlaps orange.
+  # Within a band, sort by the opposite node's midpoint to reduce same-colour crossings.
+  # Source side: class band first, then target midpoint within the band.
+  setorder(link, source_node, flow_class_f, t_mid)
   link[, sy_top := nodes[source_node, ytop] + cumsum(c(0, head(h, -1))), by = source_node]
   
-  # Target side: sort by flow_class FIRST (keeps same-class ribbons contiguous),
-  # then by s_mid within each class (minimises crossing within a class band).
-  link[, flow_class_f := factor(flow_class, levels = names(class_cols))]
+  # Target side: class band first, then source midpoint within the band.
   setorder(link, target_node, flow_class_f, s_mid)
   link[, ty_top := nodes[target_node, ytop] + cumsum(c(0, head(h, -1))), by = target_node]
   link[, `:=`(sx = nodes[source_node, xr], tx = nodes[target_node, xl])]
@@ -931,6 +815,59 @@ bf_sankey_gg <- function(sankey_flows,
 }
 
 
+
+
+######################################################################################################################
+############################## PLOT RESULTS #########################################################################
+######################################################################################################################
+
+######################################################################################################################
+#0. Plot descriptive statistics
+######################################################################################################################
+
+# usage
+p <- plot_feedstock_desc(Z_per_year, c("c146", "c147", "c149"), c("EU","ASI","NAM","LAM"))
+
+ggsave(
+  filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
+  plot = p,
+  width = 10, height = 8, dpi = 300)
+
+
+
+
+######################################################################################################################
+#1. Plot sourcing decomposition
+######################################################################################################################
+
+# --- (1) feedstock embodied: production vs consumption sourcing, two periods ---
+p_feed_early <- plot_sourcing_feedstock(
+  dt_feedsrc, regions,
+  commodities = c("c146", "c147", "c149"),
+  continents  = c("EU", "ASI", "NAM", "LAM"),
+  period      = 2012:2014) + ggtitle("2012-2014")
+
+p_feed_late <- plot_sourcing_feedstock(
+  dt_feedsrc, regions,
+  commodities = c("c146", "c147", "c149"),
+  continents  = c("EU", "ASI", "NAM", "LAM"),
+  period      = 2020:2022) + ggtitle("2020-2022")
+
+p_feed_src <- (p_feed_early / p_feed_late) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    title = "Sourcing of feedstock embodied in biofuel production vs consumption",
+    theme = theme(plot.title = element_text(face = "bold"))) &
+  theme(legend.position = "bottom")
+
+ggsave(file.path("output", "plot", "sourcing_feedstock_BF.svg"),
+       p_feed_src, width = 11, height = 11, dpi = 300, device = svg)
+
+
+######################################################################################################################
+#2. Flow chart
+######################################################################################################################
+
 codes <- commodity_meta$comm_code   # c146, c147, c149
 
 # Helper: wrap a rotated title as a patchwork-compatible grob panel
@@ -948,12 +885,14 @@ make_title_strip <- function(label, font_size = 10) {
 }
 
 # Build the two Sankey plots (NO ggtitle). Do NOT pass `tcf` (see note above).
+# Build the two Sankey plots (NO ggtitle). No `tcf` any more: stage 1 is embodied
+# feedstock use (tonnes), stage 2 is biofuel output — different units, so per_stage.
 p1 <- bf_sankey_gg(
   sankey_flows,
   year_sel    = 2020:2022,
   biofuel_sel = "c146",
   cont_order  = c("LAM", "NAM", "ASI", "EU"),
-  normalize = "raw"
+  normalize   = "per_stage"
 )
 
 p2 <- bf_sankey_gg(
@@ -961,7 +900,7 @@ p2 <- bf_sankey_gg(
   year_sel    = 2020:2022,
   biofuel_sel = c("c147", "c149"),
   cont_order  = c("LAM", "NAM", "ASI", "EU"),
-  normalize = "raw"
+  normalize   = "per_stage"
 )
 
 # Build vertical title strips
@@ -986,4 +925,71 @@ grid <- (row1 / row2) +
   )
 
 svglite::svglite("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.svg",
+                 width = 6, height = 10); print(grid); dev.off()
+
+
+
+
+
+
+codes <- commodity_meta$comm_code   # c146, c147, c149
+
+trace_flows <- fread(file.path(IN_DIR, "FABIO_bfTrace_2012-2022_BF_continent.csv"))
+
+# Helper: wrap a rotated title as a patchwork-compatible grob panel
+make_title_strip <- function(label, font_size = 10) {
+  wrap_elements(
+    grid::textGrob(
+      label,
+      rot    = 90,
+      gp     = grid::gpar(fontface = "bold", fontsize = font_size),
+      hjust  = 0.5,
+      vjust  = 0.5
+    )
+  ) &
+    theme(plot.margin = margin(0, 0, 0, 0))
+}
+
+# Build the two trace Sankeys (origin -> producer -> consumer, mass-conserving -> raw)
+p1 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2020:2022,
+  biofuel_sel = "c146",
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+p2 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2020:2022,
+  biofuel_sel = c("c147", "c149"),
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+# Build vertical title strips
+t1 <- make_title_strip(commodity_meta[comm_code == "c146", item])
+t2 <- make_title_strip(
+  paste(commodity_meta[comm_code %in% c("c147", "c149"), item], collapse = " + ")
+)
+
+# Compose: [title strip | sankey] stacked twice
+row1 <- t1 + p1 + plot_layout(widths = c(0.04, 1))   # strip ~4% of width
+row2 <- t2 + p2 + plot_layout(widths = c(0.04, 1))
+
+grid <- (row1 / row2) +
+  plot_layout(
+    guides = "collect",
+    heights = c(1, 1)
+  ) &
+  theme(
+    legend.position = "bottom",
+    plot.margin     = margin(2, 2, 2, 2)
+  )
+
+svglite::svglite("output/plot/BF_Trace_grid_c146_c147+c149_2020-2022.svg",
                  width = 6, height = 10); print(grid); dev.off()
