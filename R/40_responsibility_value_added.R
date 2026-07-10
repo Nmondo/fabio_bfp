@@ -27,7 +27,7 @@
 #   <MRIO>/losses/Y.rds                year-keyed final-demand matrices
 #   <MRIO>/losses/<yr>_L_value.rds     year-keyed Leontief inverse (14)
 #   <base>/E.rds                       stressor x sector extensions (16)
-#   <base>/V.rds                       VA (USD) x sector, 2 rows gloria/exiobase (35)
+#   intermediate_data/V.rds            VA (USD) x sector, 2 rows gloria/exiobase (35)
 #   <base>/io_labels.csv               row/col labels for the grid (iso3c, comm_code, item)
 #
 # OUTPUTS  (one pair of files per VA variant; 'full' keeps the base name, the
@@ -39,6 +39,11 @@
 #       per (year, va_variant, biofuel_group): ibif_consumer_footprint,
 #       ibif_allocated_norm, conservation_gap_pct, implied_unit_value_usd_per_t,
 #       throughput_coverage (the HONESTY CHECK -- read the CAVEAT block).
+#   <OUT_DIR>/FABIO_bcp_ibif_value_added_gaps_<base>.csv
+#       per (year, iso3c, comm_code, item) with output but no value added that
+#       feeds the studied chains: throughput, value_added, reason (see
+#       STRUCTURAL-GAP CHECK). Absent-VA countries, ecosystem services and
+#       residual catch-all nodes excluded.
 #   va_variant: 'full' uses total value added; 'ex_tls' excludes taxes-less-
 #   subsidies (value added = wages + capital), so a sector that is net-subsidised
 #   does not carry lower responsibility on that account.
@@ -73,6 +78,19 @@
 # Low throughput_coverage => the split leans on few valued sectors; treat those
 # biofuel-years with caution. implied_unit_value_usd_per_t (= sum_j s_j y_j /
 # sum_j y_j) is a sanity check: does the biofuel's implied USD/tonne look real?
+#
+# STRUCTURAL-GAP CHECK. Most zero-valued sectors are harmless: V holds a VA cell
+# only where a country actually produces a commodity, so a node that is off-chain
+# or genuinely empty (X = 0) never matters. What DOES matter is a cell with real
+# output (X > 0) but no value added (VA <= 0) that nevertheless sits upstream of
+# the studied biofuels -- its footprint is real but has no valued sector to carry
+# it. The block after the console summary lists exactly those (year, iso3c,
+# comm_code, item) cells, ranked by the tonnage they feed into the three chains,
+# so the fixable gaps are one glance away. Two classes are set aside so they do
+# not swamp the list: whole countries absent from the VA source
+# (ABSENT_VA_COUNTRIES, handled upstream in fabio_bcp) and residual catch-all
+# nodes (RESIDUAL_ITEMS: Other, Waste/Unknown) with no producing sector to value;
+# the latter's upstream tonnage is reported as a single set-aside figure.
 #
 # ECOSYSTEM-SERVICE EXEMPTION. Some upstream nodes are ecosystem services rather
 # than market commodities (e.g. Grazing, c062): they have no monetary output and
@@ -130,6 +148,20 @@ resp_years <- as.character(years)    # 2012:2022 from 00_system_variables
 # Match is by item label so it is robust to comm_code renumbering.
 ECOSYSTEM_SERVICE_ITEMS <- c("Grazing")   # c062 in inst/items_full_bcp.csv
 
+# Countries entirely absent from the upstream VA source (35): they carry v = 0
+# across every commodity and every year, so they never receive responsibility.
+# They are dropped in the fabio_bcp build, so the structural-gap diagnostic below
+# excludes them to keep the focus on genuine, fixable (country, commodity) cells.
+ABSENT_VA_COUNTRIES <- c("ANT", "BRN", "DMA", "ERI", "PRI", "SSD")
+
+# Residual catch-all nodes with no producing sector by construction (FABIO
+# aggregation buckets). Like ecosystem services they carry v = 0 structurally, not
+# because a real transaction went unvalued, so counting them as "fixable" gaps
+# would swamp the list with non-actionable tonnage. They are set aside from the
+# structural-gap diagnostic and their upstream tonnage reported separately.
+# Match is by item label (robust to comm_code renumbering).
+RESIDUAL_ITEMS <- c("Other, Waste", "Other, Unknown")   # c901, c999
+
 biofuel_groups <- list(
   biogasoline      = "c146",
   biodiesel        = "c147",
@@ -151,17 +183,56 @@ need <- function(path, who) {
 X  <- readRDS(need(file.path(MRIO_PATH, "losses", "X.rds"),   "14_leontief_inverse.R / 13_mrio.R"))
 Y  <- readRDS(need(file.path(MRIO_PATH, "losses", "Y.rds"),   "13_mrio.R"))
 E  <- readRDS(need(file.path(base_path, "E.rds"),             "16_extensions_main.R"))
-V  <- readRDS(need(file.path(base_path, "V.rds"),             "35_bcp_value_added_extension.R"))
+V  <- readRDS(need(file.path("intermediate_data", "V.rds"),  "35_bcp_value_added_extension.R"))
 io <- fread(   need(file.path(base_path, "io_labels.csv"),    "12_b_update_labels.R"))
 
 stopifnot(all(c("iso3c", "comm_code", "item") %in% names(io)))
 N <- nrow(io)
+
+# --- ALIGNMENT GUARD: E / V columns and X rows MUST match the io grid --------
+# The footprint / responsibility math is purely POSITIONAL. Both here (f = e/X,
+# v = p/X) and in 18_01b (ext = E[stressor,]/X) the vectors are coerced with
+# as.vector()/as.numeric(), which STRIPS names -- so R lines up E, V, X, B and
+# `io` by INDEX, not by label. That is correct only because 13_mrio names X rows
+# "<iso3c>_<comm_code>" and 16/35 reorder E/V to the identical `target_order`.
+# If any artefact is ever rebuilt against a differently-ordered io_labels.csv,
+# the extension for one item gets divided by another item's output and the
+# impact is silently attributed to the WRONG item (e.g. cattle -> rapeseed oil)
+# with no error. Verify it once, loudly, before any footprint is computed.
+io_key <- paste0(io$iso3c, "_", io$comm_code)
+assert_grid <- function(obj, axis, who) {
+  nm <- if (axis == "row") rownames(obj) else colnames(obj)
+  if (is.null(nm)) {
+    warning(sprintf("[40] %s has no %snames -- cannot verify item alignment; trusting position.",
+                    who, axis)); return(invisible())
+  }
+  if (!identical(nm, io_key)) {
+    i <- which(nm != io_key)[1]
+    stop(sprintf(paste0("[40] %s %s order != io_labels grid -- environmental/VA ",
+                        "extensions would be misattributed to the wrong items.\n",
+                        "     first mismatch at index %d: %s = '%s' vs io = '%s'.\n",
+                        "     Re-run 16 (E) and 35 (V) against THIS io_labels.csv."),
+                 who, axis, i, who, nm[i], io_key[i]))
+  }
+  invisible()
+}
+assert_grid(X, "row", "X.rds")
+for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col", sprintf("E[[%s]]", yr))
+for (yr in intersect(as.character(years), names(V))) assert_grid(V[[yr]], "col", sprintf("V[[%s]]", yr))
+message(">>> [40] alignment guard passed: X rows and E/V columns match the io_labels grid.")
 
 # static mask of ecosystem-service nodes excluded from the coverage diagnostic
 exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
 if (sum(exempt_node))
   message(sprintf(">>> [40] exempting %d ecosystem-service node(s) from coverage: %s",
                   sum(exempt_node), paste(unique(io$item[exempt_node]), collapse = ", ")))
+
+# static mask of nodes in countries absent from the VA source (excluded from the
+# structural-gap diagnostic; handled in fabio_bcp)
+absent_va_node <- io$iso3c %in% ABSENT_VA_COUNTRIES
+
+# static mask of residual catch-all nodes (set aside from the structural-gap list)
+residual_node <- io$item %in% RESIDUAL_ITEMS
 
 # Pick the VA vector from V for VA_BASE. exclude_tls drops the taxes-less-
 # subsidies component (value added = wages + capital = total - tls).
@@ -204,9 +275,14 @@ compute_year <- function(yr) {
   
   alloc_rows <- list(); cover_rows <- list()
   
+  # accumulators for the structural-gap diagnostic (full-variant VA; throughput
+  # summed over the studied chains)
+  BY_studied <- numeric(N); p_full <- rep(NA_real_, N)
+  
   for (variant in names(va_variants)) {
     # VA intensity v = p / x  (p drops tls for the ex_tls variant)
     p <- va_row_for(Vi, exclude_tls = va_variants[[variant]])
+    if (variant == "full") p_full <- p       # total VA, for the structural-gap check
     v <- p / Xi; v[!is.finite(v)] <- 0
     s <- as.vector(crossprod(v, B))     # (v' B)_j : USD value added per tonne of j = implied UNIT VALUE
     #            (NOT a share; physical table -- see header CAVEAT)
@@ -230,6 +306,7 @@ compute_year <- function(yr) {
       
       implied_unit_value <- sum(s * y_g) / sum(y_g)     # implied USD/tonne -- sanity check on V
       BY <- as.vector(B %*% y_g)                        # upstream throughput (tonnes)
+      if (variant == "full") BY_studied <- BY_studied + BY   # tonnage feeding the studied chains
       BYd <- BY; BYd[exempt_node] <- 0                  # drop ecosystem services (e.g. Grazing) from the check
       exempt_throughput   <- sum(BY[exempt_node])       # tonnage set aside as ecosystem services (transparency)
       throughput_coverage <- if (sum(BYd) > 0) sum(BYd[v > 0]) / sum(BYd) else NA_real_
@@ -260,8 +337,27 @@ compute_year <- function(yr) {
     }
   }
   
+  # structural VA gaps that actually feed the studied chains: real output but no
+  # value added, upstream of a biofuel. Ecosystem services, absent-VA countries
+  # and residual catch-all nodes are set aside (see header); ranked by tonnage.
+  no_va      <- BY_studied > 0 & Xi > 0 & p_full <= 0 & !exempt_node & !absent_va_node
+  gap_mask   <- no_va & !residual_node
+  residual_t <- sum(BY_studied[no_va & residual_node])   # set-aside tonnage (transparency)
+  gk <- which(gap_mask)
+  gap_dt <- if (length(gk)) data.table(
+    year        = as.integer(yr),
+    iso3c       = io$iso3c[gk],
+    comm_code   = io$comm_code[gk],
+    item        = io$item[gk],
+    throughput  = BY_studied[gk],                    # upstream tonnes feeding the biofuels
+    value_added = p_full[gk],
+    reason      = ifelse(p_full[gk] < 0, "negative_VA", "no_VA_cell")
+  )[order(-throughput)] else NULL
+  
   list(alloc = rbindlist(alloc_rows, use.names = TRUE, fill = TRUE),
-       cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE))
+       cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE),
+       residual = residual_t,
+       gap   = gap_dt)
 }
 
 # --- run all years -----------------------------------------------------------
@@ -269,6 +365,8 @@ res   <- lapply(resp_years, function(yr) { message("  year ", yr); compute_year(
 res   <- Filter(Negate(is.null), res)
 alloc <- rbindlist(lapply(res, `[[`, "alloc"), use.names = TRUE, fill = TRUE)
 cover <- rbindlist(lapply(res, `[[`, "cover"), use.names = TRUE, fill = TRUE)
+gaps  <- rbindlist(lapply(res, `[[`, "gap"),   use.names = TRUE, fill = TRUE)
+residual_set_aside <- sum(unlist(lapply(res, `[[`, "residual")))   # tonnes in catch-all nodes
 
 # annotate value-generator continent (nice-to-have, mirrors 18_01)
 regions <- tryCatch(fread("inst/regions_full.csv"), error = function(e) NULL)
@@ -297,6 +395,33 @@ if (nrow(cover)) {
                 paste(ECOSYSTEM_SERVICE_ITEMS, collapse = ", ")))
 }
 
+# --- structural value-added gaps feeding the studied chains ------------------
+# (year, iso3c, comm_code, item) cells with real output but no value added that
+# sit upstream of the biofuels -- the genuine, fixable gaps. Residual catch-all
+# nodes and absent-VA countries are set aside (see header); ranked by contributed
+# tonnage and rolled up by commodity for a one-glance read.
+cat("\n================  structural VA gaps upstream of the biofuels  ================\n")
+cat(sprintf("Set aside (no producing sector to value): %.4g t via residual catch-all\n",
+            residual_set_aside))
+cat(sprintf("Countries excluded (handled in fabio_bcp): %s\n",
+            paste(ABSENT_VA_COUNTRIES, collapse = ", ")))
+if (!nrow(gaps)) {
+  cat("No fixable gaps: every on-chain node with output also carries value added.\n")
+} else {
+  by_item <- gaps[, .(throughput   = sum(throughput),
+                      n_countries  = uniqueN(iso3c),
+                      years        = paste0(min(year), "-", max(year)),
+                      reason       = paste(sort(unique(reason)), collapse = "+")),
+                  by = .(comm_code, item)][order(-throughput)]
+  cat(sprintf("\n%d fixable cells across %d commodities and %d countries, %.4g t total.\n",
+              nrow(gaps), uniqueN(gaps$comm_code), uniqueN(gaps$iso3c), sum(gaps$throughput)))
+  cat("-- top real feedstocks by tonnage fed into the biofuel chains --\n")
+  print(head(by_item, 15))
+  g_path <- file.path(OUT_DIR, sprintf("FABIO_bcp_ibif_value_added_gaps_%s.csv", VA_BASE))
+  fwrite(gaps[order(year, -throughput)], g_path)
+  message(sprintf("Wrote %s (%d rows)", g_path, nrow(gaps)))
+}
+
 # --- save (one pair of files per VA variant) ---------------------------------
 for (variant in names(va_variants)) {
   tagv   <- if (variant == "full") "" else paste0("_", variant)   # 'full' keeps the base filename
@@ -307,217 +432,3 @@ for (variant in names(va_variants)) {
   fwrite(c, c_path)
   message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)", a_path, nrow(a), c_path, nrow(c)))
 }
-
-
-
-
-
-
-# =============================================================================
-# 40b_diagnose_coverage.R
-# WHERE did throughput_coverage leak?  Companion diagnostic to
-# 40_responsibility_value_added.R.
-#
-# throughput_coverage (in FABIO_bcp_ibif_value_added_coverage_*.csv) is
-#     sum(BY[v > 0]) / sum(BY),   BY = B %*% y_g,   v = p / X   (VA intensity).
-# The "uncovered" complement is the upstream tonnage BY that flows through
-# sectors with v = 0.  This script reconstructs BY with the SAME inputs and math
-# as code 40, splits it into covered (v>0) vs uncovered (v==0), and ranks the
-# uncovered nodes so you can see exactly which (iso3c, comm_code, item) the
-# coverage leaked into -- plus WHY each is zero (no VA cell vs no output).
-#
-# Outputs (OUT_DIR/coverage_diagnostics/):
-#   coverage_check_<base>.csv        per (year,group): recomputed coverage vs CSV
-#   uncovered_nodes_<base>.csv       every v=0 upstream node, ranked by BY, with
-#                                    BY, share-of-uncovered, cumulative, reason
-#   uncovered_by_commodity_<base>.csv rollup of uncovered BY by comm_code (feedstock)
-#   uncovered_by_country_<base>.csv   rollup of uncovered BY by iso3c
-#   uncovered_growth_<base>.csv       first-year vs last-year uncovered BY by comm_code
-#
-# RUN:  Rscript R/40b_diagnose_coverage.R
-#       FABIO_RUN_MODE=bypass Rscript R/40b_diagnose_coverage.R
-# =============================================================================
-
-# --- portable repo root (same as 40) -----------------------------------------
-fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
-if (!nzchar(fabio_root)) {
-  fabio_root <- getwd()
-  while (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")) &&
-         dirname(fabio_root) != fabio_root) fabio_root <- dirname(fabio_root)
-  if (!file.exists(file.path(fabio_root, "R", "00_system_variables.R")))
-    stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
-}
-setwd(fabio_root)
-
-library(data.table)
-library(Matrix)
-
-source("R/00_system_variables.R")
-source("R/00_run_config.R")
-
-# --- config (mirror 40) ------------------------------------------------------
-model_version <- if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass")
-  "bypass" else "rescaled"
-base_path <- sub("/+$", "", output_dir_bcp)
-MRIO_PATH <- if (model_version == "bypass") file.path(base_path, "bypass") else base_path
-OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-DIAG_DIR  <- file.path(OUT_DIR, "coverage_diagnostics")
-dir.create(DIAG_DIR, showWarnings = FALSE, recursive = TRUE)
-
-allocation <- "value"
-STRESSOR   <- "ibif_total"
-VA_BASE    <- "exiobase"                 # match the CSV you're diagnosing
-resp_years <- as.character(years)
-
-# Ecosystem-service items exempt from the missed-tonnage diagnostic (mirror 40).
-# Removed from the coverage numerator/denominator and from the ranked leak list.
-ECOSYSTEM_SERVICE_ITEMS <- c("Grazing")  # c062; keep in sync with code 40
-
-# The group to dissect. Default reproduces the UPLOADED csv (3-code bundle) so the
-# self-check matches; switch to renewable_diesel = "c149" to match the edited 40.
-biofuel_groups <- list(
-  biogasoline      = "c146",
-  biodiesel        = "c147",
-  renewable_diesel = c("c149", "c150", "c151")
-)
-FOCUS <- names(biofuel_groups)           # or e.g. c("renewable_diesel")
-
-message(sprintf(">>> [40b] model_version='%s' | VA_BASE='%s' | groups: %s",
-                model_version, VA_BASE, paste(FOCUS, collapse = ", ")))
-
-# --- inputs (same artefacts as 40) -------------------------------------------
-need <- function(path) { if (!file.exists(path)) stop("Missing input: ", path); path }
-X  <- readRDS(need(file.path(MRIO_PATH, "losses", "X.rds")))
-Y  <- readRDS(need(file.path(MRIO_PATH, "losses", "Y.rds")))
-V  <- readRDS(need(file.path(base_path, "V.rds")))
-io <- fread(   need(file.path(base_path, "io_labels.csv")))
-stopifnot(all(c("iso3c", "comm_code", "item") %in% names(io)))
-N  <- nrow(io)
-
-# ecosystem-service mask, exempt from the missed-tonnage diagnostic (see code 40)
-exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
-
-# optional ISIC enrichment (explains WHY v = 0 for source (A))
-isic_map <- tryCatch({
-  it <- fread("inst/items_full_bcp.csv")
-  col <- intersect(c("ISIC", "isic"), names(it))
-  if (length(col) && "comm_code" %in% names(it))
-    setNames(as.character(it[[col[1]]]), it$comm_code) else NULL
-}, error = function(e) NULL)
-
-va_row <- paste0("value_added_", VA_BASE)
-
-# --- worker: one (year, group) -----------------------------------------------
-diagnose <- function(yr, g) {
-  if (!yr %in% colnames(X) || is.null(Y[[yr]]) || is.null(V[[yr]])) return(NULL)
-  L_path <- file.path(MRIO_PATH, "losses", paste0(yr, "_L_", allocation, ".rds"))
-  if (!file.exists(L_path)) return(NULL)
-  B  <- readRDS(L_path)
-  Xi <- as.vector(X[, yr]);  Vi <- V[[yr]];  Yi <- Y[[yr]]
-  if (!va_row %in% rownames(Vi)) stop("V.rds has no row '", va_row, "'")
-  
-  p <- as.numeric(Vi[va_row, ])          # VA (full variant = total)
-  v <- p / Xi; v[!is.finite(v)] <- 0     # VA intensity  (identical to code 40)
-  
-  cc  <- biofuel_groups[[g]]
-  in_g <- io$comm_code %in% cc
-  y_all <- as.vector(rowSums(as.matrix(Yi)))
-  y_g <- numeric(N); y_g[in_g] <- y_all[in_g]
-  if (sum(y_g) == 0) return(NULL)
-  
-  BY  <- as.vector(B %*% y_g)            # upstream throughput (tonnes)
-  tot <- sum(BY)                         # full upstream tonnage (incl. ecosystem services)
-  tot_diag <- sum(BY[!exempt_node])      # honesty-check denominator (ecosystem services removed)
-  covered <- v > 0                       # exactly code 40's test
-  # coverage EXCLUDES ecosystem-service nodes from both numerator and denominator
-  coverage <- if (tot_diag > 0) sum(BY[covered & !exempt_node]) / tot_diag else NA_real_
-  
-  # WHY is a node uncovered? decompose the v==0 reason (exempt overrides).
-  reason <- rep("covered", N)
-  reason[!covered & Xi == 0]           <- "no_output_X0"
-  reason[!covered & Xi != 0 & p == 0]  <- "no_VA_cell"        # V zero-filled here
-  reason[!covered & Xi != 0 & p < 0]   <- "negative_VA"
-  reason[exempt_node]                  <- "exempt_ecosystem_service"
-  
-  unc <- BY > 0 & !covered & !exempt_node   # ranked leaks exclude ecosystem services
-  nodes <- data.table(
-    year        = as.integer(yr),
-    biofuel_group = g,
-    iso3c       = io$iso3c,
-    comm_code   = io$comm_code,
-    item        = io$item,
-    isic        = if (!is.null(isic_map)) isic_map[io$comm_code] else NA_character_,
-    throughput  = BY,
-    v           = v,
-    reason      = reason
-  )[unc][order(-throughput)]
-  if (nrow(nodes)) {
-    U <- sum(nodes$throughput)
-    nodes[, `:=`(share_of_uncovered = throughput / U,
-                 cum_share          = cumsum(throughput) / U)]
-  }
-  
-  chk <- data.table(year = as.integer(yr), biofuel_group = g,
-                    upstream_throughput  = tot,
-                    exempt_throughput    = sum(BY[exempt_node]),             # ecosystem services set aside
-                    covered_throughput   = sum(BY[covered & !exempt_node]),
-                    uncovered_throughput = sum(BY[!covered & !exempt_node]), # missed, excl. ecosystem svcs
-                    throughput_coverage  = coverage)
-  list(nodes = nodes, chk = chk)
-}
-
-# --- run ---------------------------------------------------------------------
-res <- list()
-for (yr in resp_years) for (g in FOCUS) res[[paste(yr, g)]] <- diagnose(yr, g)
-res <- Filter(Negate(is.null), res)
-
-chk   <- rbindlist(lapply(res, `[[`, "chk"),   use.names = TRUE, fill = TRUE)
-nodes <- rbindlist(lapply(res, `[[`, "nodes"), use.names = TRUE, fill = TRUE)
-
-# --- self-check against the shipped coverage CSV (if present) ----------------
-csv_path <- file.path(OUT_DIR, sprintf("FABIO_bcp_ibif_value_added_coverage_%s.csv", VA_BASE))
-if (file.exists(csv_path)) {
-  ship <- fread(csv_path)[va_variant == "full", .(year, biofuel_group, throughput_coverage)]
-  cmp  <- merge(chk[, .(year, biofuel_group, recomputed = throughput_coverage)],
-                ship, by = c("year", "biofuel_group"), all.x = TRUE)
-  cmp[, abs_diff := abs(recomputed - throughput_coverage)]
-  cat("\n-- self-check: recomputed vs shipped throughput_coverage (max abs diff) --\n")
-  print(cmp[, .(max_abs_diff = max(abs_diff, na.rm = TRUE)), by = biofuel_group])
-}
-
-# --- rollups: WHERE the uncovered tonnage sits -------------------------------
-by_comm <- nodes[, .(uncovered_throughput = sum(throughput),
-                     reason = reason[1], isic = isic[1]),
-                 by = .(year, biofuel_group, comm_code, item)][order(-uncovered_throughput)]
-by_ctry <- nodes[, .(uncovered_throughput = sum(throughput)),
-                 by = .(year, biofuel_group, iso3c)][order(-uncovered_throughput)]
-
-# --- growth: what drove the decline (first vs last year, per commodity) ------
-yr_lo <- min(nodes$year); yr_hi <- max(nodes$year)
-growth <- dcast(
-  by_comm[year %in% c(yr_lo, yr_hi)],
-  biofuel_group + comm_code + item ~ year,
-  value.var = "uncovered_throughput", fill = 0)
-setnames(growth, as.character(c(yr_lo, yr_hi)), c("uncovered_lo", "uncovered_hi"))
-growth[, delta := uncovered_hi - uncovered_lo]
-setorder(growth, biofuel_group, -delta)
-
-# --- console summary ---------------------------------------------------------
-cat("\n================  coverage decomposition  ================\n")
-print(chk[order(biofuel_group, year)])
-for (g in FOCUS) {
-  cat(sprintf("\n---- %s: top uncovered feedstocks in %d (by upstream tonnage) ----\n", g, yr_hi))
-  top <- by_comm[biofuel_group == g & year == yr_hi][1:min(10, .N)]
-  if (nrow(top)) print(top[, .(comm_code, item, isic, reason, uncovered_throughput)])
-  cat(sprintf("---- %s: biggest RISE in uncovered tonnage %d -> %d ----\n", g, yr_lo, yr_hi))
-  gr <- growth[biofuel_group == g][1:min(10, .N)]
-  if (nrow(gr)) print(gr[, .(comm_code, item, uncovered_lo, uncovered_hi, delta)])
-}
-
-# --- save --------------------------------------------------------------------
-fwrite(chk,     file.path(DIAG_DIR, sprintf("coverage_check_%s.csv",         VA_BASE)))
-fwrite(nodes,   file.path(DIAG_DIR, sprintf("uncovered_nodes_%s.csv",        VA_BASE)))
-fwrite(by_comm, file.path(DIAG_DIR, sprintf("uncovered_by_commodity_%s.csv", VA_BASE)))
-fwrite(by_ctry, file.path(DIAG_DIR, sprintf("uncovered_by_country_%s.csv",   VA_BASE)))
-fwrite(growth,  file.path(DIAG_DIR, sprintf("uncovered_growth_%s.csv",       VA_BASE)))
-message("Wrote diagnostics to ", DIAG_DIR)

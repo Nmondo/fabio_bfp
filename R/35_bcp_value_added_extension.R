@@ -1,18 +1,24 @@
 # =============================================================================
 # 35_bcp_value_added_extension.R
-# Standalone value-added extension for fabio-bcp: writes V.rds + v_labels.csv to
-# output_dir_bcp, parallel to E.rds/ex_labels.csv (NOT mixed into them).
+# Standalone value-added extension for fabio-bcp: writes V.rds + v_labels.csv,
+# parallel to E.rds/ex_labels.csv (not mixed into them).  Both are written to
+# intermediate_data/ (repo-local, always writable) and to output_dir_bcp (the
+# shared mnt tree, when writable).
 #
 # V.rds = year-keyed list of 8 x N matrices, rows = the two aggregate totals
 # (value_added_gloria / value_added_exiobase) plus the six components
 # value_added_{wages,capital,tls}_{gloria,exiobase}, columns = target_order (same
 # grid/order as E, X, L), zero-filled where uncovered.  Each row = per-
 # (iso3c,comm_code,year) VA:
-#   (A) FABIO commodities  -> E_bamboo VA strands, ISIC-A or ISIC-C per commodity
+#   (A) FABIO commodities  -> v2 V.rds VA strands (VA_{wages,capital,tls}_isic_{a,c}_<base>),
+#                             ISIC-A or ISIC-C per commodity
 #   (B) bio-based commodities -> bcp_value_added_combined_<base>.rds
 # The total rows equal the sum of their three components per cell.
 #
-# Self-contained: run AFTER R/16 (reads the E.rds + io_labels.csv it produces).
+# Inputs: the v2 value-added block V.rds (from output_dir) supplies the FABIO-
+# commodity strands; R/34 supplies the bio-based combined tables; the bcp E.rds +
+# io_labels.csv (from output_dir_bcp) fix the column grid and year set.  Run AFTER
+# R/16 and after the v2 pipeline has produced output_dir/V.rds.
 # =============================================================================
 
 ## --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker ---
@@ -70,15 +76,15 @@ VA_COMPONENTS <- c("wages", "capital", "tls")
 
 # Build the total + three component VA rows for one base.
 #   base         "gloria" / "exiobase"
-#   E_bamboo     year-keyed stressor x N matrices (v123 comm_code columns),
-#                carrying VA_{wages,capital,tls}_isic_{a,c}_<base> rows
+#   va_v2        v2 value-added block (V.rds): year-keyed VA-strand x N matrices
+#                (v123 comm_code columns), rows VA_{wages,capital,tls}_isic_{a,c}_<base>
 #   combined_dt  bio-based combined table (iso3c, comm_code, year,
 #                value_added_usd + value_added_{wages,capital,tls}_usd)
 #   items_isic   named vector comm_code -> ISIC ("A"/"C"/NA), v123 convention
 #   target_order bcp column order (== E/X/L)
 #   year_names   years to emit (aligned, zero-filled)
 # Returns a year-keyed list of 4 x N matrices (rows: total, wages, capital, tls).
-build_va_extension <- function(base, E_bamboo, combined_dt, items_isic,
+build_va_extension <- function(base, va_v2, combined_dt, items_isic,
                                target_order, year_names) {
   
   rowtypes <- c("total", VA_COMPONENTS)
@@ -89,9 +95,9 @@ build_va_extension <- function(base, E_bamboo, combined_dt, items_isic,
   
   # (A) FABIO commodities: per-component A/C-column selection (no strand-sum),
   # total = sum of the three, on v123 columns.
-  yrs_a <- intersect(year_names, names(E_bamboo))
+  yrs_a <- intersect(year_names, names(va_v2))
   va_v123 <- lapply(yrs_a, function(yr) {
-    m <- E_bamboo[[yr]]
+    m <- va_v2[[yr]]
     stopifnot(all(c(a_rows, c_rows) %in% rownames(m)))
     comm <- sub("^[^_]+_", "", colnames(m))
     isic <- items_isic[match(comm, names(items_isic))]
@@ -172,9 +178,17 @@ remap_v123   <- build_remap(items_v123, items_bcp)
 target_order <- paste0(io_labels_bcp$iso3c, "_", io_labels_bcp$comm_code)
 items_isic   <- setNames(items_v123$ISIC, items_v123$comm_code)   # comm_code -> ISIC
 
-E_bamboo    <- readRDS(paste0(output_dir, "E_bamboo.rds"))
+va_v2       <- readRDS(paste0(output_dir, "V.rds"))               # v2 value-added strands
+need_rows   <- sprintf("VA_%s_isic_%s_%s",
+                       rep(VA_COMPONENTS, times = 4),
+                       rep(rep(c("a", "c"), each = 3), times = 2),
+                       rep(c("gloria", "exiobase"), each = 6))
+miss_rows   <- setdiff(need_rows, rownames(va_v2[[1]]))
+if (length(miss_rows))
+  stop("v2 V.rds is missing strand row(s): ", paste(miss_rows, collapse = ", "),
+       " -- re-run the v2 R/14_5.")
 E_bcp_years <- names(readRDS(paste0(output_dir_bcp, "E.rds")))     # year set (== names(E_bcp) in R/16)
-va_years    <- intersect(E_bcp_years, names(E_bamboo))             # drop years absent from E_bamboo
+va_years    <- intersect(E_bcp_years, names(va_v2))               # drop years absent from v2 V.rds
 va_years    <- intersect(va_years, as.character(years))            # keep only the bcp model window (2012:2022);
 # the bcp E.rds is named 2011:2023 by R/16, but the
 # bio-based VA sources (R/34) only cover `years`.
@@ -186,7 +200,7 @@ row_order <- c(paste0("value_added_", bases),
                  sprintf("value_added_%s_%s", VA_COMPONENTS, b))))
 
 V_by_base <- lapply(bases, function(b)
-  build_va_extension(b, E_bamboo, read_combined_va(b), items_isic, target_order, va_years))
+  build_va_extension(b, va_v2, read_combined_va(b), items_isic, target_order, va_years))
 names(V_by_base) <- bases
 
 V_bcp <- lapply(va_years, function(yr) {
@@ -207,5 +221,11 @@ for (yr in names(V_bcp)) {
             all(rownames(V_bcp[[yr]]) == v_labels$Stressor))
 }
 
-saveRDS(V_bcp, paste0(output_dir_bcp, "V.rds"))
+# Repo-local copy (always writable) — this is what R/40 consumes.
+dir.create("intermediate_data", showWarnings = FALSE, recursive = TRUE)
+saveRDS(V_bcp,   "intermediate_data/V.rds")
+fwrite(v_labels, "intermediate_data/v_labels.csv")
+
+# Shared mnt copy (requires fabio_bcp write access).
+saveRDS(V_bcp,   paste0(output_dir_bcp, "V.rds"))
 fwrite(v_labels, paste0(output_dir_bcp, "v_labels.csv"))
