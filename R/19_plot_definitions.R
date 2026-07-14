@@ -1,5 +1,5 @@
 # ============================================================================
-# 00_plot_definitions.R
+# 19_plot_definitions.R
 #
 # Central, shared definitions for the FABIO-BCP plotting scripts:
 #   - general colour vectors (biofuels, continents)
@@ -11,11 +11,11 @@
 # data.table (the meta tables below are data.tables).
 #
 #   library(data.table)
-#   source("R/00_plot_definitions.R")
+#   source("R/19_plot_definitions.R")
 # ============================================================================
 
 if (!requireNamespace("data.table", quietly = TRUE))
-  stop("00_plot_definitions.R requires the 'data.table' package.")
+  stop("19_plot_definitions.R requires the 'data.table' package.")
 library(data.table)
 
 # ============================================================================
@@ -52,19 +52,55 @@ bp_set <- paste0("c", 152:170)                               # biopolymers / bui
 # 3. METADATA TABLES
 # ============================================================================
 
+# ---- indicator labels ------------------------------------------------------
+# NAMING. The `LCIM_EQ_*` rows of E.rds are LC-IMPACT ECOSYSTEM QUALITY damage
+# factors, expressed as a potentially disappeared fraction of species over time
+# (PDF*yr). They are BIODIVERSITY-LOSS indicators, not ecotoxicity: 15_8 builds
+# each realm by summing that realm's impact CATEGORIES, and ecotoxicity is not
+# one of them --
+#     LCIM_EQ_freshwater  = climate + eutrophication + water use
+#     LCIM_EQ_marine      = climate
+#     LCIM_EQ_terrestrial = climate + LAND USE + acidification
+# The previous "... ecotoxicity" labels were wrong for all three realms.
+#
+# SCOPE WARNING -- two different indicators currently share the name
+# "LCIM_EQ_terrestrial":
+#   * 40/41/42 read the E.rds row directly       -> climate + land use + acidification
+#   * 19_01b (lines ~115-145) REBUILDS it as     -> climate + acidification only
+#     ("ruling out land use", to avoid double-counting land with IBIF)
+# Land use is the dominant terrestrial pathway for agriculture, so the two are
+# NOT comparable and must not carry the same axis label. Until that is resolved,
+# label whichever one a script actually computed:
+#   * keep `LCIM_EQ_terrestrial` for the FULL (land-use-inclusive) E.rds row;
+#   * have 19_01b/19_02 name their recomputed series
+#     `LCIM_EQ_terrestrial_excl_land_use` and pick up the row below.
 indicator_meta <- data.table(
   indicator    = c("land_harv", "ibif_total",
-                   "LCIM_EQ_freshwater", "LCIM_EQ_marine", "LCIM_EQ_terrestrial"),
-  scale_factor = c(1e3, 1, 1, 1, 1),
-  y_label      = c("Land use (1000 ha)",
-                   "Species abundance loss (MSA\u00b7km\u00b2\u00b7yr)",
-                   "Freshwater ecotoxicity (PDF\u00b7yr)",
-                   "Marine ecotoxicity (PDF\u00b7yr)",
-                   "Terrestrial ecotoxicity (PDF\u00b7yr)"),
-  short_label  = c("Land use", "IBIF",
-                   "Freshwater ecotoxicity",
-                   "Marine ecotoxicity",
-                   "Terrestrial ecotoxicity")
+                   "LCIM_EQ_freshwater", "LCIM_EQ_marine", "LCIM_EQ_terrestrial",
+                   "LCIM_EQ_terrestrial_excl_land_use",
+                   "LCIM_EQ_terrestrial_land_use",
+                   "LCIM_EQ_terrestrial_climate",
+                   "LCIM_EQ_terrestrial_acidification"),
+  scale_factor = c(1e3, rep(1, 8)),
+  y_label      = c(
+    "Land use (1000 ha)",
+    "Species abundance loss (MSA\u00b7km\u00b2\u00b7yr)",
+    "Freshwater biodiversity loss (PDF\u00b7yr)",
+    "Marine biodiversity loss (PDF\u00b7yr)",
+    "Terrestrial biodiversity loss (PDF\u00b7yr)",
+    "Terrestrial biodiversity loss, excl. land use (PDF\u00b7yr)",
+    "Terrestrial biodiversity loss from land use (PDF\u00b7yr)",
+    "Terrestrial biodiversity loss from climate change (PDF\u00b7yr)",
+    "Terrestrial biodiversity loss from acidification (PDF\u00b7yr)"),
+  short_label  = c(
+    "Land use", "IBIF",
+    "Freshwater biodiversity loss",
+    "Marine biodiversity loss",
+    "Terrestrial biodiversity loss",
+    "Terrestrial biodiversity loss (excl. land use)",
+    "Terrestrial biodiversity loss (land use)",
+    "Terrestrial biodiversity loss (climate)",
+    "Terrestrial biodiversity loss (acidification)")
 )
 
 commodity_meta <- data.table(
@@ -267,7 +303,7 @@ get_feedstock_palette <- function(feedstocks,
 # Example usage:
 #
 #   library(data.table)
-#   source("R/00_plot_definitions.R")
+#   source("R/19_plot_definitions.R")
 #
 #   pal <- get_feedstock_palette(unique(d_plot$feedstock))   # feedstock_meta auto-used
 #   ggplot(d_plot, aes(year, value, fill = feedstock)) +
