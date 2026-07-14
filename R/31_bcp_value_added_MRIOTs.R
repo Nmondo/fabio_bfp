@@ -209,10 +209,25 @@ clean_intensity <- function(d) {
              va_intensity_winsor = va_intensity,
              cap_lower = NA_real_, cap_upper = NA_real_,
              mad_z = NA_real_, winsorized = FALSE)]
-    return(d[])
+    return(d[year %in% keep_years])
   }
+  
+  # -- stage a: Hampel, on the BUFFERED series (the buffer is edge context) ----
   d[, c("va_intensity_hampel", "window_median", "series_mad", "hampel_z", "is_spike") :=
       hampel_series(va_intensity), by = .(va_component, region_code)]
+  
+  # -- drop the buffer years BEFORE the winsor --------------------------------
+  # The buffer exists only so the rolling median has a full +/- HAMPEL_HALF_WINDOW
+  # of context at the edges of the keep window. It must NOT enter the winsor pool:
+  # the pooled MAD band and the IHS theta are cross-sectional statistics of the
+  # MODEL years, and fitting them over the buffered span silently widens/shifts
+  # every cap band. Mirrors 14_1's stage 4a -> 4b buffer drop.
+  n_pre <- nrow(d)
+  d <- d[year %in% keep_years]
+  message(sprintf("    dropped %d buffer-year row(s); %d row(s) into the winsor pool.",
+                  n_pre - nrow(d), nrow(d)))
+  
+  # -- stage b: pooled MAD winsor, per component, MODEL YEARS ONLY -------------
   d[, `:=`(va_intensity_winsor = NA_real_, cap_lower = NA_real_,
            cap_upper = NA_real_, mad_z = NA_real_)]
   for (comp in VA_COMPONENTS) {
@@ -430,7 +445,9 @@ build_base_intensity <- function(raw, area_conc, region_col, codes) {
   areas <- vector("list", length(codes))
   for (i in seq_along(codes)) {
     code <- codes[i]
-    reg  <- clean_intensity(raw[sector_code == code])[year %in% keep_years]
+    # clean_intensity() now drops the buffer years itself, between the Hampel
+    # (which needs them) and the winsor (which must not see them).
+    reg  <- clean_intensity(raw[sector_code == code])
     reg[, sector_code := code]
     area <- intensity_to_area(reg, area_conc, region_col)
     area[, sector_code := code]
