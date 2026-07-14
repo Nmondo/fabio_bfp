@@ -42,10 +42,10 @@
 #
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_responsibility_<base>_<alloc>[_ex_tls].csv
 #       long: year, va_variant, biofuel_group, va_iso3c, va_comm_code, va_item,
-#             ibif_va_resp  (the normalised value-added responsibility)
+#             va_resp  (the normalised value-added responsibility, in <metric> units)
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_coverage_<base>_<alloc>[_ex_tls].csv
-#       per (year, va_variant, biofuel_group): ibif_consumer_footprint,
-#       ibif_allocated_norm, conservation_gap_pct, implied_unit_value_usd_per_t,
+#       per (year, va_variant, biofuel_group): consumer_footprint,
+#       allocated_norm, conservation_gap_pct, implied_unit_value_usd_per_t,
 #       throughput_coverage (the HONESTY CHECK -- read the CAVEAT block).
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_gaps_<base>_<alloc>.csv
 #       per (year, iso3c, comm_code, item) with output but no value added that
@@ -54,7 +54,8 @@
 #       residual catch-all nodes excluded.
 #   <OUT_DIR>/FABIO_bcp_<metric>_accounts_<base>_<alloc>.csv
 #       long: year, biofuel_group, account (production|consumption|value_added),
-#             iso3c, ibif -- the three-account contrast (full VA variant).
+#             iso3c, value -- the three-account contrast (full VA variant); `value`
+#             is in the units of <metric>, whichever stressor STRESSOR selects.
 #   va_variant: 'full' uses total value added; 'ex_tls' excludes taxes-less-
 #   subsidies (value added = wages + capital), so a sector that is net-subsidised
 #   does not carry lower responsibility on that account.
@@ -153,7 +154,7 @@ tag <- function(x, fallback) {
   if (nzchar(s)) s else fallback
 }
 
-allocation <- "mass"                 # co-product rule of the Leontief inverse: "mass" | "value"
+allocation <- "value"                 # co-product rule of the Leontief inverse: "mass" | "value"
 STRESSOR   <- "LCIM_EQ_terrestrial"  # "ibif_total" | "LCIM_EQ_terrestrial"
 VA_BASE    <- "exiobase"             # "gloria" | "exiobase"
 NORMALISE  <- TRUE                   # per-chain renormalisation (see CAVEAT)
@@ -353,10 +354,10 @@ compute_year <- function(yr) {
       if (variant == "full") {
         cba_reg <- as.vector(crossprod(fB[in_g], Yi[in_g, , drop = FALSE]))  # per Y column
         acct_rows[[g]] <- rbindlist(list(
-          data.table(biofuel_group = g, account = "production",  iso3c = io$iso3c, ibif = f * BY),
-          data.table(biofuel_group = g, account = "consumption", iso3c = fd_iso3c, ibif = cba_reg),
-          data.table(biofuel_group = g, account = "value_added", iso3c = io$iso3c, ibif = h)
-        ))[ibif != 0]
+          data.table(biofuel_group = g, account = "production",  iso3c = io$iso3c, value = f * BY),
+          data.table(biofuel_group = g, account = "consumption", iso3c = fd_iso3c, value = cba_reg),
+          data.table(biofuel_group = g, account = "value_added", iso3c = io$iso3c, value = h)
+        ))[value != 0]
       }
       BYd <- BY; BYd[exempt_node] <- 0                  # drop ecosystem services (e.g. Grazing) from the check
       exempt_throughput   <- sum(BY[exempt_node])       # tonnage set aside as ecosystem services (transparency)
@@ -371,15 +372,15 @@ compute_year <- function(yr) {
         va_iso3c      = io$iso3c[keep],
         va_comm_code  = io$comm_code[keep],
         va_item       = io$item[keep],
-        ibif_va_resp  = h[keep]                         # normalised VA responsibility (the deliverable)
+        va_resp       = h[keep]                         # normalised VA responsibility (the deliverable)
       )
       
       cover_rows[[key]] <- data.table(
         year                     = as.integer(yr),
         va_variant               = variant,
         biofuel_group            = g,
-        ibif_consumer_footprint  = fp_consumer,         # what the biofuel supply chain causes (upstream)
-        ibif_allocated_norm      = allocated_norm,      # normalised total (should match consumer fp)
+        consumer_footprint       = fp_consumer,         # what the biofuel supply chain causes (upstream)
+        allocated_norm           = allocated_norm,      # normalised total (should match consumer fp)
         conservation_gap_pct     = 100 * (allocated_norm - fp_consumer) / fp_consumer,
         implied_unit_value_usd_per_t = implied_unit_value,
         ecosystem_service_throughput = exempt_throughput,  # upstream tonnes excluded from the check
@@ -407,7 +408,7 @@ compute_year <- function(yr) {
   
   acct_dt <- if (length(acct_rows))
     rbindlist(acct_rows, use.names = TRUE, fill = TRUE)[
-      , .(ibif = sum(ibif)), by = .(biofuel_group, account, iso3c)][
+      , .(value = sum(value)), by = .(biofuel_group, account, iso3c)][
         , year := as.integer(yr)][] else NULL
   
   list(alloc = rbindlist(alloc_rows, use.names = TRUE, fill = TRUE),
@@ -438,7 +439,7 @@ if (nrow(accts)) {
   if (!is.null(regions) && "continent" %in% names(regions))
     accts[, continent := regions$continent[match(iso3c, regions$iso3c)]]
   acc_path <- out_csv("accounts")
-  fwrite(accts[order(year, biofuel_group, account, -ibif)], acc_path)
+  fwrite(accts[order(year, biofuel_group, account, -value)], acc_path)
   message(sprintf("Wrote %s (%d rows)", acc_path, nrow(accts)))
 }
 
@@ -446,10 +447,10 @@ if (nrow(accts)) {
 cat("\n================  IBIF value-added responsibility  ================\n")
 cat(sprintf("VA base: %-8s   allocation: %-5s   normalise: %s\n", VA_BASE, allocation, NORMALISE))
 if (nrow(cover)) {
-  chk <- cover[, .(consumer   = sum(ibif_consumer_footprint),
-                   norm       = sum(ibif_allocated_norm),
-                   unit_value = weighted.mean(implied_unit_value_usd_per_t, ibif_consumer_footprint),
-                   throughput_cov = weighted.mean(throughput_coverage, ibif_consumer_footprint)),
+  chk <- cover[, .(consumer   = sum(consumer_footprint),
+                   norm       = sum(allocated_norm),
+                   unit_value = weighted.mean(implied_unit_value_usd_per_t, consumer_footprint),
+                   throughput_cov = weighted.mean(throughput_coverage, consumer_footprint)),
                by = .(va_variant, biofuel_group)]
   chk[, conservation_gap_pct := 100 * (norm - consumer) / consumer]
   print(chk)
