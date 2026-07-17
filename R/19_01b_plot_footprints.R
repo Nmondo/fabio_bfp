@@ -931,6 +931,7 @@ p_lcim <- plot_commodity_feedstock_grid(
   top_n_feedstock = 7
 )
 
+p_ibif_lcim <- plot_commodity_feedstock_grid(
   dt_tradeFeed,
   commodities = c("c146", "c147", "c149"),
   indicators  = c("ibif_total","LCIM_EQ_terrestrial"),
