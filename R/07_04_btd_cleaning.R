@@ -835,14 +835,33 @@ prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_s
 # prices <- left_join(prices, caps, by = "product")
 
 
-setwd(file.path(fabio_root, "intermediate_data"))
+# --- DDGS name alias ------------------------------------------------------------
+# The trade data calls it "Dried distillers grains with solubles"; items_full_bcp calls
+# item 654 "Brewing or distilling dregs and waste" (-> c171). The name join therefore
+# MISSES, and 148.8 Mt of DDGS trade across 5,196 rows ends up with item_code = NA and
+# comm_code = NA — a bilateral flow of *nothing*, which 11's ghost check then reports as
+# 18 Mt of countries shipping an unnamed commodity.
+BCP_ITEM_ALIAS <- data.table(
+  item_alias = c("Dried distillers grains with solubles"),
+  item_code  = 654L,
+  comm_code  = "c171")
 
-btd_intermediate <- readRDS("btd_intermediate.rds")
+setDT(btd_final_bcp)
+btd_final_bcp[BCP_ITEM_ALIAS, on = .(item = item_alias),
+              `:=`(item_code = fcoalesce(item_code, i.item_code),
+                   comm_code = fcoalesce(comm_code, i.comm_code))]
+
+miss <- btd_final_bcp[is.na(comm_code) | comm_code == "",
+                      .(t = sum(value), n = .N), by = .(item_code, item)]
+fabio_assert(nrow(miss) == 0,
+             "07_04: %d btd_final_bcp item(s) still have no comm_code — they become bilateral flows of nothing.",
+             nrow(miss), data = miss)
 
 
 ###########################################################
 ########### WRITING DATA TABLES #########
 ###########################################################
+
 
 setwd(fabio_root)
 

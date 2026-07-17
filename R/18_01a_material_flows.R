@@ -721,11 +721,12 @@ bf_feedstock_trace_flows <- function(years,
                                      save       = FALSE,
                                      output_dir = OUT_DIR,
                                      regions, io, fd,
-                                     Y = NULL, L = NULL) {
+                                     X = NULL, Y = NULL, L = NULL,
+                                     anchor = "production") {
   
   sub <- if (losses) "losses/" else ""
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
-  
+  if (anchor == "production" && is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))  
   biofuel <- intersect(biofuel, unique(io$comm_code))
   if (length(biofuel) == 0) stop("No valid biofuel comm_codes supplied.")
   
@@ -747,6 +748,7 @@ bf_feedstock_trace_flows <- function(years,
     Y_country <- agg(Yi)
     consumers <- colnames(Y_country)
     Li <- if (is.null(L)) readRDS(paste0(input_path, sub, yr, "_L_", allocation, ".rds")) else L[[yc]]
+    Xi <- if (anchor == "production") X[, yc] else NULL
     
     rbindlist(lapply(biofuel, function(cc) {
       cc_idx    <- which(io$comm_code == cc)
@@ -754,11 +756,21 @@ bf_feedstock_trace_flows <- function(years,
       
       L_ic <- rowsum(as.matrix(Li[feed_rows_A, cc_idx, drop = FALSE]), group = origin_A)  # origin_country x producer
       origins <- rownames(L_ic)
-      Yb   <- as.matrix(Y_country[cc_idx, , drop = FALSE])                                # producer x consumer
+      Yb <- as.matrix(Y_country[cc_idx, , drop = FALSE])         # producer x consumer (final demand)
       
-      ## ---- STAGE 1 : origin -> producer  (value = L_ic[i,p] * y_p) --------------------
-      yb <- rowSums(Yb)
-      S1 <- sweep(L_ic, 2, yb, `*`)                                # origin_country x producer
+      # Anchor on PRODUCTION: scale each producer's consumer split so it sums to x_p (gross
+      # output) rather than y_p (final demand). Preserves mass balance (stage1 = Σ_k mass),
+      # makes stage-1 identical to the production row / bf_supply_chain_flows. Biofuels are
+      # ~entirely final-demanded (r≈1); the small intermediate biogasoline share is attributed
+      # to final consumers pro-rata. anchor="consumption" leaves the final-demand anchoring.
+      if (anchor == "production") {
+        xb  <- as.numeric(Xi[cc_idx]); yb0 <- rowSums(Yb)
+        Yb  <- Yb * fifelse(yb0 > 0, xb / yb0, 0)                # row i scaled by r_p = x_p/y_p
+      }
+      
+      ## ---- STAGE 1 : origin -> producer  (value = L_ic[i,p] * anchor_p; anchor = x_p by default) ----
+      anchor_p <- rowSums(Yb)     # = x_p when anchor="production", y_p when anchor="consumption"
+      S1 <- sweep(L_ic, 2, anchor_p, `*`)
       s1 <- data.table(
         src_iso = rep(origins,   times = ncol(S1)),
         tgt_iso = rep(producers, each  = nrow(S1)),
@@ -1026,6 +1038,11 @@ extract_Z_long <- function(Z, commodities = c("c146", "c147", "c149"), io) {
       year           = as.integer(yr)
     )]
     dt[, .(year, origin_country, origin_comm, target_country, target_comm, value)]
+    alloc <- fread(file.path(base_path, "bf_mass_alloc_shares.csv"))   # year, iso3c, comm_code, R
+    
+    dt[origin_comm != target_comm,          # skip only the biofuel self-loop / diagonal losses
+    ][alloc, on = .(year, target_country = iso3c, target_comm = comm_code),
+      value := value * i.R]
   }))
   
   if (nrow(out) == 0) {
@@ -1103,7 +1120,7 @@ bf_feedstock_trace_flows(
   years      = 2012:2022,
   biofuel    = c("c146", "c147", "c149"),
   allocation = "mass",
-  regions = regions, io = io, fd = fd, Y = Y,
+  regions = regions, io = io, fd = fd, X = X, Y = Y,   # anchor = "production" (default)
   save = TRUE
 )
 

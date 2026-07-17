@@ -10,7 +10,6 @@ if (!nzchar(fabio_root)) {
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
 setwd(fabio_root)
-setwd(fabio_root)
 
 # Setup ------------------------------------------------------------------------
 library(data.table)
@@ -376,9 +375,9 @@ plot_SDA_chain(2012, 2022, "ibif_total")
 plot_SDA_chain_continent(2012, 2022, "ibif_total",
                          continents = c("EU", "ASI", "LAM", "NAM"))
 
-plot_SDA_chain_continent(2012, 2022, "ibif_total",
-                         continents     = character(0),
-                         include_global = TRUE)
+# plot_SDA_chain_continent(2012, 2022, "ibif_total",
+#                          continents     = character(0),
+#                          include_global = TRUE)
 
 
 ######################################################################################################################
@@ -572,3 +571,175 @@ plot_SDA_chained_drivers <- function(indicator,
 # --- Usage -----------------------------------------------------------------
 plot_SDA_chained_drivers("ibif_total")
 
+
+
+######################################################################################################################
+#3b. SDA chained driver decomposition — summed across one consumer continent (default EU)
+######################################################################################################################
+
+plot_SDA_chained_drivers_continent <- function(indicator,
+                                               consumer_continent = "EU",
+                                               output_dir = file.path("output", "plot"),
+                                               width = 9, height = 6, dpi = 300) {
+  
+  # --- Indicator metadata ----------------------------------------------------
+  ind  <- indicator
+  meta <- indicator_meta[indicator == ind]
+  if (nrow(meta) == 0L) stop("Unknown indicator: ", ind, ". Add it to indicator_meta.")
+  scale_factor <- meta$scale_factor
+  y_axis_label <- paste0("Contribution to Δ ", meta$y_label)
+  short_lbl    <- meta$short_label
+  cons_lbl     <- paste(consumer_continent, collapse = " + ")
+  
+  # --- 0. Read, rescale, map continents, then FILTER consumers ---------------
+  path <- sprintf(file.path(IN_DIR, "FABIO_SDA_chained_2012_2022_%s_value_BF_drivers.csv"),
+                  indicator)
+  raw <- fread(path)
+  raw[, value := value / scale_factor]
+  
+  raw[regions, on = c(country_consumer = "iso3c"), continent_consumer := i.continent]
+  raw[regions, on = c(country_origin   = "iso3c"), continent_origin   := i.continent]
+  
+  raw <- raw[continent_consumer %in% consumer_continent]
+  if (nrow(raw) == 0L) stop("No rows with continent_consumer in: ", cons_lbl)
+  
+  # Consumer dimension is collapsed: group only by the driver dims -------------
+  effect_groups <- list(
+    intensity     = c("continent_origin", "item_origin"),
+    feedstock_mix = c("item_origin"),
+    sourcing      = c("continent_origin", "item_origin"),
+    scale         = c("commodity"),
+    origin        = c("continent_origin", "item_origin", "commodity"),
+    composition   = c("commodity")
+  )
+  
+  plot_base <- rbindlist(
+    lapply(names(effect_groups), function(eff) {
+      gv <- effect_groups[[eff]]
+      raw[effect == eff, .(value = sum(value, na.rm = TRUE)), by = gv][, effect := eff][]
+    }),
+    use.names = TRUE, fill = TRUE
+  )
+  
+  # --- 1. Helper: one effect, drivers on the x-axis ---------------------------
+  make_sda_driver_plot <- function(dt, eff, group_var,
+                                   palette    = NULL,
+                                   fill_order = NULL,
+                                   top_n      = NULL) {
+    sub <- dt[effect == eff]
+    
+    if (!is.null(top_n)) {
+      ranked <- sub[, .(tot = sum(abs(value), na.rm = TRUE)), by = c(group_var)][order(-tot)]
+      keep   <- ranked[seq_len(min(top_n, nrow(ranked))), get(group_var)]
+      sub[, (group_var) := fifelse(get(group_var) %in% keep, get(group_var), "Other")]
+    }
+    
+    agg <- sub[, .(value = sum(value, na.rm = TRUE)), by = c(group_var)]
+    
+    if (is.null(fill_order)) {
+      fill_order <- agg[order(-abs(value)), get(group_var)]
+    }
+    fill_order <- fill_order[fill_order %in% agg[[group_var]]]
+    if ("Other" %in% fill_order) fill_order <- c(setdiff(fill_order, "Other"), "Other")
+    agg[, (group_var) := factor(get(group_var), levels = fill_order)]
+    
+    p <- ggplot(agg, aes(x = .data[[group_var]], y = value, fill = .data[[group_var]])) +
+      geom_col(width = 0.75) +
+      geom_hline(yintercept = 0, linewidth = 0.3) +
+      labs(
+        title    = paste0("SDA driver decomposition (chained 2012–2022, ",
+                          short_lbl, ") — ", eff),
+        subtitle = paste0("Summed across all ", cons_lbl, " consumer countries; broken down by ", group_var),
+        x        = NULL,
+        y        = y_axis_label,
+        fill     = group_var
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        axis.text.x        = element_text(angle = 30, hjust = 1),
+        panel.grid.major.x = element_blank(),
+        legend.position    = "none"
+      )
+    
+    if (!is.null(palette)) p <- p + scale_fill_manual(values = palette)
+    p
+  }
+  
+  # --- 2. Crop palette (unchanged) -------------------------------------------
+  item_palette <- c(
+    "Sunflower seed"       = "#F59E0B",
+    "Rape and Mustardseed" = "#B7791F",
+    "Oil, palm fruit"      = "#DC2626",
+    "Soyabeans"            = "#B45309",
+    "Fodder crops"         = "#78350F",
+    "Wheat and products"   = "#A3E635",
+    "Maize and products"   = "#65A30D",
+    "Sorghum and products" = "#166534",
+    "Rice and products"    = "#059669",
+    "Sugar cane"           = "#0D9488",
+    "Cassava and products" = "#155E75",
+    "Other"                = "#9CA3AF"
+  )
+  
+  item_order <- c(
+    "Wheat and products", "Maize and products", "Sorghum and products",
+    "Rice and products",  "Sugar cane",         "Cassava and products",
+    "Fodder crops",       "Soyabeans",          "Oil, palm fruit",
+    "Rape and Mustardseed", "Sunflower seed",   "Other"
+  )
+  
+  commodity_order <- plot_base[
+    effect %in% c("scale", "composition"),
+    .(tot = sum(abs(value), na.rm = TRUE)), by = commodity
+  ][order(-tot), commodity]
+  
+  origin_order <- plot_base[
+    effect %in% c("intensity", "sourcing", "origin"),
+    .(tot = sum(abs(value), na.rm = TRUE)), by = continent_origin
+  ][order(-tot), continent_origin]
+  
+  # --- 3. Specs --------------------------------------------------------------
+  specs <- list(
+    intensity     = list(group_var = "item_origin",      top_n = 10,
+                         palette = item_palette, fill_order = item_order),
+    feedstock_mix = list(group_var = "item_origin",      top_n = 10,
+                         palette = item_palette, fill_order = item_order),
+    sourcing      = list(group_var = "continent_origin", top_n = NULL,
+                         palette = NULL,         fill_order = origin_order),
+    scale         = list(group_var = "commodity",        top_n = NULL,
+                         palette = NULL,         fill_order = commodity_order),
+    composition   = list(group_var = "commodity",        top_n = NULL,
+                         palette = NULL,         fill_order = commodity_order),
+    origin        = list(group_var = "continent_origin", top_n = NULL,
+                         palette = NULL,         fill_order = origin_order)
+  )
+  
+  plots <- lapply(names(specs), function(eff) {
+    s <- specs[[eff]]
+    make_sda_driver_plot(plot_base, eff,
+                         group_var  = s$group_var,
+                         top_n      = s$top_n,
+                         palette    = s$palette,
+                         fill_order = s$fill_order)
+  })
+  names(plots) <- names(specs)
+  
+  # --- 4. Save ---------------------------------------------------------------
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  tag <- paste(consumer_continent, collapse = "-")
+  for (eff in names(plots)) {
+    ggsave(
+      filename = file.path(output_dir,
+                           sprintf("FABIO_SDA_chained_2012_2022_%s_drivers_%s_%s.pdf",
+                                   indicator, eff, tag)),
+      device = cairo_pdf,
+      plot   = plots[[eff]],
+      width  = width, height = height, dpi = dpi
+    )
+  }
+  
+  invisible(list(plots = plots, plot_base = plot_base))
+}
+
+# --- Usage -----------------------------------------------------------------
+plot_SDA_chained_drivers_continent("ibif_total", consumer_continent = "EU")

@@ -15,7 +15,6 @@ if (!nzchar(fabio_root)) {
     stop("Repo root not found above ", getwd(), " - set FABIO_BFP_ROOT or run from inside the repo.")
 }
 setwd(fabio_root)
-setwd(fabio_root)
 
 source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
