@@ -24,6 +24,7 @@ files <- c(climate_change_terrestrial    = "3_CF_CLIMATE_CHANGE.zip",
            eutrophication_freshwater     = "8_CF_EUTROPHICATION.zip",
            invasive_species              = "9_CF_INVASIVE_SPECIES.zip")
 
+# Download LC-Impact from Zenodo (latest version 2 as of March 24, 2026)
 fa_dl(file = files, path = path_lc, link = "https://zenodo.org/records/19202729/files/")
 
 # extract from zip files
@@ -255,7 +256,3 @@ saveRDS(FD_climate_list, "data/extensions/tidy/fd_climate_tidy.rds")
 
 rm(list = ls())
 gc()
-
-
-
-
