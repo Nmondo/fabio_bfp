@@ -234,14 +234,15 @@ plot_feedstock_desc <- function(data,
                                 to_supply           = TRUE,          # convert embodied feedstock -> biofuel supply via TCF
                                 tcf                 = NULL,          # NULL = load intermediate_data/tcf_table_final.rds
                                 tcf_on_missing      = c("drop", "keep", "error"),
-                                y_label             = NULL,
+                                scale               = 1,             # value / scale (matches plot_country_consumption)
+                                y_lab               = NULL,
                                 total_labels        = TRUE,
                                 accuracy            = 1) {
   
   top_scope      <- match.arg(top_scope)
   tcf_on_missing <- match.arg(tcf_on_missing)
-  if (is.null(y_label))
-    y_label <- if (to_supply) "Biofuel supply (M liters)"
+  if (is.null(y_lab))
+    y_lab <- if (to_supply) "Biofuel supply (M liters)"
   else           "Feedstock mass embodied in biofuel consumption (ktonnes)"
   
   comm_lookup  <- setNames(as.character(commodity_meta$item),
@@ -356,7 +357,7 @@ plot_feedstock_desc <- function(data,
                               levels = c(top_feedstocks,
                                          if (include_other) "Other"))) %>%
     group_by(year, target_comm, target_continent, feedstock) %>%
-    summarize(value = sum(value), .groups = "drop")
+    summarize(value = sum(value) / scale, .groups = "drop")
   
   totals <- d_plot %>%
     group_by(year, target_comm, target_continent) %>%
@@ -368,7 +369,7 @@ plot_feedstock_desc <- function(data,
   cat_display <- c("Starchy / Sugar crops" = "Sugar and starch",
                    "Oilcrops"              = "Oils and fats")
   cat_order   <- names(cat_display)
-
+  
   present_levels  <- levels(droplevels(d_plot$feedstock))
   neutral_present <- setdiff(present_levels[feed_cat(present_levels) == "Other"], "Other")
   neutral_cols    <- setNames(unname(feedstock_color_map[neutral_present]), neutral_present)
@@ -421,6 +422,8 @@ plot_feedstock_desc <- function(data,
     d_plot$feedstock <- factor(d_plot$feedstock, levels = levels(pad$feedstock))
   }
   
+  num <- scales::label_number(accuracy = accuracy)
+  
   n_comm <- length(unique(d_plot$target_comm))
   n_reg  <- length(unique(d_plot$target_continent))
   
@@ -432,9 +435,9 @@ plot_feedstock_desc <- function(data,
                       name   = NULL,
                       drop   = FALSE) +
     scale_x_continuous(breaks = scales::pretty_breaks()) +
-    scale_y_continuous(expand = expansion(mult = c(0, 0.10))) +
+    scale_y_continuous(labels = num, expand = expansion(mult = c(0, 0.10))) +
     guides(fill = guide_legend(ncol = 1, byrow = TRUE)) +
-    labs(x = NULL, y = y_label) +
+    labs(x = NULL, y = y_lab) +
     theme_minimal(base_size = 11) +
     theme(panel.grid.minor = element_blank(),
           legend.key.size  = unit(0.4, "cm"),
@@ -443,7 +446,6 @@ plot_feedstock_desc <- function(data,
           strip.text       = element_text(face = "bold"))
   
   if (total_labels) {
-    num <- scales::label_number(accuracy = accuracy)
     p <- p + geom_text(data = totals,
                        aes(year, total, label = num(total)),
                        inherit.aes = FALSE, vjust = -0.4, size = 2.7, fontface = "bold")
@@ -1017,8 +1019,13 @@ ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.svg"),
        width = 10, height = 6, dpi = 300)
 
 
-# Supply by region and feedstocks. 
-p <- plot_feedstock_desc(Z_per_year, c("c146","c147","c149"), c("EU","ASI","NAM","LAM"))  # default tcf_on_missing = "drop"
+# Supply by region and feedstocks.
+p <- plot_feedstock_desc(Z_per_year,
+                         c("c146","c147","c149"),
+                         c("EU","ASI","NAM","LAM"),
+                         scale        = 1e3,
+                         accuracy     = 1,
+                         y_lab        = "Biofuel supply (B liters)")  # default tcf_on_missing = "drop"
 
 ggsave(
   filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
@@ -1031,11 +1038,13 @@ p_country <- plot_country_consumption(
   comm_in      = c("c146", "c147", "c149"),
   continent_in = c("EU", "ASI", "NAM", "LAM"),
   n_top        = 10,
-  share_thresh = 0.10)
+  share_thresh = 0.10,
+  scale        = 1e6,
+  accuracy     = 1,
+  y_lab        = "Biofuel consumption (B liters)")
 
 ggsave(file.path("output", "plot", "consumption_by_country_BF_EU-ASI-NAM-LAM.svg"),
        p_country, width = 12, height = 8, dpi = 300)
-
 
 
 ######################################################################################################################

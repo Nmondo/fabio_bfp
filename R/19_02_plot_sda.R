@@ -446,6 +446,11 @@ plot_SDA_chained_drivers <- function(indicator,
                                    get(group_var), "Other")]
     }
     
+    # NEW: anything without a defined level -> "Other", so factor() never NA-coerces
+    if (!is.null(fill_order)) {
+      sub[!(get(group_var) %in% fill_order), (group_var) := "Other"]
+    }
+    
     agg <- sub[, .(value = sum(value, na.rm = TRUE)),
                by = c("continent_consumer", group_var)]
     
@@ -526,9 +531,9 @@ plot_SDA_chained_drivers <- function(indicator,
   
   # --- 3. Specs --------------------------------------------------------------
   specs <- list(
-    intensity     = list(group_var = "item_origin",      top_n = 10,
+    intensity     = list(group_var = "item_origin", top_n = NULL,
                          palette = item_palette, fill_order = item_order),
-    feedstock_mix = list(group_var = "item_origin",      top_n = 10,
+    feedstock_mix = list(group_var = "item_origin", top_n = NULL,
                          palette = item_palette, fill_order = item_order),
     sourcing      = list(group_var = "continent_origin", top_n = NULL,
                          palette = NULL,         fill_order = cont_order),
@@ -634,6 +639,11 @@ plot_SDA_chained_drivers_continent <- function(indicator,
       sub[, (group_var) := fifelse(get(group_var) %in% keep, get(group_var), "Other")]
     }
     
+    # NEW: fold anything without a defined level into "Other" so factor() never NA-coerces
+    if (!is.null(fill_order) && "Other" %in% fill_order) {
+      sub[!(get(group_var) %in% fill_order), (group_var) := "Other"]
+    }
+    
     agg <- sub[, .(value = sum(value, na.rm = TRUE)), by = c(group_var)]
     
     if (is.null(fill_order)) {
@@ -700,9 +710,9 @@ plot_SDA_chained_drivers_continent <- function(indicator,
   
   # --- 3. Specs --------------------------------------------------------------
   specs <- list(
-    intensity     = list(group_var = "item_origin",      top_n = 10,
+    intensity     = list(group_var = "item_origin", top_n = NULL,
                          palette = item_palette, fill_order = item_order),
-    feedstock_mix = list(group_var = "item_origin",      top_n = 10,
+    feedstock_mix = list(group_var = "item_origin", top_n = NULL,
                          palette = item_palette, fill_order = item_order),
     sourcing      = list(group_var = "continent_origin", top_n = NULL,
                          palette = NULL,         fill_order = origin_order),

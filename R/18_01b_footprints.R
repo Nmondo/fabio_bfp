@@ -47,6 +47,7 @@ regions <- fread(file="inst/regions_full.csv") %>% filter(current==TRUE)
 io <- fread(paste0(input_path,"io_labels.csv"))
 fd <- fread(file=paste0(input_path,"losses/fd_labels.csv"))
 ex <- fread(file=paste0(base_path,"ex_labels.csv"))         # shared across versions; needed for stressor selection
+items_full_bcp <- as.data.table(fread("inst/items_full_bcp.csv"))  # comm_code -> comm_group (end-product grouping)
 
 # Create output directory ------------------------------------------------------
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
@@ -552,13 +553,125 @@ fp_trade_breakdown_feedstock <- function(year,
 }
 
 
+###########################################################
+########### PRODUCER-LOCATED, END-USE-DECOMPOSED IMPACT
+########### (symmetric Ly footprint, kept at the producer)
+###########################################################
+# For a chosen stressor, split each PRODUCING country's territorial agricultural
+# impact by the END-PRODUCT whose (global) final demand ultimately drives it:
+#
+#     E_{c,k} = sum_{i in c, crop} e_i * x^(k)_i / x_i ,   x^(k) = L y^(k)
+#
+# where y^(k) is total final demand (summed over ALL consumers) for end-product
+# group k = comm_group of the finally consumed product. Because sum_k x^(k) = x,
+# sum_k E_{c,k} = sum_{i in c} e_i = the country's territorial total. So every
+# end-product (biofuels, vegetable oils, food, feed, ...) is treated the SAME way
+# (a symmetric Ly footprint) and the pieces sum to the producer's own total.
+#
+# Crucially the impact stays at the PRODUCING country i (where it physically
+# occurs); the end-product is only a *label*, never a geographic re-aggregation.
+# Impacts from different producers are never summed together - each country keeps
+# its own row - which is what makes this appropriate for non-spatially-additive
+# indicators like MSA/ibif. It uses the final-demand footprint L y^(k) (not a
+# gross-output form), so all end-products are treated symmetrically.
+#
+# Additivity to the territorial total holds to the extent x = L*rowSums(Y) in the
+# tables (true for a balanced IO system).
+
+fp_enduse_origin <- function(year,
+                             extension,
+                             ag_comm    = sprintf("c%03d", 1:145),   # origin sectors (where impact occurs)
+                             allocation = "value",
+                             input_path = MRIO_PATH,
+                             losses     = TRUE,
+                             drop_zero  = TRUE,
+                             save       = FALSE,
+                             output_dir = OUT_DIR,
+                             regions, io, items,
+                             X = NULL, Y = NULL, E = NULL, L = NULL) {
+  
+  sub <- if (losses) "losses/" else ""
+  if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
+  if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
+  if (is.null(E)) E <- readRDS(paste0(base_path, "E.rds"))
+  if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
+  
+  Xi <- X[, as.character(year)]
+  Yi <- Y[[as.character(year)]]
+  Ei <- E[[as.character(year)]]
+  
+  if (!extension %in% rownames(Ei))
+    stop("Stressor '", extension, "' not found in rownames(E[[", year, "]]).")
+  
+  # --- Direct intensity f_i = e_i / x_i (production-based; e_i on crop sectors)
+  e_i   <- as.numeric(Ei[extension, ])
+  inv_x <- 1 / as.vector(Xi); inv_x[!is.finite(inv_x)] <- 0
+  f_i   <- e_i * inv_x
+  
+  # --- Global final demand per product row (sum over ALL consumers) ----------
+  y_tot <- as.numeric(Matrix::rowSums(Yi))
+  
+  # --- End-product group of each product = comm_group of the consumed product -
+  grp <- items$comm_group[match(io$comm_code, items$comm_code)]
+  grp[is.na(grp)] <- "Unknown"
+  groups <- sort(unique(grp))
+  G <- length(groups)
+  
+  # Y_grp[, k] = y_tot masked to products in group k   (RN x G, sparse)
+  Ygrp <- sparseMatrix(i = seq_len(nrow(io)),
+                       j = match(grp, groups),
+                       x = y_tot,
+                       dims = c(nrow(io), G))
+  
+  # Output at each origin driven by group-k final demand: x^(k) = L y^(k)
+  Xgrp <- as.matrix(L %*% Ygrp)                        # RN x G
+  
+  # Impact at origin i attributed to end-product k: e_i * x^(k)_i / x_i --------
+  contrib <- Xgrp * f_i                                # row-scale by f_i
+  
+  # --- Keep agricultural origin sectors, aggregate to producing country x group
+  ag_present <- intersect(ag_comm, io$comm_code)
+  if (length(ag_present) == 0) stop("No valid agricultural comm_codes supplied.")
+  ag_idx <- which(io$comm_code %in% ag_present)
+  
+  M <- rowsum(contrib[ag_idx, , drop = FALSE], group = io$iso3c[ag_idx])  # n_country x G
+  out <- data.table(country   = rep(rownames(M), times = G),
+                    end_group = rep(groups,      each  = nrow(M)),
+                    enduse_impact = as.vector(M))
+  
+  # --- Totals + share --------------------------------------------------------
+  tot <- out[, .(total_ag_impact = sum(enduse_impact)), by = country]
+  out <- merge(out, tot, by = "country", all.x = TRUE)
+  out[, share := fifelse(total_ag_impact != 0, enduse_impact / total_ag_impact, NA_real_)]
+  out[, `:=`(year = year, indicator = extension, allocation = allocation)]
+  out[, continent := regions$continent[match(country, regions$iso3c)]]
+  
+  if (drop_zero) out <- out[enduse_impact != 0]
+  
+  setcolorder(out, c("country", "continent", "year", "indicator", "allocation",
+                     "end_group", "enduse_impact", "total_ag_impact", "share"))
+  setorder(out, -total_ag_impact, country, -enduse_impact)
+  
+  if (save) {
+    dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+    fname <- build_filename("FABIO_endUseOrigin",
+                            year      = year,
+                            indicator = extension,
+                            alloc     = allocation)
+    fwrite(out, file.path(output_dir, fname))
+    message("Wrote ", file.path(output_dir, fname))
+  }
+  
+  out
+}
+
+
 ######################################################################################################################
 ############################## RUN: EXTENSION FOOTPRINTS (value allocation) ###########################################
 ######################################################################################################################
 
 ## Bilateral trade footprints, feedstock breakdown, per stressor -------------
 ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
-# FD_EQ_terrestrial_stressors <- unique(ex[grepl("^FD_EQ.*terrestrial", Stressor), Stressor])
 extensions_choice <- as.list(c(ibif_stressors,
                                "LCIM_EQ_terrestrial_climate","LCIM_EQ_terrestrial_acidification",
                                "land_harv"))
@@ -602,12 +715,15 @@ for (yr in 2012:2022) {
   }
 }
 
-########## Biopolymers ##########
+extensions_choice <- as.list(ibif_stressors)
+
 for (yr in 2012:2022) {
-  message("--- ", yr, " ---")
+  for (ext in extensions_choice) {
+    ext_val <- ext
+    message("--- ", yr, " | ext: ", ext, " ---")
   fp_trade_breakdown_feedstock(
     year         = yr,
-    extension    = "ibif_total",
+    extension    = ext_val,
     commodity    = bp_set,
     by_commodity = TRUE,
     by_feedstock = TRUE,
@@ -617,7 +733,42 @@ for (yr in 2012:2022) {
     X = X, Y = Y, Z = Z, E = E_bar
   )
 }
+}
 
+
+######################################################################################################################
+############################## RUN: PRODUCER-LOCATED END-USE DECOMPOSITION (value allocation) ########################
+######################################################################################################################
+# Per producing country: territorial agricultural impact split by the end-product
+# (global final demand) that drives it. Symmetric across end-products, sums to the
+# producer's own total. One combined (all-years) CSV per indicator, consumed by 19b.
+
+years_to_run      <- 2012:2022
+enduse_ext_choice <- c("ibif_total", "LCIM_EQ_terrestrial_land_use", "LCIM_EQ_terrestrial_acidification", "LCIM_EQ_terrestrial_climate")
+
+for (ext in enduse_ext_choice) {
+  message("=== end-use origin decomposition | ext: ", ext, " ===")
+  enduse_bcp <- rbindlist(
+    lapply(years_to_run, function(yr) {
+      fp_enduse_origin(
+        year       = yr,
+        extension  = ext,
+        allocation = allocation,
+        regions    = regions, io = io, items = items_full_bcp,
+        X = X, Y = Y, E = E_bar,     # L loaded per-year inside the function
+        save       = FALSE
+      )
+    }),
+    use.names = TRUE, fill = TRUE
+  )
+  
+  fname <- build_filename("FABIO_endUseOrigin",
+                          years     = paste0(min(years_to_run), "-", max(years_to_run)),
+                          indicator = ext,
+                          alloc     = allocation)
+  fwrite(enduse_bcp, file.path(OUT_DIR, fname))
+  message("Wrote ", file.path(OUT_DIR, fname))
+}
 
 ######################################################################################################################
 ################# FUNCTIONS NOT CURRENTLY USED (kept in case we want to re-use them) ##################################
