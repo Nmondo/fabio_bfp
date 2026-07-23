@@ -71,7 +71,7 @@ swap_lookup <- items_full_bcp %>%
 
 new_rows <- sup_final_bcp %>%
   filter(area %in% swaps$area, proc == "Biogasoline production", item == "Biogasoline") %>%
-  select(-item) %>%
+  select(-item, -any_of(c("comm_code", "item_code", "proc_code"))) %>%
   inner_join(swaps, by = "area") %>%
   inner_join(swap_tcf, by = "new_item") %>%
   inner_join(swap_lookup, by = "new_item") %>%

@@ -42,7 +42,6 @@ library(svglite)
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
 regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
-tcf <- readRDS("intermediate_data/tcf_table_final.rds")
 
 # ---- MODEL VERSION -----------------------------------------------------------
 #   "rescaled" (default) -> results in output/         (RED-rescaled run)
@@ -207,24 +206,6 @@ plot_consumption <- function(df,
 }
 
 
-Y_global_plot <- plot_consumption(Y_summary, items_full_bcp, fuel_colors, regions = regions,
-                                  y_lab        = "Biofuel consumption (M liters)",
-                                  fill_lab     = "Fuel type",
-                                  title        = "Global biofuel consumption by fuel type")
-Y_global_BP <- plot_consumption(Y_summary_BP %>% filter(comm_code != "c146"), items_full_bcp, regions = regions,
-                                y_lab          = "Consumption (kilotonnes)",
-                                fill_lab       = "Commodity",
-                                title          = "Global biopolymer and building block consumption by product")
-
-## Saving
-ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BF.svg"),
-       plot = Y_global_plot,
-       width = 10, height = 6, dpi = 300)
-
-ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.svg"),
-       plot = Y_global_BP,
-       width = 10, height = 6, dpi = 300)
-
 ######################################################################################################################
 #2. Descriptive statistics for production technologies
 ######################################################################################################################
@@ -239,41 +220,39 @@ Z_per_year <- Z_summary %>%
   group_by(origin_comm_name, year, target_comm, target_continent) %>%
   summarize(value = sum(value)/1000,
             .groups = "drop") %>%
-  filter(origin_comm_name != "Other, Unknown") %>%
-  mutate(origin_comm_name = ifelse(grepl("^Animal or vegetable fats and oils", origin_comm_name), "Used Cooking Oil", origin_comm_name))
+  filter(origin_comm_name != "Other, Unknown")
 
-
-######################################################################################################################
-############################## FUNCTIONS TO PLOT RESULTS #############################################################
-######################################################################################################################
-
-######################################################################################################################
-#0. Plot countries' feedstock use
-######################################################################################################################
 
 plot_feedstock_desc <- function(data,
-                                target_comm_in      = NULL,   # scalar, vector, or NULL = all
-                                target_continent_in = NULL,   # scalar, vector, or NULL = all
+                                target_comm_in      = NULL,
+                                target_continent_in = NULL,
                                 n_top               = 12,
                                 include_other       = TRUE,
                                 top_scope           = c("per_comm", "global"),
                                 facet_scales        = "free_y",
                                 ncol                = NULL,
-                                y_label             = "Feedstock mass embodied in biofuel consumption (ktonnes)") {
+                                to_supply           = TRUE,          # convert embodied feedstock -> biofuel supply via TCF
+                                tcf                 = NULL,          # NULL = load intermediate_data/tcf_table_final.rds
+                                tcf_on_missing      = c("drop", "keep", "error"),
+                                scale               = 1,             # value / scale (matches plot_country_consumption)
+                                y_lab               = NULL,
+                                total_labels        = TRUE,
+                                accuracy            = 1) {
   
-  top_scope <- match.arg(top_scope)
+  top_scope      <- match.arg(top_scope)
+  tcf_on_missing <- match.arg(tcf_on_missing)
+  if (is.null(y_lab))
+    y_lab <- if (to_supply) "Biofuel supply (M liters)"
+  else           "Feedstock mass embodied in biofuel consumption (ktonnes)"
   
   comm_lookup  <- setNames(as.character(commodity_meta$item),
                            as.character(commodity_meta$comm_code))
   relabel_comm <- function(x) ifelse(x %in% names(comm_lookup), comm_lookup[x], x)
   
-  # feedstock → category lookup (Oil / Sugar / Other), with safe fallback
   feed_lookup <- setNames(as.character(feedstock_meta$category),
                           as.character(feedstock_meta$feedstock))
-  feed_cat    <- function(x) ifelse(x %in% names(feed_lookup),
-                                    feed_lookup[x], "Other")
+  feed_cat    <- function(x) ifelse(x %in% names(feed_lookup), feed_lookup[x], "Other")
   
-  # default to "all" when nothing is supplied
   if (is.null(target_comm_in))      target_comm_in      <- unique(data$target_comm)
   if (is.null(target_continent_in)) target_continent_in <- unique(data$target_continent)
   
@@ -283,7 +262,59 @@ plot_feedstock_desc <- function(data,
   
   if (nrow(d) == 0) stop("No rows for the requested target_comm / target_continent.")
   
-  # helper: top-n feedstocks in a data frame, ranked by total value
+  # ---- convert embodied feedstock MASS -> biofuel SUPPLY (output-equivalent) via TCF ----
+  # supply = mass * output_qty, where output_qty [biofuel/feedstock] = 1/multiplier_output_kl_to_input_t.
+  # Joined on (feedstock, biofuel) since the factor differs by fuel. Feedstock with no TCF row
+  # has no defined supply -> dropped (default) with a warning on the mass share lost.
+  if (to_supply) {
+    if (is.null(tcf)) {
+      tcf <- readRDS("intermediate_data/tcf_table_final.rds")
+      setDT(tcf)
+      tcf[, item := trimws(item)]
+      tcf[, biofuel_code := fcase(
+        grepl("Biogasoline",      proc), "c146",
+        grepl("Biodiesel",        proc), "c147",
+        grepl("Renewable diesel", proc), "c149",
+        default = NA_character_)]
+      tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
+    } else setDT(tcf)
+    
+    
+    tcf_lu <- unique(tcf[!is.na(biofuel_code),
+                         .(origin_comm_name = trimws(as.character(item)),
+                           target_comm      = as.character(biofuel_code),
+                           cf               = as.numeric(output_qty))])
+    tcf_lu <- tcf_lu[is.finite(cf)]
+    dup <- tcf_lu[, .N, by = .(origin_comm_name, target_comm)][N > 1L]
+    if (nrow(dup))
+      stop(nrow(dup), " (feedstock, biofuel) pair(s) map to >1 output_qty in `tcf` \u2014 collapse first.")
+    
+    d <- as.data.table(copy(d))
+    d[, `:=`(origin_comm_name = trimws(as.character(origin_comm_name)),
+             target_comm      = as.character(target_comm))]
+    d[tcf_lu, on = .(origin_comm_name, target_comm), cf := i.cf]
+    
+    na_i <- is.na(d$cf)
+    if (any(na_i)) {
+      bad  <- unique(d[na_i, .(origin_comm_name, target_comm)])
+      tot  <- sum(d$value, na.rm = TRUE)
+      lost <- sum(d$value[na_i], na.rm = TRUE)
+      msg  <- sprintf("TCF: %d feedstock\u00d7biofuel pair(s) have no output_qty (%.1f%% of mass)",
+                      nrow(bad), if (tot > 0) 100 * lost / tot else 0)
+      if (tcf_on_missing == "error") stop(msg, ".")
+      warning(msg, if (tcf_on_missing == "drop") " \u2014 dropped."
+              else                          " \u2014 kept UNCONVERTED (mixed units!).")
+    }
+    if (tcf_on_missing == "drop") d <- d[!is.na(cf)]
+    d[, value := value * fifelse(is.na(cf), 1, cf)][, cf := NULL]
+    d <- as.data.frame(d)
+  }
+  
+  # display-only relabel: long HS name -> short label, AFTER the TCF join
+  d$origin_comm_name <- ifelse(
+    grepl("^Animal or vegetable fats and oils", d$origin_comm_name),
+    "Used Cooking Oil", d$origin_comm_name)
+  
   rank_top <- function(df, n) {
     df %>%
       group_by(origin_comm_name) %>%
@@ -293,10 +324,9 @@ plot_feedstock_desc <- function(data,
       pull(origin_comm_name)
   }
   
-  # build the candidate set of "top" feedstocks
   if (top_scope == "global") {
     top_candidates <- rank_top(d, n_top)
-  } else {                                      # per_comm: union of within-commodity top-N
+  } else {
     top_candidates <- d %>%
       group_by(target_comm) %>%
       group_modify(~ tibble(origin_comm_name = rank_top(.x, n_top))) %>%
@@ -305,7 +335,6 @@ plot_feedstock_desc <- function(data,
       unique()
   }
   
-  # order: largest category first, then by total value within each category
   top_feedstocks <- d %>%
     filter(origin_comm_name %in% top_candidates) %>%
     group_by(origin_comm_name) %>%
@@ -317,7 +346,6 @@ plot_feedstock_desc <- function(data,
     arrange(desc(cat_total), category, desc(total)) %>%
     pull(origin_comm_name)
   
-  # bucket non-top feedstocks into "Other"; aggregate
   d_plot <- d %>%
     mutate(feedstock = ifelse(origin_comm_name %in% top_feedstocks,
                               origin_comm_name, "Other"))
@@ -329,22 +357,22 @@ plot_feedstock_desc <- function(data,
                               levels = c(top_feedstocks,
                                          if (include_other) "Other"))) %>%
     group_by(year, target_comm, target_continent, feedstock) %>%
-    summarize(value = sum(value), .groups = "drop")
+    summarize(value = sum(value) / scale, .groups = "drop")
   
-  # fixed, one-feedstock = one-colour palette (see R/feedstock_palette.R).
+  totals <- d_plot %>%
+    group_by(year, target_comm, target_continent) %>%
+    summarize(total = sum(value), .groups = "drop")
+  
   cats <- feed_cat(top_feedstocks)
   pal  <- get_feedstock_palette(top_feedstocks, feedstock_meta)
   
-  # ---- legend breaks/labels ---------------------------------------------------
   cat_display <- c("Starchy / Sugar crops" = "Sugar and starch",
                    "Oilcrops"              = "Oils and fats")
-  cat_order   <- names(cat_display)                    # sugar/starch first
+  cat_order   <- names(cat_display)
   
   present_levels  <- levels(droplevels(d_plot$feedstock))
-  neutral_present <- setdiff(present_levels[feed_cat(present_levels) == "Other"],
-                             "Other")
-  neutral_cols    <- setNames(unname(feedstock_color_map[neutral_present]),
-                              neutral_present)
+  neutral_present <- setdiff(present_levels[feed_cat(present_levels) == "Other"], "Other")
+  neutral_cols    <- setNames(unname(feedstock_color_map[neutral_present]), neutral_present)
   
   legend_breaks <- character()
   legend_labels <- character()
@@ -358,7 +386,7 @@ plot_feedstock_desc <- function(data,
     legend_labels <- c(legend_labels, paste0("<b>", cat_display[[k]], "</b>"), fs)
     header_pal[hdr] <- "transparent"
     
-    for (nm in neutral_present) {                      # neutral once per header
+    for (nm in neutral_present) {
       key <- paste0("__ow_", k, "_", nm)
       legend_breaks   <- c(legend_breaks, key)
       legend_labels   <- c(legend_labels, nm)
@@ -366,7 +394,6 @@ plot_feedstock_desc <- function(data,
     }
   }
   
-  # Safety net: top feedstocks that are neither sugar/oil nor a neutral.
   placed   <- unlist(lapply(cat_order, function(k) top_feedstocks[cats == k]))
   leftover <- setdiff(top_feedstocks, c(placed, neutral_present))
   if (length(leftover)) {
@@ -380,11 +407,9 @@ plot_feedstock_desc <- function(data,
   }
   
   pal_full <- c(header_pal, pal, neutral_cols)
-  pal_full <- pal_full[!duplicated(names(pal_full))]     # neutral may already be in pal
+  pal_full <- pal_full[!duplicated(names(pal_full))]
   if (include_other) pal_full <- c(pal_full, Other = "grey70")
   
-  # Register phantom keys (__hdr_*, __ow_*) as empty factor levels so
-  # scale_fill_manual(drop = FALSE) keeps them in the limits and draws them.
   d_plot$feedstock <- factor(d_plot$feedstock,
                              levels = union(levels(d_plot$feedstock), names(header_pal)))
   
@@ -394,10 +419,11 @@ plot_feedstock_desc <- function(data,
     pad$feedstock <- factor(phantom_lvls, levels = levels(d_plot$feedstock))
     pad$value     <- 0
     d_plot <- rbind(d_plot, pad)
-    d_plot$feedstock <- factor(d_plot$feedstock, levels = levels(pad$feedstock))  # keep factor after rbind
+    d_plot$feedstock <- factor(d_plot$feedstock, levels = levels(pad$feedstock))
   }
   
-  # auto-decide faceting
+  num <- scales::label_number(accuracy = accuracy)
+  
   n_comm <- length(unique(d_plot$target_comm))
   n_reg  <- length(unique(d_plot$target_continent))
   
@@ -409,14 +435,21 @@ plot_feedstock_desc <- function(data,
                       name   = NULL,
                       drop   = FALSE) +
     scale_x_continuous(breaks = scales::pretty_breaks()) +
+    scale_y_continuous(labels = num, expand = expansion(mult = c(0, 0.10))) +
     guides(fill = guide_legend(ncol = 1, byrow = TRUE)) +
-    labs(x = NULL, y = y_label) +
+    labs(x = NULL, y = y_lab) +
     theme_minimal(base_size = 11) +
     theme(panel.grid.minor = element_blank(),
           legend.key.size  = unit(0.4, "cm"),
           legend.text      = ggtext::element_markdown(),
           legend.key       = element_blank(),
           strip.text       = element_text(face = "bold"))
+  
+  if (total_labels) {
+    p <- p + geom_text(data = totals,
+                       aes(year, total, label = num(total)),
+                       inherit.aes = FALSE, vjust = -0.4, size = 2.7, fontface = "bold")
+  }
   
   if (n_comm > 1 && n_reg > 1) {
     p <- p + facet_grid(target_comm ~ target_continent,
@@ -435,6 +468,148 @@ plot_feedstock_desc <- function(data,
   }
   p
 }
+
+######################################################################################################################
+#3. Annual biofuel consumption by country & fuel type  (grid: fuel row x region column, countries stacked)
+######################################################################################################################
+# Mirrors plot_feedstock_desc's grid layout, but the stacked segments are CONSUMER COUNTRIES instead of feedstocks.
+#
+#   grid:      row  = biofuel type (comm_code)   ;   column = region (target continent)
+#   stack:     one segment per consumer country within the region  (rest -> "Other")
+#   highlight: the n_top largest consumers in the region, KEPT only if the country reaches >= share_thresh
+#              of the regional total in at least one year (top-N intersect share-gate, per comm x continent)
+#   label:     regional annual total printed above each bar (bar height == true regional total, incl. "Other")
+#
+# NOTE on scales: facet_grid(scales = "free_y") frees y PER ROW (fuel) but SHARES it across the region columns of
+#   that row -> a large region squashes a small one. Use comparable regions (EU/ASI/NAM/LAM), or set
+#   `independent_y = TRUE` to switch to ggh4x::facet_grid2(independent = "y") for a truly per-panel y-axis.
+
+# distinct qualitative colours by stacking Brewer palettes (self-contained; interpolates if > ~49 needed)
+.distinct_country_cols <- function(n) {
+  base <- unique(c(
+    RColorBrewer::brewer.pal(9,  "Set1"),
+    RColorBrewer::brewer.pal(8,  "Dark2"),
+    RColorBrewer::brewer.pal(8,  "Set2"),
+    RColorBrewer::brewer.pal(12, "Paired"),
+    RColorBrewer::brewer.pal(12, "Set3")
+  ))
+  base <- base[!base %in% c("#999999", "#FFFFB3")]        # drop near-greys that clash with "Other"
+  if (n <= length(base)) base[seq_len(n)] else grDevices::colorRampPalette(base)(n)
+}
+
+plot_country_consumption <- function(Y_summary,
+                                     regions,
+                                     comm_in       = NULL,                 # e.g. c("c146","c147","c149"); NULL = all
+                                     continent_in  = NULL,                 # e.g. c("EU","ASI","NAM","LAM"); NULL = all
+                                     items         = items_full_bcp,       # comm_code -> item (row-strip labels)
+                                     n_top         = 10,
+                                     share_thresh  = 0.10,
+                                     scale         = 1000,                 # value / scale (1000: k-litres -> M litres)
+                                     y_lab         = "Biofuel consumption (M liters)",
+                                     accuracy      = 1,
+                                     facet_scales  = "free_y",
+                                     independent_y = FALSE,                # TRUE -> ggh4x per-panel free y
+                                     total_labels  = TRUE,
+                                     legend_ncol   = 2,
+                                     legend_title  = "Consumer country") {
+  
+  num         <- scales::label_number(accuracy = accuracy)
+  comm_lookup <- setNames(as.character(items$item), as.character(items$comm_code))
+  relabel     <- function(x) { o <- comm_lookup[x]; o[is.na(o)] <- x[is.na(o)]; unname(o) }
+  
+  reg <- as.data.frame(regions) |> dplyr::distinct(iso3c, continent)
+  
+  # ---- 1. attach continent to the CONSUMER, collapse origins -> annual country x fuel consumption ----
+  d <- as.data.frame(Y_summary) |>
+    dplyr::left_join(reg, by = c("target_country" = "iso3c")) |>
+    dplyr::group_by(year, target_country, comm_code, continent) |>
+    dplyr::summarize(value = sum(value), .groups = "drop")
+  
+  if (anyNA(d$continent)) {
+    lost <- unique(d$target_country[is.na(d$continent)])
+    warning(sprintf("%d consumer country/-ies have no continent in `regions` (dropped): %s",
+                    length(lost), paste(lost, collapse = ", ")))
+    d <- d[!is.na(d$continent), ]
+  }
+  
+  if (is.null(comm_in))      comm_in      <- sort(unique(d$comm_code))
+  if (is.null(continent_in)) continent_in <- unique(d$continent)
+  d <- dplyr::filter(d, comm_code %in% comm_in, continent %in% continent_in)
+  if (nrow(d) == 0) stop("No rows for the requested comm_in / continent_in.")
+  
+  # ---- 2. regional totals (year x fuel x region): denominator for shares AND the above-bar label ----
+  reg_tot <- d |>
+    dplyr::group_by(year, comm_code, continent) |>
+    dplyr::summarize(reg_total = sum(value), .groups = "drop")
+  
+  # ---- 3. highlight set per (fuel, region): top-N by total, gated on >= share_thresh in some year ----
+  ctry_stats <- d |>
+    dplyr::left_join(reg_tot, by = c("year", "comm_code", "continent")) |>
+    dplyr::mutate(share = value / reg_total) |>
+    dplyr::group_by(comm_code, continent, target_country) |>
+    dplyr::summarize(total = sum(value), max_share = max(share, na.rm = TRUE), .groups = "drop")
+  
+  highlight <- ctry_stats |>
+    dplyr::group_by(comm_code, continent) |>
+    dplyr::slice_max(total, n = n_top, with_ties = FALSE) |>
+    dplyr::ungroup() |>
+    dplyr::filter(max_share >= share_thresh) |>
+    dplyr::select(comm_code, continent, target_country) |>
+    dplyr::mutate(.keep_flag = TRUE)
+  
+  # ---- 4. label as country or "Other", re-aggregate, scale ----
+  d_plot <- d |>
+    dplyr::left_join(highlight, by = c("comm_code", "continent", "target_country")) |>
+    dplyr::mutate(country = ifelse(is.na(.keep_flag), "Other", target_country)) |>
+    dplyr::group_by(year, comm_code, continent, country) |>
+    dplyr::summarize(value = sum(value) / scale, .groups = "drop")
+  
+  totals <- dplyr::mutate(reg_tot, total = reg_total / scale)
+  
+  # ---- 5. factor order (continent, then desc size) so legend groups by region & big-at-bottom ----
+  country_levels <- ctry_stats |>
+    dplyr::semi_join(highlight, by = c("comm_code", "continent", "target_country")) |>
+    dplyr::group_by(continent, target_country) |>
+    dplyr::summarize(tot = sum(total), .groups = "drop") |>
+    dplyr::arrange(factor(continent, levels = continent_in), dplyr::desc(tot)) |>
+    dplyr::pull(target_country) |>
+    unique()
+  
+  d_plot$country <- factor(d_plot$country, levels = c(country_levels, "Other"))
+  
+  pal <- c(setNames(.distinct_country_cols(length(country_levels)), country_levels),
+           Other = "grey75")
+  
+  # ---- 6. build ----
+  p <- ggplot(d_plot, aes(year, value, fill = country)) +
+    geom_col(position = position_stack(reverse = TRUE)) +
+    scale_fill_manual(values = pal, name = legend_title, drop = FALSE) +
+    scale_x_continuous(breaks = scales::pretty_breaks()) +
+    scale_y_continuous(labels = num, expand = expansion(mult = c(0, 0.10))) +
+    guides(fill = guide_legend(ncol = legend_ncol, byrow = TRUE)) +
+    labs(x = NULL, y = y_lab) +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.minor = element_blank(),
+          legend.key.size   = unit(0.4, "cm"),
+          strip.text        = element_text(face = "bold"))
+  
+  if (total_labels)
+    p <- p + geom_text(data = totals,
+                       aes(year, total, label = num(total)),
+                       inherit.aes = FALSE, vjust = -0.4, size = 2.7, fontface = "bold")
+  
+  if (independent_y) {
+    if (!requireNamespace("ggh4x", quietly = TRUE))
+      stop("independent_y = TRUE needs the 'ggh4x' package.")
+    p <- p + ggh4x::facet_grid2(comm_code ~ continent, scales = "free_y", independent = "y",
+                                labeller = labeller(comm_code = relabel))
+  } else {
+    p <- p + facet_grid(comm_code ~ continent, scales = facet_scales,
+                        labeller = labeller(comm_code = relabel))
+  }
+  p
+}
+
 
 
 ######################################################################################################################
@@ -825,15 +1000,51 @@ bf_sankey_gg <- function(sankey_flows,
 #0. Plot descriptive statistics
 ######################################################################################################################
 
-# usage
-p <- plot_feedstock_desc(Z_per_year, c("c146", "c147", "c149"), c("EU","ASI","NAM","LAM"))
+Y_global_plot <- plot_consumption(Y_summary, items_full_bcp, fuel_colors, regions = regions,
+                                  y_lab        = "Biofuel consumption (M liters)",
+                                  fill_lab     = "Fuel type",
+                                  title        = "Global biofuel consumption by fuel type")
+Y_global_BP <- plot_consumption(Y_summary_BP %>% filter(comm_code != "c146"), items_full_bcp, regions = regions,
+                                y_lab          = "Consumption (kilotonnes)",
+                                fill_lab       = "Commodity",
+                                title          = "Global biopolymer and building block consumption by product")
+
+## Saving
+ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BF.svg"),
+       plot = Y_global_plot,
+       width = 10, height = 6, dpi = 300)
+
+ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.svg"),
+       plot = Y_global_BP,
+       width = 10, height = 6, dpi = 300)
+
+
+# Supply by region and feedstocks.
+p <- plot_feedstock_desc(Z_per_year,
+                         c("c146","c147","c149"),
+                         c("EU","ASI","NAM","LAM"),
+                         scale        = 1e3,
+                         accuracy     = 1,
+                         y_lab        = "Biofuel supply (B liters)")  # default tcf_on_missing = "drop"
 
 ggsave(
   filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
   plot = p,
   width = 10, height = 8, dpi = 300)
 
+# Biofuel consumption, disaggregated
+p_country <- plot_country_consumption(
+  Y_summary, regions,
+  comm_in      = c("c146", "c147", "c149"),
+  continent_in = c("EU", "ASI", "NAM", "LAM"),
+  n_top        = 10,
+  share_thresh = 0.10,
+  scale        = 1e6,
+  accuracy     = 1,
+  y_lab        = "Biofuel consumption (B liters)")
 
+ggsave(file.path("output", "plot", "consumption_by_country_BF_EU-ASI-NAM-LAM.svg"),
+       p_country, width = 12, height = 8, dpi = 300)
 
 
 ######################################################################################################################
@@ -867,70 +1078,6 @@ ggsave(file.path("output", "plot", "sourcing_feedstock_BF.svg"),
 ######################################################################################################################
 #2. Flow chart
 ######################################################################################################################
-
-codes <- commodity_meta$comm_code   # c146, c147, c149
-
-# Helper: wrap a rotated title as a patchwork-compatible grob panel
-make_title_strip <- function(label, font_size = 10) {
-  wrap_elements(
-    grid::textGrob(
-      label,
-      rot    = 90,
-      gp     = grid::gpar(fontface = "bold", fontsize = font_size),
-      hjust  = 0.5,
-      vjust  = 0.5
-    )
-  ) &
-    theme(plot.margin = margin(0, 0, 0, 0))
-}
-
-# Build the two Sankey plots (NO ggtitle). Do NOT pass `tcf` (see note above).
-# Build the two Sankey plots (NO ggtitle). No `tcf` any more: stage 1 is embodied
-# feedstock use (tonnes), stage 2 is biofuel output — different units, so per_stage.
-p1 <- bf_sankey_gg(
-  sankey_flows,
-  year_sel    = 2020:2022,
-  biofuel_sel = "c146",
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
-  normalize   = "per_stage"
-)
-
-p2 <- bf_sankey_gg(
-  sankey_flows,
-  year_sel    = 2020:2022,
-  biofuel_sel = c("c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
-  normalize   = "per_stage"
-)
-
-# Build vertical title strips
-t1 <- make_title_strip(commodity_meta[comm_code == "c146", item])
-
-t2 <- make_title_strip(
-  paste(commodity_meta[comm_code %in% c("c147", "c149"), item], collapse = " + ")
-)
-
-# Compose: [title strip | sankey] stacked twice
-row1 <- t1 + p1 + plot_layout(widths = c(0.04, 1))   # strip ~4% of width
-row2 <- t2 + p2 + plot_layout(widths = c(0.04, 1))
-
-grid <- (row1 / row2) +
-  plot_layout(
-    guides = "collect",
-    heights = c(1, 1)  # equal rows — adjust ratio here if panels differ in content height
-  ) &
-  theme(
-    legend.position = "bottom",
-    plot.margin     = margin(2, 2, 2, 2)  # 2 pt on all sides — tweak downward to taste
-  )
-
-svglite::svglite("output/plot/BF_Sankey_grid_c146_c147+c149_2020-2022_post.svg",
-                 width = 6, height = 10); print(grid); dev.off()
-
-
-
-
-
 
 codes <- commodity_meta$comm_code   # c146, c147, c149
 

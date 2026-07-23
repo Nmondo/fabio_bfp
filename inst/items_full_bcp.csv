@@ -59,8 +59,8 @@ c059,2671,Tobacco,tonnes,Primary crops,0,crops,"Tobacco, rubber",A
 c060,2672,Rubber,tonnes,Primary crops,0,crops,"Tobacco, rubber",A
 c061,2000,Fodder crops,tonnes,Primary crops,0.85,fodder,Fodder crops,A
 c062,2001,Grazing,tonnes,Primary crops,0.8,grass,Grazing,
-c063,2559,Cottonseed,tonnes,Crop products,0.1,crops,Fibre crops,
-c064,2562,Palm kernels,tonnes,Crop products,0.1,crops,Oil crops,
+c063,2559,Cottonseed,tonnes,Crop products,0.1,crops,Fibre crops,A
+c064,2562,Palm kernels,tonnes,Crop products,0.1,crops,Oil crops,A
 c065,2541,Sugar non-centrifugal,tonnes,Crop products,0.01,crops,"Sugar, sweeteners",C
 c066,2542,Sugar (Raw Equivalent),tonnes,Crop products,0,crops,"Sugar, sweeteners",C
 c068,2571,Soyabean Oil,tonnes,Crop products,0,crops,Vegetable oils,C
@@ -88,7 +88,7 @@ c090,2655,Wine,tonnes,Crop products,0.85,crops,Alcohol,C
 c091,2656,Beer,tonnes,Crop products,0.95,crops,Alcohol,C
 c092,2657,"Beverages, Fermented",tonnes,Crop products,0.9,crops,Alcohol,C
 c093,2658,"Beverages, Alcoholic",tonnes,Crop products,0.8,crops,Alcohol,C
-c095,2661,Cotton lint,tonnes,Crop products,0.1,crops,Fibre crops,
+c095,2661,Cotton lint,tonnes,Crop products,0.1,crops,Fibre crops,A
 c096,866,Cattle,animals,Livestock,0,,Live animals,A
 c097,946,Buffaloes,animals,Livestock,0,,Live animals,A
 c098,976,Sheep,animals,Livestock,0,,Live animals,A
@@ -147,6 +147,6 @@ c167,NA,PET,tonnes,NA,NA,NA,Biopolymers,
 c168,NA,PBAT,tonnes,NA,NA,NA,Biopolymers,
 c169,NA,PBS,tonnes,NA,NA,NA,Biopolymers,
 c170,NA,Epoxy resins,tonnes,NA,NA,NA,Biopolymers,
-c171,654,Brewing or distilling dregs and waste,tonnes,NA,NA,cakes,NA,C
+c171,654,Brewing or distilling dregs and waste,tonnes,NA,0.1,byproducts,NA,C
 c901,NA,"Other, Waste",tonnes,NA,NA,NA,Waste,
 c999,NA,"Other, Unknown",tonnes,NA,NA,NA,Unknown,

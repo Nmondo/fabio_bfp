@@ -185,9 +185,10 @@ items_full_bcp <- bind_rows(items, items_extension) %>%
   mutate(moisture = case_when(item == "Triticale" ~ 0.140,
                               item == "Molasses" ~ 0.200,
                               item == "Castor oil seeds" ~ 0.080,
+                              item == "Brewing or distilling dregs and waste" ~ 0.100,
                               TRUE ~ moisture),
          feedtype = case_when(item %in% c("Triticale","Molasses","Castor oil seeds") ~ "crops",
-                              item == "Brewing or distilling dregs and waste" ~ "cakes",
+                              item == "Brewing or distilling dregs and waste" ~ "byproducts", 
                               TRUE ~ feedtype),
          # ISIC Rev.4 SECTION: A = Agriculture, forestry & fishing (raw crops);
          # C = Manufacturing (processed products); "" = none. The HS 1518 item is a
@@ -267,6 +268,14 @@ new_rows <- items_full_bcp %>%
 items_use_bcp <- bind_rows(items_use_bcp, new_rows) %>%
   select(-item_code.1) %>%
   arrange(proc_code, item_code)
+
+# Castor oil crush (p123) was left with type = NA, so 10_1a never routed castor seed (c143)
+# into it and c144 emerged from the supply table with an empty input column. It is an ordinary
+# single-feedstock oil crush like soy (p067) / sunflower (p068) / rape (p070), all of which are
+# "100%", so type it the same. The p124+ BCP-extension rows deliberately stay NA — their
+# feedstock is allocated by the biofuel/biopolymer pipeline (07/08/11), not by 10_1a.
+items_use_bcp <- items_use_bcp %>%
+  mutate(type = ifelse(proc_code == "p123" & comm_code == "c143", "100%", type))
 
 ###########################################################
 ########### SAVING #########

@@ -51,6 +51,8 @@ mode_dir <- function(base) {
   d
 }
 
+
+
 message(sprintf(">>> [run_config] RUN_MODE = '%s'  (data tag = '%s'%s)",
                 RUN_MODE, mode_tag,
                 if (BYPASS_RESCALE) sprintf(", BYPASS_KEEP_WASTE = %s", BYPASS_KEEP_WASTE) else ""))

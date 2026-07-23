@@ -73,27 +73,3 @@ for(year in years){
   L[L<0] <- 0
   saveRDS(L, paste0(output_dir_mode,"/losses/", year, "_L_value.rds"))
 }
-## Checking some rows to check consistency
-# 
-# L         <- readRDS(file.path(output_dir_mode, "2019_L_value.rds"))
-# io_labels <- fread(file.path(output_dir_mode, "io_labels.csv"))
-# items     <- fread("inst/items_full_bcp.csv")
-# 
-# rownames(L) <- colnames(L) <- paste0(io_labels$iso3c, "_", io_labels$comm_code)
-# 
-# target <- paste0("CHN_c", 145)
-# 
-# col_long <- as.data.table(as.data.frame(as.matrix(L[, target])),
-#                           keep.rownames = "src") |>
-#   melt(id.vars = "src", variable.name = "target", value.name = "coef") |>
-#   _[coef > 1e-10]
-# 
-# col_long[, `:=`(src_region = sub("_.*$",    "", src),
-#                 src_comm   = sub("^[^_]+_", "", src))]
-# 
-# col_long <- merge(col_long, unique(items[, .(comm_code, item)]),
-#                   by.x = "src_comm", by.y = "comm_code",
-#                   all.x = TRUE, sort = FALSE)
-# col_long[src_comm == "c145", item := "Used cooking oil"]
-# 
-# View(col_long)

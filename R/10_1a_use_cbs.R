@@ -348,11 +348,57 @@ use[!is.na(seed_use) & type == "seedwaste", use := seed_use]
 use[, seed_use := NULL]
 
 
+# ============================================================================
+# DDGS (item 654 / c171) FEED SUPPLY
+# ----------------------------------------------------------------------------
+# 0.3 t DDGS per t of GRAIN milled in p125, GRAIN-BASED and PRE-lambda by design:
+# lambda is mix-wide (grain + sugar beet + molasses); applying it to the grain slice
+# inflates grain-DDGS where non-grain feedstock drives lambda (FR sugar beet, CN).
+# Computed once here, saved, re-read by 11 for the c171 mint -> c171 balances exactly.
+# NB apply the 08_02 swap fix first, or Uruguay's NA-comm wheat DDGS is missed here.
+# ============================================================================
+
+DDGS_ITEM       <- 654L
+DDGS_YIELD      <- 0.3
+DDGS_FEEDSTOCKS <- c("c141","c002","c003","c004","c005","c008","c001")   # grains only
+
+ddgs_use  <- as.data.table(if (BYPASS_RESCALE)
+  readRDS("intermediate_data/use_rebal_bcp.rds") else readRDS("data/use_final_bcp.rds"))
+ddgs_prod <- ddgs_use[proc_code == "p125" & comm_code %in% DDGS_FEEDSTOCKS & year %in% years,
+                      .(production = DDGS_YIELD * sum(use, na.rm = TRUE)),
+                      by = .(area_code, year)][production > 0]
+saveRDS(ddgs_prod, tag("intermediate_data/ddgs_production.rds"))   # <- 11 reads this
+
+ddgs_btd <- as.data.table(readRDS("data/btd_final_bcp.rds"))[
+  (comm_code == "c171" | item_code == DDGS_ITEM) & from_code != to_code &
+    !is.na(value) & value > 0 & year %in% years]
+ddgs_imp <- ddgs_btd[, .(imports = sum(value, na.rm = TRUE)), by = .(area_code = to_code,   year)]
+ddgs_exp <- ddgs_btd[, .(exports = sum(value, na.rm = TRUE)), by = .(area_code = from_code, year)]
+
+# Net availability -> feed; re-export deficit (exports > prod+imports) -> stock_withdrawal.
+# A cell is EITHER net-consuming (apparent > 0 -> feed) OR net-re-exporting (apparent < 0
+# -> the export is backed by a drawdown, not a ghost), never both. In 11's balance,
+# stock_withdrawal is a SUPPLY term (tot_supply = prod + imports + stock_withdrawal - exports),
+# so for a re-exporter prod + imp + (exp-prod-imp) - exp = 0 -> no ghost.
+ddgs_bal <- Reduce(function(a,b) merge(a,b,by=c("area_code","year"),all=TRUE),
+                   list(ddgs_prod, ddgs_imp, ddgs_exp))
+for (j in c("production","imports","exports")) set(ddgs_bal, which(is.na(ddgs_bal[[j]])), j, 0)
+ddgs_bal[, `:=`(feed             = pmax(production + imports - exports, 0),
+                stock_withdrawal = pmax(exports - production - imports, 0))]
+ddgs_bal <- ddgs_bal[feed > 0 | stock_withdrawal > 0, .(area_code, year, feed, stock_withdrawal)]
+
+ddgs_bal[, `:=`(item_code = DDGS_ITEM, item = "Brewing or distilling dregs and waste", comm_code = "c171")]
+ddgs_bal <- merge(ddgs_bal, unique(cbs[, .(area_code, area)]), by = "area_code", all.x = TRUE)
+for (m in setdiff(names(cbs), names(ddgs_bal)))
+  ddgs_bal[, (m) := if (is.numeric(cbs[[m]])) 0 else NA]
+cbs <- rbind(cbs, ddgs_bal[, names(cbs), with = FALSE], use.names = TRUE, fill = TRUE)
+message(">>> 10_1a: injected DDGS(654): ", ddgs_bal[feed>0,.N], " feed cells (",
+        round(sum(ddgs_bal$feed)/1e6,2), " Mt) + ", ddgs_bal[stock_withdrawal>0,.N],
+        " re-export drawdown cells (", round(sum(ddgs_bal$stock_withdrawal)/1e6,2), " Mt).")
 
 
 # Feed use ----------------------------------------------------------------
 source("R/10_1b_use_cbs_feed.R")
-
 
 
 
@@ -372,6 +418,9 @@ use_fd[, value := NULL]
 # Remove unneeded variables
 use <- use[, .(year, area_code, area, comm_code, item_code, item,
                proc_code, proc, type, use)]
+message(">>> [654 TRACE 10_1a-reselect] rows=", use[item_code==654, .N],
+        " pos=", use[item_code==654 & use>0, .N],
+        " Mt=", round(use[item_code==654, sum(use, na.rm=TRUE)]/1e6, 2))
 
 # Correct remaining imbalances between supply and use -----
 a <- use %>% group_by(comm_code, area_code, year) %>% summarise(use_io = round(sum(use, na.rm = T))) %>% as.data.table()
@@ -442,16 +491,36 @@ use_fd <- merge(use_fd, d[, .(comm_code, area_code, year, diff, use_total)],
 # 
 
 
-# not for oilseed cakes, hops, livestock, fodder crops and grazing
-use_fd[!is.na(diff / use_total) & !item %like% "Cake" & 
-         !item_code %in% items[group=="Livestock", item_code] & 
-         !item_code %in% c(2000, 2001), `:=`(
-           food            = na_sum(food,            round(diff / use_total * food)),
-           losses          = na_sum(losses,          round(diff / use_total * losses)),
-           other           = na_sum(other,           round(diff / use_total * other)),
-           stock_addition  = na_sum(stock_addition,  round(diff / use_total * stock_addition)),
-           tourist         = na_sum(tourist,         round(diff / use_total * tourist))
-         )]
+# is.finite (not !is.na): use_total == 0 makes diff/use_total = +/-Inf, which passes !is.na and
+# yields an Inf FD cell (found in c141 area 113 2014-16). is.finite drops those cells from the
+# reallocation entirely, leaving their original FD untouched.
+# NB the whole reallocation stays INSIDE use_fd[...] so diff/use_total/item/item_code resolve as
+# columns (not global objects). The scale factor is clamped at 0 so a reduction may zero an FD
+# item but never flip it negative (i.e. diff/use_total is effectively floored at -1).
+
+# DIAGNOSTIC first: cells where the clamp will bite (reallocation wants to remove more than the
+# whole downstream total). A large count here means `diff` itself is suspect upstream.
+clamped <- use_fd[is.finite(diff / use_total) & (1 + diff / use_total) < 0 &
+                    !item %like% "Cake" &
+                    !item_code %in% items[group=="Livestock", item_code] &
+                    !item_code %in% c(2000, 2001)]
+if (nrow(clamped)) {
+  message(sprintf(">>> [10_1a realloc clamp] %d cells hit factor<0 (diff/use_total < -1); ",
+                  nrow(clamped)),
+          sprintf("residual mass = %.0f t", clamped[, sum(round((-(1 + diff/use_total)) * use_total))]))
+  data.table::fwrite(clamped[, .(comm_code, area_code, year, diff, use_total,
+                                 factor = round(1 + diff/use_total, 3))],
+                     "output/10_1a_realloc_clamped.csv")
+}
+
+use_fd[is.finite(diff / use_total) & !item %like% "Cake" &
+         !item_code %in% items[group=="Livestock", item_code] &
+         !item_code %in% c(2000, 2001),
+       c("food", "losses", "other", "stock_addition", "tourist") := {
+         s <- pmax(1 + diff / use_total, 0)
+         .(round(s * food), round(s * losses), round(s * other),
+           round(s * stock_addition), round(s * tourist))
+       }]
 
 use_fd[, `:=`(diff = NULL, use_total = NULL)]
 
@@ -459,10 +528,14 @@ use_fd[, `:=`(diff = NULL, use_total = NULL)]
 # correct oilseed cakes, hops, livestock, fodder crops and grazing in use
 use <- merge(use, d[, .(comm_code, area_code, year, diff, use_io)],
              by = c("comm_code", "area_code", "year"), all.x = TRUE)
-use[(item %like% "Cake" | item_code <= 2029) & !is.na(diff / use_io), 
-    use := na_sum(use, round(diff / use_io * use))]
-
+# same guard as the FD reallocation above: is.finite blocks use_io==0 (Inf), and the clamped
+# factor max(1 + diff/use_io, 0) prevents `use` flipping negative when the reduction exceeds the total.
+use[(item %like% "Cake" | item_code <= 2029) & item_code != 654 & is.finite(diff / use_io),
+    use := round(pmax(1 + diff / use_io, 0) * use)]
 use[, `:=`(diff = NULL, use_io = NULL)]
+message(">>> [654 TRACE 10_1a-cakecorr] rows=", use[item_code==654, .N],
+        " pos=", use[item_code==654 & use>0, .N],
+        " Mt=", round(use[item_code==654, sum(use, na.rm=TRUE)]/1e6, 2))
 
 
 
@@ -538,6 +611,10 @@ cbs[, input_use := NULL]
 
 cbs <- cbs %>% filter(year %in% years)
 use <- use %>% filter(year %in% years)
+message(">>> [654 TRACE 10_1a-yearfilter] rows=", nrow(subset(use, item_code==654)),
+        " pos=", nrow(subset(use, item_code==654 & use>0)),
+        " Mt=", round(sum(subset(use, item_code==654)$use, na.rm=TRUE)/1e6, 2),
+        " | years kept: ", paste(range(years), collapse="-"))
 use_fd <- use_fd %>% filter(year %in% years)
 sup <- sup %>% filter(year %in% years)
 
@@ -553,4 +630,3 @@ saveRDS(cbs, tag("data/cbs_final.rds"))
 saveRDS(use, tag("data/use_final.rds"))
 saveRDS(use_fd, tag("data/use_fd_final.rds"))
 saveRDS(sup, tag("data/sup_final.rds"))
-

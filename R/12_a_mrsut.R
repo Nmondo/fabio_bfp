@@ -49,7 +49,6 @@ saveRDS(list(areas = areas, processes = processes, commodities = commodities, fd
 
 
 
-
 ###########################################################
 ########### SUPPLY #######################
 ###########################################################
@@ -66,6 +65,23 @@ setkey(template, proc_code, comm_code)
 # Ensure sup is a data.table before the (mass and value) mclapply blocks below,
 # so data.table subsetting works inside the forked workers.
 setDT(sup)
+
+# ---- volume -> mass for the MASS allocation only -------------------------------------------
+# Several bio-streams are reported by volume while their co-products are in tonnes, so the
+# raw `supply` over-weights them in trans_m (mass allocation). Convert to a common mass unit
+# in a SEPARATE column: `supply` (and hence value = supply*price) is left exactly as is.
+kg_per_l <- c(          # density kg/l  (== t/kL); confirm codes vs items_full_bcp.csv
+  "c146" = 1 / 1.267,   # Biogasoline / bioethanol   (1.267 l/kg)
+  "c147" = 1 / 1.136,   # Biodiesel                  (1.136 l/kg)
+  "c149" = 1 / 1.282,   # Renewable diesel           (1.282 l/kg)
+  "c150" = 0.71,        # Bionaphtha  (co-product of c149, also in liters)
+  "c151" = 0.51)        # Biopropane  (co-product of c149, also in liters)
+
+miss <- setdiff(names(kg_per_l), unique(sup$comm_code))
+if (length(miss)) warning("kg_per_l codes absent from sup$comm_code: ", paste(miss, collapse = ", "))
+
+sup[, supply_mass := supply]
+sup[comm_code %in% names(kg_per_l), supply_mass := supply * kg_per_l[comm_code]]
 
 # List with block-diagonal supply matrices, per year
 mr_sup_mass <- mclapply(years, function(x) {
@@ -86,11 +102,11 @@ mr_sup_mass <- mclapply(years, function(x) {
     return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
                   dimnames = list(out$proc_code, colnames(out)[-1])))
     
-  }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, supply)])
+  }, sup_y = sup[year == x, .(area_code, proc_code, comm_code, supply = supply_mass)])
   
   # Return a block-diagonal matrix with all countries for year x
   return(bdiag(matrices))
-}, mc.cores = detectCores() - 2)
+}, mc.cores = 1)
 
 names(mr_sup_mass) <- years
 
@@ -126,7 +142,7 @@ mr_sup_value <- mclapply(years, function(x) {
   
   # Return a block-diagonal matrix with all countries for year x
   return(bdiag(matrices))
-}, mc.cores = detectCores() - 2)
+}, mc.cores = 1)
 
 names(mr_sup_value) <- years
 
@@ -134,7 +150,35 @@ saveRDS(mr_sup_mass, file.path(output_dir_mode,"mr_sup_mass.rds"))
 saveRDS(mr_sup_value, file.path(output_dir_mode,"mr_sup_value.rds"))
 
 
-# Bilateral supply shares ---
+###########################################################
+# Collecting the mass allocation shares for biofuels
+###########################################################
+bf_comm <- c("c146", "c147", "c149")
+
+# which process makes each biofuel; verify the clean 1-proc <-> 1-biofuel mapping
+bf_proc <- sup[comm_code %in% bf_comm, .(proc_code = unique(proc_code)), by = comm_code]
+stopifnot(bf_proc[, .N, by = comm_code][, all(N == 1L)])         # each biofuel = one process
+if (anyDuplicated(bf_proc$proc_code))
+  warning("A process makes >1 biofuel -> per-column rescale is not cleanly separable; handle jointly.")
+
+proc_tot <- sup[proc_code %in% bf_proc$proc_code,
+                .(proc_total = sum(supply)), by = .(year, area_code, proc_code)]      # B + by-products
+bf_sup   <- sup[comm_code %in% bf_comm,
+                .(bf_supply = sum(supply)), by = .(year, area_code, proc_code, comm_code)]  # B
+
+alloc <- merge(bf_sup, proc_tot, by = c("year", "area_code", "proc_code"))
+alloc[, `:=`(s = bf_supply / proc_total,          # mass-allocation share
+             R = proc_total / bf_supply)]         # rescale = 1/s
+alloc[!is.finite(R) | bf_supply == 0, R := NA]    # process-year with no biofuel output
+alloc <- merge(alloc, regions[, .(area_code = code, iso3c)], by = "area_code")
+
+fwrite(alloc[, .(year, iso3c, comm_code, proc_code, bf_supply, proc_total, s, R)],
+       file.path(output_dir_mode, "bf_mass_alloc_shares.csv"))
+
+
+###########################################################
+# Bilateral supply shares
+###########################################################
 
 # Add grazing
 btd <- merge(btd, sup[item=="Grazing", .(from_code = area_code, to_code = area_code,
@@ -165,7 +209,7 @@ btd_cast <- mclapply(years, function(x, btd_x) {
                 dimnames = list(paste0(out$to_code, "_", out$comm_code),
                                 colnames(out)[c(-1, -2)])))
   
-}, btd_x = btd[, .(year, from_code, to_code, comm_code, value)], mc.cores = detectCores() - 2)
+}, btd_x = btd[, .(year, from_code, to_code, comm_code, value)], mc.cores = 1)
 
 names(btd_cast) <- years
 
@@ -193,7 +237,7 @@ names(btd_cast) <- years
 #   # }
 # 
 #   return(as(out, "Matrix"))
-# }, agg = agg, js = js, mc.cores = detectCores() - 2)
+# }, agg = agg, js = js, mc.cores = 1)
 
 
 # supply_shares <- readRDS("data/sup_shares_list.rds")
@@ -201,6 +245,20 @@ names(btd_cast) <- years
 ###########################################################
 ########### USE #######################
 ###########################################################
+
+setDT(use)
+# Floor negative intermediate `use` in scoped-out commodities. c089 (oilseed cake)
+# and c142 carry negative use from the upstream 09_1 share-gap allocation. Left in,
+# they make Z_v row sums negative -> negative total output X, which 13 correctly
+# rejects and 14 cannot invert. Restricted to the named comms so a future negative
+# in an IN-SCOPE commodity still surfaces at 13's X<-1 assert instead of being
+# silently zeroed.
+stray <- use[use < 0 & !comm_code %in% c("c089","c142"), unique(comm_code)]
+if (length(stray))
+  warning("12_a: negative `use` outside the scoped-out set: ", paste(stray, collapse = ", "))
+use[use < 0 & comm_code %in% c("c089","c142"), use := 0]
+message(">>> 12_a: floored negative `use` for c089/c142 (scoped out of this dataset).")
+
 
 # Build use shares, per year
 use_shares <- mclapply(btd_cast, function(x) {
@@ -225,7 +283,7 @@ use_shares <- mclapply(btd_cast, function(x) {
   }
   
   return(as(mat, "Matrix"))
-}, mc.cores = detectCores() - 2)
+}, mc.cores = 1)
 
 
 
@@ -249,7 +307,7 @@ use_cast <- mclapply(years, function(x, use_x) {
   return(Matrix(data.matrix(out[, c(-1)]), sparse = TRUE,
                 dimnames = list(out$comm_code, colnames(out)[-1])))
   
-}, use_x = use[, .(year, area_code, proc_code, comm_code, use)], mc.cores = detectCores() - 2)
+}, use_x = use[, .(year, area_code, proc_code, comm_code, use)], mc.cores = 1)
 
 
 # # Apply supply shares to the use matrix
@@ -264,7 +322,7 @@ use_cast <- mclapply(years, function(x, use_x) {
 #   }
 # 
 #   return(mr_x)
-# }, use_cast, supply_shares, mc.cores = detectCores() - 2)
+# }, use_cast, supply_shares, mc.cores = 1)
 
 
 
@@ -292,62 +350,28 @@ mr_use <- mcmapply(function(x, y) {
   result <- Y_expanded * X_expanded
   
   return(result)
-}, use_cast, use_shares, mc.cores = detectCores() - 2)
-
-
-
-
-# # Apply supply shares to the use matrix
-# # This code does the same. It offers more robustness and clarity, but takes 4 times as long to run.
-# future::plan(multisession, workers = 10)
-# mr_use <- future_lapply(seq_along(btd_cast), function(t) {
-#   B <- btd_cast[[t]]  # (R·C) × R
-#   U <- use_cast[[t]]  # C × (R·P)
-#   
-#   rc_ids <- rownames(B)
-#   rp_ids <- colnames(U)
-#   c_ids  <- rownames(U)
-#   
-#   rc_split <- do.call(rbind, strsplit(rc_ids, "_", fixed = TRUE))
-#   region_B <- rc_split[, 1]
-#   commodity_B <- rc_split[, 2]
-#   
-#   rp_split <- do.call(rbind, strsplit(rp_ids, "_", fixed = TRUE))
-#   region_U <- rp_split[, 1]
-#   process_U <- rp_split[, 2]
-#   
-#   col_B_map <- match(region_U, colnames(B))
-#   
-#   A <- Matrix(0, nrow = nrow(B), ncol = ncol(U), sparse = TRUE,
-#               dimnames = list(rc_ids, rp_ids))
-#   
-#   for (j in seq_along(rp_ids)) {
-#     r2_col <- col_B_map[j]
-#     if (is.na(r2_col)) next
-#     
-#     c_demand <- U[, j]
-#     nz <- which(c_demand != 0)
-#     
-#     for (i in nz) {
-#       c <- c_ids[i]
-#       demand <- c_demand[i]
-#       
-#       rows_c <- which(commodity_B == c)
-#       if (length(rows_c) == 0) next
-#       
-#       supply <- B[rows_c, r2_col]
-#       s_total <- sum(supply)
-#       if (s_total == 0) next
-#       
-#       A[rows_c, j] <- A[rows_c, j] + (supply / s_total) * demand
-#     }
-#   }
-#   
-#   return(A)
-# })
+}, use_cast, use_shares, SIMPLIFY = FALSE, mc.cores = 1)
 
 names(mr_use) <- years
+rc_names <- paste0(rep(areas, each = length(commodities)), "_",
+                  rep(commodities, times = length(areas)))
+GHOST_OK <- c("c145","c901","c089","c152","c117","c146","c159",
+              "c148","c154","c110","c171")
+rc_comm <- sub("^[0-9]+_", "", rc_names)
+for (y in as.character(years)) {
+  ru <- Matrix::rowSums(mr_use[[y]])
+  cs <- Matrix::colSums(mr_sup_mass[[y]])
+  bad <- which(ru > 1 & cs <= 0 & !(rc_comm %in% GHOST_OK))
+  fabio_assert(length(bad) == 0,
+               "12_a %s: %d (area,comm) used but supplied by nobody (outside GHOST_OK).",
+               y, length(bad),
+               data = data.table(node = rc_names[bad], used = ru[bad])[order(-used)])
+}
+
+
 saveRDS(mr_use, file.path(output_dir_mode,"mr_use.rds"))
+
+
 
 
 # Final Demand ---
@@ -373,7 +397,7 @@ use_fd_cast <- mclapply(years, function(x, use_fd_x) {
   
   Matrix(data.matrix(out[, -1]), sparse = TRUE,
          dimnames = list(out$comm_code, colnames(out)[-1]))
-}, use_fd[, .(year, area_code, comm_code, variable, value)], mc.cores = 6)
+}, use_fd[, .(year, area_code, comm_code, variable, value)], mc.cores = 1)
 
 # Apply use shares to the use_fd matrix
 mr_use_fd <- mcmapply(function(x, y) {
@@ -401,10 +425,16 @@ mr_use_fd <- mcmapply(function(x, y) {
   colnames(result) <- colnames(x)
   
   return(result)
-}, use_fd_cast, use_shares, mc.cores = detectCores() - 2)
+}, use_fd_cast, use_shares, SIMPLIFY = FALSE, mc.cores = 1)
 
 
 
 mr_use_fd <- lapply(mr_use_fd, round)
 names(mr_use_fd) <- years
 saveRDS(mr_use_fd, file.path(output_dir_mode,"mr_use_fd.rds"))
+
+
+
+
+
+

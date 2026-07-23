@@ -40,6 +40,8 @@ library(RColorBrewer)
 library(gridExtra)
 library(patchwork)
 library(svglite)
+library(openxlsx)
+
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
@@ -143,6 +145,48 @@ lcim_terr_feedstock <- dt_feedstock[
 dt_feedstock <- rbindlist(
   list(dt_feedstock[indicator != "LCIM_EQ_terrestrial"], lcim_terr_feedstock),
   use.names = TRUE
+)
+
+## Producer-located end-use decomposition -- combined per-indicator files (18b) 
+# Columns: country, continent, year, indicator, allocation,
+#          end_group, enduse_impact, total_ag_impact, share
+load_endUseOrigin <- function(dir = IN_DIR, alloc = "value") {
+  f <- list.files(dir, pattern = "^FABIO_endUseOrigin_.*\\.csv$", full.names = TRUE)
+  f <- f[!file.info(f)$isdir]
+  if (!is.null(alloc)) f <- f[grepl(paste0("_", alloc), f)]
+  if (length(f) == 0) {
+    warning("No FABIO_endUseOrigin_* files found in ", dir)
+    return(data.table())
+  }
+  rbindlist(lapply(f, fread), use.names = TRUE, fill = TRUE)
+}
+
+dt_endUseOrigin <- load_endUseOrigin()
+
+# Build combined LC Impact terrestrial indicator (climate + acidification) for
+# endUseOrigin, exactly as for dt_feedstock/dt_tradeFeed. LCIM_EQ_terrestrial_land_use
+# is left UNTOUCHED (kept as its own separate indicator). Unlike the feedstock
+# table, endUseOrigin carries per-country totals + shares, so recompute those.
+id_cols_enduse <- c("country", "continent", "year", "allocation", "end_group")
+
+lcim_terr_enduse <- dt_endUseOrigin[
+  indicator %in% c("LCIM_EQ_terrestrial_climate", "LCIM_EQ_terrestrial_acidification"),
+  .(enduse_impact = sum(enduse_impact, na.rm = TRUE)),
+  by = id_cols_enduse
+][, indicator := "LCIM_EQ_terrestrial"]
+
+# recompute the per-country-year total and share for the aggregated indicator
+lcim_terr_enduse[, total_ag_impact := sum(enduse_impact), by = .(country, year)]
+lcim_terr_enduse[, share := fifelse(total_ag_impact != 0,
+                                    enduse_impact / total_ag_impact, NA_real_)]
+
+# drop the two sub-indicators (and any stale combined rows), bind in the combined one
+dt_endUseOrigin <- rbindlist(
+  list(dt_endUseOrigin[!indicator %in% c("LCIM_EQ_terrestrial_climate",
+                                         "LCIM_EQ_terrestrial_acidification",
+                                         "LCIM_EQ_terrestrial")],
+       lcim_terr_enduse),
+  use.names = TRUE, fill = TRUE
 )
 
 
@@ -897,6 +941,210 @@ plot_continent_heatmap <- function(dt_feedstock,
 
 
 ######################################################################################################################
+############################## PRODUCER-LOCATED IMPACT BY END-PRODUCT (symmetric Ly footprint) #######################
+######################################################################################################################
+# Grouped-bar layout: two adjacent year bars per country (left = first year,
+# right = last), biofuels vivid at the BOTTOM, other segments dulled. Segments are
+# END-PRODUCT groups from fp_enduse_origin - each producing country's territorial
+# agricultural impact split by the end-product whose global final demand drives it.
+# Bars are shown as RELATIVE shares: every bar fills 0-100% of that country-year's
+# OWN total, so composition is comparable across countries regardless of size. The
+# exact % is printed for the biofuels segment ONLY. `top_n` countries are selected
+# by `rank_by`: "biofuel_total" (absolute biofuel-driven impact) or "biofuel_share"
+# (biofuel as a share of the country's total). The top `n_groups` NON-biofuel
+# end-groups are shown; the rest fold into "Other". Reads FABIO_endUseOrigin_*.
+
+plot_enduse_origin <- function(data,
+                               indicator_select,
+                               years       = c(2012, 2022),
+                               ref_year    = years[1],
+                               top_n       = 10,
+                               rank_by     = c("biofuel_total", "biofuel_share"),  # top_n by absolute vs share
+                               n_groups    = 5,                # largest NON-biofuel end-groups; rest -> "Other"
+                               meta        = indicator_meta,
+                               items       = items_full_bcp,
+                               bf_codes    = c("c146", "c147", "c149"),
+                               bf_fill     = "#B2182B",
+                               other_fill  = "grey75",
+                               group_colors = c(   # fixed base colour per commodity group
+                                 "Cereals"                                 = "#E6A817",
+                                 "Vegetables, fruit, nuts, pulses, spices" = "#4DAF4A",
+                                 "Vegetable oils"                          = "#A2A62E",
+                                 "Sugar, sweeteners"                       = "#984EA3",
+                                 "Fibre crops"                             = "#17A2A2",
+                                 "Milk"                                    = "#377EB8",
+                                 "Meat"                                    = "#8C564B",
+                                 "Live animals"                            = "#E377C2"),
+                               dull_amt    = 0.6,
+                               bar_width   = 0.36,
+                               label_share = TRUE,
+                               legend_labels = c(   # compact legend-only relabels (data untouched)
+                                 "Vegetables, fruit, nuts, pulses, spices" = "Produce"),
+                               save        = FALSE,
+                               save_dir    = file.path("output", "plot"),
+                               save_name   = NULL,   # NULL -> auto filename
+                               width       = 12,
+                               height      = 3,
+                               dpi         = 300) {
+  
+  rank_by <- match.arg(rank_by)
+  dt <- as.data.table(data)
+  if (nrow(dt) == 0) {
+    warning("Empty endUseOrigin table - did 18b write FABIO_endUseOrigin_* files?")
+    return(invisible(NULL))
+  }
+  need <- c("end_group", "enduse_impact", "total_ag_impact")
+  miss <- setdiff(need, names(dt))
+  if (length(miss))
+    stop("endUseOrigin table missing column(s): ", paste(miss, collapse = ", "),
+         " - re-run 18b fp_enduse_origin.")
+  items <- as.data.table(items)
+  
+  m <- meta[indicator == indicator_select]
+  if (nrow(m) == 0)
+    m <- data.table(indicator = indicator_select, scale_factor = 1,
+                    y_label = indicator_select, short_label = indicator_select)
+  sf <- m$scale_factor[1]; ttl <- m$short_label[1]   # sf unused for shares; kept for parity
+  
+  yrs <- sort(unique(years))
+  d <- dt[indicator == indicator_select & year %in% yrs]
+  if (nrow(d) == 0) {
+    warning("No data for ", indicator_select, " in years ", paste(yrs, collapse = "/"))
+    return(invisible(NULL))
+  }
+  
+  # biofuel end-group(s) = comm_group(s) of the biofuel commodities
+  bf_group <- unique(items[comm_code %in% bf_codes, comm_group])
+  bf_group <- bf_group[!is.na(bf_group)]
+  if (!length(bf_group)) warning("No biofuel comm_group found via bf_codes.")
+  
+  # country set: top-n in ref_year, ranked by rank_by
+  #   "biofuel_total" -> absolute biofuel-driven impact
+  #   "biofuel_share" -> biofuel as a share of the country's territorial total
+  ref_bf  <- d[year == ref_year & end_group %in% bf_group,
+               .(bf_val = sum(enduse_impact, na.rm = TRUE)), by = country]
+  ref_tot <- unique(d[year == ref_year, .(country, total_ag_impact)])
+  ref <- merge(ref_tot, ref_bf, by = "country", all.x = TRUE)
+  ref[is.na(bf_val), bf_val := 0]
+  ref[, bf_share := fifelse(total_ag_impact != 0, bf_val / total_ag_impact, NA_real_)]
+  rank_col <- if (rank_by == "biofuel_share") "bf_share" else "bf_val"
+  setorderv(ref, rank_col, order = -1L)
+  keep <- ref[get(rank_col) > 0, country][seq_len(min(top_n, .N))]
+  keep <- keep[!is.na(keep)]
+  if (!length(keep)) {
+    warning("No positive biofuel ", rank_by, " for ", indicator_select, " in ", ref_year)
+    return(invisible(NULL))
+  }
+  d <- d[country %in% keep]
+  
+  # largest NON-biofuel end-groups globally; biofuels kept separate, rest -> Other
+  glob <- d[!end_group %in% bf_group,
+            .(v = sum(enduse_impact, na.rm = TRUE)), by = end_group][order(-v)]
+  keep_groups <- head(glob$end_group, n_groups)                 # largest first
+  d[, seg := fifelse(end_group %in% bf_group, "Biofuels",
+                     fifelse(end_group %in% keep_groups, end_group, "Other"))]
+  
+  # segments as SHARES of each country-year's own total (bars fill 0-100%)
+  seg <- d[, .(value = sum(enduse_impact, na.rm = TRUE)),
+           by = .(country, year, segment = seg)]
+  seg[, tot := sum(value), by = .(country, year)]
+  seg[, sh  := fifelse(tot != 0, value / tot, 0)]
+  
+  # biofuel share per country-year (the ONLY % printed); ensure all bars present
+  cty <- merge(CJ(country = keep, year = yrs, unique = TRUE),
+               seg[segment == "Biofuels", .(country, year, bf_share = sh)],
+               by = c("country", "year"), all.x = TRUE)
+  cty[is.na(bf_share), bf_share := 0]
+  
+  # ordering: Biofuels at BOTTOM, then largest end-groups, "Other" on top
+  country_order <- ref[country %in% keep][order(-get(rank_col)), country]
+  ci <- setNames(seq_along(country_order), country_order)
+  seg_order <- c("Biofuels", keep_groups, "Other")
+  seg[, segment := factor(segment, levels = seg_order)]
+  
+  dull <- function(cols, amt = dull_amt, toward = "grey72") {
+    mm <- grDevices::col2rgb(toward) / 255
+    vapply(cols, function(cc) {
+      v <- grDevices::col2rgb(cc) / 255
+      grDevices::rgb(t(v * (1 - amt) + mm * amt))
+    }, character(1), USE.NAMES = FALSE)
+  }
+  # Fixed colour per commodity group (consistent across plots/indicators), dulled
+  # to keep the vivid Biofuels segment dominant. Any group absent from
+  # `group_colors` falls back to a generated colour.
+  base_cols <- unname(group_colors[keep_groups])
+  na_i <- which(is.na(base_cols))
+  if (length(na_i)) {
+    fb <- suppressWarnings(RColorBrewer::brewer.pal(max(3, length(na_i)), "Set3"))[seq_along(na_i)]
+    base_cols[na_i] <- fb
+  }
+  pal <- c(Biofuels = bf_fill,
+           setNames(dull(base_cols), keep_groups),
+           Other = dull(other_fill))
+  
+  step <- bar_width + 0.04
+  offs <- (seq_along(yrs) - (length(yrs) + 1) / 2) * step
+  names(offs) <- as.character(yrs)
+  seg[, xpos := ci[country] + offs[as.character(year)]]
+  cty[, xpos := ci[country] + offs[as.character(year)]]
+  
+  p <- ggplot() +
+    geom_col(data = seg, aes(x = xpos, y = sh, fill = segment),
+             width = bar_width, position = position_stack(reverse = TRUE)) +
+    geom_text(data = cty, aes(x = xpos, y = 0, label = substr(year, 3, 4)),
+              vjust = 1.6, size = 3.9, colour = "grey35") +
+    scale_fill_manual(values = pal, breaks = rev(seg_order),
+                      labels = function(x) { r <- unname(legend_labels[x]); ifelse(is.na(r), x, r) },
+                      name = "Commodity type") +
+    scale_x_continuous(breaks = ci, labels = names(ci), expand = expansion(add = 0.55)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                       breaks = seq(0, 1, 0.25),
+                       expand = expansion(mult = c(0.03, 0.06))) +
+    coord_cartesian(clip = "off") +
+    labs(x = NULL, y = "Share of agriculture-driven impact") +
+    theme_minimal(base_size = 13) +       
+    theme(panel.grid.major.x = element_blank(),
+          axis.text.x        = element_text(face = "bold"),
+          legend.position    = "right")
+  
+  if (label_share) {
+    p <- p + geom_text(data = cty[bf_share > 0],
+                       aes(x = xpos, y = bf_share,
+                           label = scales::percent(bf_share, accuracy = 0.1)),
+                       vjust = -0.4, size = 3.8, fontface = "bold", colour = "grey10")
+  }
+  
+  if (save) {
+    dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+    fn <- save_name
+    if (is.null(fn))
+      fn <- paste0("enduse_origin_", indicator_select, "_", rank_by, "_",
+                   min(yrs), "_", max(yrs), ".svg")
+    ggsave(file.path(save_dir, fn), plot = p, width = width, height = height, dpi = dpi)
+    message("Saved ", file.path(save_dir, fn))
+  }
+  
+  p
+}
+
+## Printing global shares 
+compute_global_biofuel_share <- function(data, indicator_select, year_select) {
+  dt <- as.data.table(data)[indicator == indicator_select & year == year_select]
+  
+  global_biofuel <- dt[end_group == "Biofuels", sum(enduse_impact, na.rm = TRUE)]
+  
+  global_total <- unique(dt[, .(country, total_ag_impact)])[
+    , sum(total_ag_impact, na.rm = TRUE)]
+  
+  data.table(indicator = indicator_select, year = year_select,
+             global_biofuel_impact = global_biofuel,
+             global_total_impact   = global_total,
+             global_share = global_biofuel / global_total)
+}
+
+
+
+######################################################################################################################
 ############################## PLOT RESULTS #########################################################################
 ######################################################################################################################
 
@@ -976,6 +1224,44 @@ plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv",
                        ref_max = ref_max, gamma = 1.5, region_order = ord,
                        breaks = c(0, 1000, 10000, round(ref_max)))
 
+
+# Producer-located, end-product-decomposed (symmetric Ly footprint), RELATIVE %.
+# Ranked by absolute biofuel-driven impact ...
+p_enduse_ibif <- plot_enduse_origin(dt_endUseOrigin,
+                                    indicator_select = "ibif_total",
+                                    years    = c(2012, 2022),
+                                    top_n    = 8,
+                                    rank_by  = "biofuel_total",
+                                    n_groups = 5,
+                                    save = TRUE)
+
+p_enduse_lcim <- plot_enduse_origin(dt_endUseOrigin,
+                                    indicator_select = "LCIM_EQ_terrestrial",
+                                    years    = c(2012, 2022),
+                                    top_n    = 8,
+                                    rank_by  = "biofuel_total",
+                                    n_groups = 5,
+                                    save = TRUE)
+
+p_enduse_lcim_lu <- plot_enduse_origin(dt_endUseOrigin,
+                                       indicator_select = "LCIM_EQ_terrestrial_land_use",
+                                       years    = c(2012, 2022),
+                                       top_n    = 8,
+                                       rank_by  = "biofuel_total",
+                                       n_groups = 5,
+                                       save = TRUE)
+
+# time series across all years present
+rbindlist(lapply(sort(unique(dt_endUseOrigin$year)), function(yr)
+  compute_global_biofuel_share(dt_endUseOrigin, "ibif_total", yr)))
+
+rbindlist(lapply(sort(unique(dt_endUseOrigin$year)), function(yr)
+  compute_global_biofuel_share(dt_endUseOrigin, "LCIM_EQ_terrestrial", yr)))
+
+rbindlist(lapply(sort(unique(dt_endUseOrigin$year)), function(yr)
+  compute_global_biofuel_share(dt_endUseOrigin, "LCIM_EQ_terrestrial_land_use", yr)))
+
+
 ######################################################################################################################
 ############################## SAVE PLOTS ###########################################################################
 ######################################################################################################################
@@ -1018,6 +1304,8 @@ ggsave(filename = file.path("output", "plot", "feedstock_impact_lcim.svg"),
        plot = p_lcim,
        device = svg,
        width = 7, height = 12 , dpi = 300)
+
+
 
 
 ######################################################################################################################
@@ -1144,3 +1432,150 @@ ggsave(plot = p_indicator_BRA_IDN_USA,
        width = 12,
        height = 9,
        dpi = 300)
+
+
+
+######################################################################################################################
+############################## EU FOOTPRINT TABLE: DOMESTIC vs IMPORTS BY ORIGIN CONTINENT ###########################
+######################################################################################################################
+# Consumer continent == "EU". Rows split into:
+#   - "Domestic (EU)" : origin continent == consumer continent (self-flows + intra-EU trade)
+#   - one row per other origin continent (imports)
+# BF  (dt_tradeFeed)    : by (commodity, year)
+# BP  (dt_tradeFeed_BP) : by year only, summed across commodities
+# Indicators kept: the four ibif components + ibif_total.
+# Output: output/table/EU_footprint_by_origin_continent.xlsx
+# ------------------------------------------------------------------------------
+
+CONSUMER_CONT <- "EU"
+IND_KEEP <- c("ibif_co2_eq", "ibif_land_crop", "ibif_land_grass",
+              "ibif_nh3", "ibif_total")          # ibif_total = sum of the four
+
+TAB_DIR  <- file.path("output", "table")
+dir.create(TAB_DIR, recursive = TRUE, showWarnings = FALSE)
+TAB_FILE <- file.path(TAB_DIR, "EU_footprint_by_origin_continent.xlsx")
+
+reg_cont <- unique(as.data.table(regions)[, .(iso3c, continent)])
+
+# ── core: attach continents, filter to EU consumers, aggregate ─────────────────
+#   by_commodity = TRUE  -> keep `commodity` as a dimension (BF)
+#   by_commodity = FALSE -> sum across all commodities (BP)
+eu_origin_table <- function(dt, by_commodity = TRUE) {
+  
+  d <- as.data.table(dt)[indicator %in% IND_KEEP]
+  
+  ## origin continent
+  d <- merge(d, reg_cont, by.x = "country_origin", by.y = "iso3c",
+             all.x = TRUE, sort = FALSE)
+  setnames(d, "continent", "continent_origin")
+  
+  ## consumer continent
+  d <- merge(d, reg_cont, by.x = "country_consumer", by.y = "iso3c",
+             all.x = TRUE, sort = FALSE)
+  setnames(d, "continent", "continent_consumer")
+  
+  ## unmatched origins -> explicit bucket instead of silent NA
+  if (d[is.na(continent_origin), .N] > 0L) {
+    warning(sprintf("origin country/-ies without continent in `regions`: %s",
+                    paste(sort(unique(d[is.na(continent_origin), country_origin])),
+                          collapse = ", ")))
+    d[is.na(continent_origin), continent_origin := "Unmatched"]
+  }
+  
+  d <- d[continent_consumer == CONSUMER_CONT]
+  if (nrow(d) == 0L)
+    stop("No rows with consumer continent == ", CONSUMER_CONT)
+  
+  dom <- paste0("Domestic (", CONSUMER_CONT, ")")
+  d[, origin_group := fifelse(continent_origin == CONSUMER_CONT, dom, continent_origin)]
+  
+  ## keep allocation as a dimension only if the input mixes mass/value
+  alloc_col <- if (uniqueN(d$allocation) > 1L) "allocation" else NULL
+  
+  by_cols <- c(alloc_col, "year",
+               if (by_commodity) "commodity",
+               "origin_group", "indicator")
+  
+  agg <- d[, .(value = sum(value, na.rm = TRUE)), by = by_cols]
+  
+  ## indicators to columns, in the requested order
+  id_cols <- setdiff(by_cols, "indicator")
+  wide <- dcast(agg,
+                as.formula(paste(paste(id_cols, collapse = " + "), "~ indicator")),
+                value.var = "value", fill = 0)
+  for (ind in IND_KEEP) if (!ind %in% names(wide)) wide[, (ind) := 0]
+  setcolorder(wide, c(id_cols, IND_KEEP))
+  
+  ## commodity labels, if available
+  if (by_commodity && exists("items_full_bcp")) {
+    lbl <- unique(as.data.table(items_full_bcp)[, .(comm_code, item)])
+    wide <- merge(wide, lbl, by.x = "commodity", by.y = "comm_code",
+                  all.x = TRUE, sort = FALSE)
+    setnames(wide, "item", "commodity_name")
+    setcolorder(wide, c(setdiff(id_cols, "commodity"), "commodity", "commodity_name"))
+    id_cols <- c(id_cols, "commodity_name")
+  }
+  
+  ## domestic row first, then origin continents alphabetically
+  wide[, .ord := fifelse(origin_group == dom, 0L, 1L)]
+  setorderv(wide, c(setdiff(id_cols, c("origin_group", "commodity_name")),
+                    ".ord", "origin_group"))
+  wide[, .ord := NULL]
+  wide[]
+}
+
+# ── same table as % of the EU total (within year x commodity) ──────────────────
+share_table <- function(wide) {
+  s   <- copy(wide)
+  key <- setdiff(names(s), c("origin_group", IND_KEEP))
+  s[, (IND_KEEP) := lapply(.SD, function(x) 100 * x / sum(x)),
+    by = key, .SDcols = IND_KEEP]
+  s[]
+}
+
+# ── build ─────────────────────────────────────────────────────────────────────
+tab_EU_BF <- eu_origin_table(dt_tradeFeed,    by_commodity = TRUE)
+tab_EU_BP <- eu_origin_table(dt_tradeFeed_BP, by_commodity = FALSE)
+
+## BP is aggregated over all commodities -> enters the table as a single
+## pseudo-commodity so that BF and BP can share one sheet
+tab_EU_BP[, `:=`(commodity = "Bio-based chemicals", commodity_name = "Bio-based chemicals")]
+
+tab_EU <- rbindlist(list(tab_EU_BF, tab_EU_BP), use.names = TRUE, fill = TRUE)
+setcolorder(tab_EU, c(intersect(c("allocation", "year", "commodity", "commodity_name",
+                                  "origin_group"), names(tab_EU)), IND_KEEP))
+
+## order: year, commodity (BF codes first, bio-based chemicals last),
+## domestic row before imports
+dom_lbl <- paste0("Domestic (", CONSUMER_CONT, ")")
+tab_EU[, `:=`(.comm_ord = fifelse(commodity == "Bio-based chemicals", 1L, 0L),
+              .ord      = fifelse(origin_group == dom_lbl, 0L, 1L))]
+setorderv(tab_EU, c("year", ".comm_ord", "commodity", ".ord", "origin_group"))
+tab_EU[, c(".comm_ord", ".ord") := NULL]
+
+tab_EU_sh <- share_table(tab_EU)
+
+## sanity check: stored ibif_total vs sum of the four components
+message("Max |ibif_total - sum(components)|: ",
+        signif(tab_EU[, max(abs(ibif_total - (ibif_co2_eq + ibif_land_crop +
+                                                ibif_land_grass + ibif_nh3)))], 4))
+
+# ── write Excel ───────────────────────────────────────────────────────────────
+wb_EU <- createWorkbook()
+hdr_style <- createStyle(textDecoration = "bold", halign = "center",
+                         fgFill = "#EFEFEF", border = "bottom")
+
+add_eu_sheet <- function(name, dt, num_fmt = "0.000E+00") {
+  addWorksheet(wb_EU, name)
+  writeData(wb_EU, name, dt, headerStyle = hdr_style)
+  addStyle(wb_EU, name, createStyle(numFmt = num_fmt),
+           rows = 2:(nrow(dt) + 1),
+           cols = which(names(dt) %in% IND_KEEP), gridExpand = TRUE)
+  freezePane(wb_EU, name, firstRow = TRUE)
+  setColWidths(wb_EU, name, cols = seq_along(dt), widths = "auto")
+}
+
+add_eu_sheet("EU_footprint", tab_EU)
+add_eu_sheet("shares",       tab_EU_sh, num_fmt = "0.00")
+
+saveWorkbook(wb_EU, TAB_FILE, overwrite = TRUE)

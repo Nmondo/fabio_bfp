@@ -100,7 +100,7 @@ live_b[, `:=`(item_code = tgt_code[conc],
 live_b <- live_b[!is.na(item_code), ]
 
 feed_req_b <- live_b[year %in% years, .(area_code, area, year, item_code, item, proc_code,
-                         production = value)]
+                                        production = value)]
 rm(conc, live_b, tgt_code, tgt_proc, tgt_item, src_code)
 
 feed_req_b <- merge(all.x = TRUE, allow.cartesian = TRUE,
@@ -218,6 +218,12 @@ avg_dairy <- feed_req_g %>%
 feed_req_g <- merge(feed_req_g, avg_dairy[, .(animal, feed_category, avg_dairy_share = dairy_share)],
                     by = c("animal", "feed_category"), all.x=TRUE)
 feed_req_g[, dairy_share := ifelse(is.na(dairy_share), avg_dairy_share, dairy_share)]
+# [DDGS FIX 1] By-products has no Bouwman dairy_share -> avg_dairy_share is NaN -> the split
+# below NaNs the cattle/sheep by-products (65%+ of the channel). Fall back to the animal's
+# mean finite share, then a 0.5 backstop, so the split apportions instead of annihilating.
+feed_req_g[, dairy_share := fifelse(is.finite(dairy_share), dairy_share,
+                                    mean(dairy_share[is.finite(dairy_share)], na.rm = TRUE)), by = .(area, animal)]
+feed_req_g[!is.finite(dairy_share), dairy_share := 0.5]
 feed_req_g[proc_code %in% c("p085", "p086", "p087", "p088", "p099", "p100", "p101", "p102"), 
            dm_intake := ifelse(grepl("Dairy", proc), dm_intake * dairy_share, dm_intake * (1-dairy_share))]
 feed_req_g[, `:=`(dairy_share = NULL, avg_dairy_share = NULL)]
@@ -227,7 +233,7 @@ feed_req_g <- dcast(feed_req_g, iso3c + area_code + area + animal + proc_code + 
                     value.var = "dm_intake", fill = 0) 
 # derive total dm intake per process
 feed_req_g[, total := na_sum(`By-products`, `Crop residues`, `Fodder crop`, Grains, `Grass and leaves`, 
-             `Oil seed cakes`, `Other edible`, `Other non-edible`)]
+                             `Oil seed cakes`, `Other edible`, `Other non-edible`)]
 
 # scale up chicken's feed intake to meat and egg production of poultry birds
 # include the following items
@@ -259,6 +265,7 @@ feed_req_g[, `:=`(item_code = 0,
                   crops = Grains + `Other edible`,
                   grass = `Grass and leaves`,
                   cakes = `Oil seed cakes`,
+                  byproducts = `By-products`,     # grain-industry by-products
                   fodder = `Fodder crop`)]
 feed_req_g[, `:=`(Grains = NULL, `Grass and leaves` = NULL, `Fodder crop` = NULL, 
                   `Oil seed cakes` = NULL, `Other edible` = NULL, iso3c = NULL,
@@ -278,7 +285,7 @@ feed_req_g <- merge.data.table(feed_req_g, feed_req_b[year==2015, .(area_code,pr
 feed_req_g <- rbind(feed_req_g, feed_req_b[year==2015 & proc_code=="p103", 
                                            c("area_code", "proc_code", "area", "proc", "total", "item_code", 
                                              "crops", "grass", "cakes", "fodder", "animals", "residues", "scavenging")], 
-                    use.names = TRUE)
+                    use.names = TRUE, fill = TRUE)   # [DDGS FIX] carry byproducts col
 
 
 
@@ -290,8 +297,8 @@ setkey(feed_req_b, area_code, proc_code, year)
 
 # Create a new data.table for change rates relative to 2015
 change_rates <- feed_req_b[year == 2015, 
-  .(area_code, proc_code, crops_2015 = crops, grass_2015 = grass, cakes_2015 = cakes, 
-    fodder_2015 = fodder, residues_2015 = residues, scavenging_2015 = scavenging, animals_2015 = animals)]
+                           .(area_code, proc_code, crops_2015 = crops, grass_2015 = grass, cakes_2015 = cakes, 
+                             fodder_2015 = fodder, residues_2015 = residues, scavenging_2015 = scavenging, animals_2015 = animals)]
 
 # Now merge the 2015 base values with all years in feed_req_b
 change_rates <- merge(feed_req_b, change_rates, by = c("area_code", "proc_code"), all.x = TRUE)
@@ -324,9 +331,9 @@ feed_req_g <- feed_req_g_all_years[!is.na(proc)]
 
 # Merge change rates into feed_req_g_all_years
 feed_req_g <- merge(feed_req_g, 
-  change_rates[, .(area_code, proc_code, year, crops_change, grass_change, cakes_change, 
-                   fodder_change, residues_change, scavenging_change, animals_change)], 
-  by = c("area_code", "proc_code", "year"), all.x = TRUE)
+                    change_rates[, .(area_code, proc_code, year, crops_change, grass_change, cakes_change, 
+                                     fodder_change, residues_change, scavenging_change, animals_change)], 
+                    by = c("area_code", "proc_code", "year"), all.x = TRUE)
 
 # Estimating feed use for the next year based on change rates
 feed_req_g[, `:=`(
@@ -340,14 +347,14 @@ feed_req_g[, `:=`(
 )]
 
 # Calculate total dm intake per process
-feed_req_g[, total := na_sum(animals, crops, fodder, scavenging, grass, if_else(residues>cakes, residues, cakes))]
+feed_req_g[, total := na_sum(animals, crops, fodder, scavenging, grass, byproducts, if_else(residues>cakes, residues, cakes))]   # [DDGS FIX] byproducts in total so byproducts-only rows survive total>0
 feed_req_g <- feed_req_g[total > 0]
 
 
 # Integrate GLEAM, Bouwman and Krausmann feed requirements
 feed_req <- bind_rows(feed_req_b[!paste(proc_code,area) %in% paste(feed_req_g$proc_code,feed_req_g$area) & total != 0],
                       feed_req_g[, .(area_code, proc_code, year, area, proc, total, item_code,
-                                     crops, grass, cakes, fodder, animals, residues, scavenging)], 
+                                     crops, grass, cakes, fodder, byproducts, animals, residues, scavenging)],   # [DDGS FIX] carry byproducts
                       feed_req_k[!is.na(total) & total > 0])
 
 feed_req[is.na(feed_req)] <- 0
@@ -396,7 +403,7 @@ feed_req <- feed_req[, lapply(.SD, na_sum),
 # Adapt feed-demand to available feed-supply -----
 feed_sup[, total_dry := na_sum(dry), by=c("area_code","year","feedtype")]
 feed_req <- data.table::melt(feed_req, id=c("area_code","area","year","proc_code","proc"),
-                             measure=c("crops","animals","cakes","fodder","grass"),
+                             measure=c("crops","animals","cakes","fodder","grass","byproducts"),
                              variable.name="feedtype", value.name="req")
 feed_req[, total_req := na_sum(req), by = c("area_code", "year", "feedtype")]
 
@@ -415,13 +422,65 @@ feed[, feed_use := round(req / (1 - moisture),0)]
 
 # Add feed use back to the use table
 feed[, comm_code := items$comm_code[match(feed$item_code, items$item_code)]]
+
+# ==========================================================================================
+# [DDGS CONSISTENCY CHECKS]  --  run these, read the messages, THEN keep or revert the merge
+# ------------------------------------------------------------------------------------------
+# The write-back below joins feed -> use on CODES ONLY (area_code, year, item_code, proc_code)
+# instead of the original SEVEN columns (which included the free-text area/item/proc strings).
+# DDGS (654) was never a CBS-native feed item, so its feed rows carry area/item/proc strings
+# of a different provenance than `use` -- the seven-way join dropped 9/10 of them. The four-
+# code key can't be defeated by a spelling difference. The checks quantify whether this is
+# clean (mass lands once) or introduces a fanout (feed row matched to multiple use rows).
+allocated_654 <- feed[item_code == 654 & !is.na(feed_use), sum(feed_use, na.rm = TRUE)]
+use_654_before <- use[item_code == 654, .N]
+message(">>> [654 CHK 0] feed_use allocated (pre-merge): ", round(allocated_654/1e6, 2),
+        " Mt across ", feed[item_code==654 & feed_use>0, .N], " feed rows | ",
+        "use already holds ", use_654_before, " rows for 654, type(s): {",
+        paste(sort(unique(as.character(use[item_code==654]$type))), collapse=","), "}")
+
 use <- merge(use,
-             feed[!is.na(feed_use), .(area_code, area, year, proc_code, proc, item_code, item, feed_use)],
-             by = c("area_code", "area", "year", "item_code", "item", "proc_code", "proc"), all = TRUE)
+             feed[!is.na(feed_use), .(area_code, year, item_code, proc_code, feed_use)],
+             by = c("area_code", "year", "item_code", "proc_code"), all = TRUE)
+
+# Backfill identity columns for any rows the merge ADDED (they arrive with NA area/item/proc).
+use[is.na(area),  area  := regions$name[match(area_code, regions$code)]]
+use[item_code == 654, item := "Brewing or distilling dregs and waste"]
+use[is.na(proc) & !is.na(proc_code),
+    proc := sup_items$proc[match(proc_code, sup_items$proc_code)]]   # sup_items = items_supply_bcp, loaded in 10_1a
+
 conc <- match(use$item_code, items$item_code)
 use[, comm_code := items$comm_code[conc]]
 use[!is.na(feed_use), `:=`(use = feed_use)]
+
+# --- CHECK 1: did the mass land once, and does it match what was allocated? ---
+use_654_Mt   <- use[item_code == 654, sum(use, na.rm = TRUE)]
+message(">>> [654 CHK 1] use after write-back: ", round(use_654_Mt/1e6, 2), " Mt (target ",
+        round(allocated_654/1e6, 2), " Mt)  ratio=", round(use_654_Mt/max(allocated_654,1), 3),
+        "  | ", use[item_code==654 & use>0, .N], " positive rows")
+# --- CHECK 2: fanout -- >1 use row per join key means duplicated mass ---
+fan <- use[item_code == 654, .N, by = .(area_code, year, proc_code)][N > 1]
+message(">>> [654 CHK 2] fanout keys (should be 0): ", nrow(fan),
+        if (nrow(fan)) paste0("  worst=", max(fan$N), " rows on one key") else "")
+# --- CHECK 3: duplicate 654 rows overall (11's rebuild_balance would double-count) ---
+message(">>> [654 CHK 3] rows=", use[item_code==654, .N],
+        " unique(area,year,proc)=", use[item_code==654, uniqueN(paste(area_code,year,proc_code))],
+        "  (rows > unique => duplicates)")
+# --- CHECK 4: provenance of the pre-existing 654 rows -- feed skeleton, or injection leak? ---
+message(">>> [654 CHK 4] pre-existing 654 rows by type: ",
+        paste(use[item_code==654 & (is.na(feed_use)), .N, by=type][, paste0(type,"=",N)], collapse=" "))
+# CHK 1 ratio ~1.0 + CHK 2 = 0 + CHK 3 rows==unique  => consistent, proceed to 11.
+# CHK 1 ratio >1 (e.g. ~10) or CHK 2 > 0             => fanout; the pre-existing rows collide,
+#                                                       dedupe or fix their source before 11.
+# ==========================================================================================
+
 use[, `:=`(feed_use = NULL)]
+message(">>> [654 TRACE 10_1b-end] use rows=", use[item_code==654, .N],
+        " use_pos=", use[item_code==654 & use>0, .N],
+        " Mt=", round(use[item_code==654, sum(use, na.rm=TRUE)]/1e6, 2),
+        " | feedtype-src items654: ",
+        paste(fread("inst/items_full_bcp.csv")[item_code==654, .(feedtype, moisture)][1], collapse="/"),
+        " | feed_sup654_dry_Mt=", round(sum(feed_sup[item_code==654, dry], na.rm=TRUE)/1e6,2))
 
 # Add grazing (feed_use of item_code 2001 == grass_r) to supply and balances
 grazing <- feed[item_code == 2001, list(grazing = na_sum(feed_use)),
@@ -443,4 +502,3 @@ cbs[, grazing := NULL]
 rm(avg_dairy, bouwman, temp, feed, feed_category_lookup, feed_category_b, feed_category_g,
    grazing, feed_req, feed_sup, live, feed_req_b, feed_req_g, feed_req_k,
    feed_req_g_all_years, conc_b, conc_gleam, conv_b, conv_k, change_rates, poultry)
-

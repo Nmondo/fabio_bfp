@@ -67,3 +67,5 @@ na_sum <- function(..., rowwise = TRUE) {
 
 # Aggregate a matrix based on its column names
 agg <- function(x) { x <- as.matrix(x) %*% sapply(unique(colnames(x)),"==",colnames(x));  return(x) }
+
+source("R/00_helpers.R")
