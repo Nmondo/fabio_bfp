@@ -60,8 +60,13 @@ fodder_prod <- fodder_prod[element == "Production" & year %in% years,
                              production = value )]
 
 # add grazing "production" from supply table
-grass_prod <- readRDS("data/sup_final.rds")[item_code == 2001, 
-                                            .(area_code, item, item_code, year, production)]
+# add grazing "production" from supply table
+sup <- readRDS("data/sup_final.rds")
+setindex(sup, NULL)   # stored secondary indices in sup_final.rds are stale
+grass_prod <- sup[item_code == 2001,
+                  .(area_code, item, item_code, year, production)]
+rm(sup)
+
 cont_full <- rbind(cont_full, grass_prod, fodder_prod)
 cont_full <- merge(cont_full, cont[, .(item_code,dm_conv, N, P)], by = c("item_code"), 
                    allow.cartesian = TRUE)
@@ -697,7 +702,7 @@ rm(indirect_vol)
 
 # get N content of crop residues
 crop_res <- crop_res[element == "Crop residues (N content)"]
-crop_res[!iso3c %in% regions$iso3c, iso3c == "ROW"]
+crop_res[!iso3c %in% regions$iso3c, iso3c := "ROW"]
 crop_res <- crop_res[, .(value = sum(value, na.rm = TRUE)),
                      by = .(iso3c, item, item_code, year)]
 
