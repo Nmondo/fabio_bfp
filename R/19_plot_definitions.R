@@ -84,7 +84,7 @@ indicator_meta <- data.table(
   scale_factor = c(1e3, rep(1, 8)),
   y_label      = c(
     "Land use (1000 ha)",
-    "Species abundance loss (MSA\u00b7km\u00b2\u00b7yr)",
+    "Pristine area loss equivalents (MSA-loss\u00b7km\u00b2)",
     "Freshwater biodiversity loss (PDF\u00b7yr)",
     "Marine biodiversity loss (PDF\u00b7yr)",
     "Terrestrial biodiversity loss (PDF\u00b7yr)",
