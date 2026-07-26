@@ -314,10 +314,11 @@ message(sprintf("[45] %d countries shown; they cover %s of the world charged tot
                               100 * colSums(shown[, ..ACCOUNTS]) / colSums(ctot[, ..ACCOUNTS])),
                       collapse = " | ")))
 
-SEL_NOTE <- if (from_44)
+SEL_NOTE <- if (from_44) {
   sprintf("Countries and their order follow the value-added figure (44, %s base).", VA_BASE)
-else
+} else {
   sprintf("Top %d countries by %s charged account (44 order file absent).", nrow(shown), RANK_BY)
+}
 
 # --- plot --------------------------------------------------------------------
 # One panel per country, strips BELOW the axis: a nested "account within country"
