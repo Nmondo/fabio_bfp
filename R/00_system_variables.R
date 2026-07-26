@@ -25,30 +25,23 @@ years <- 2012:2022
 
 
 # Universal producer prices for the HVO co-product bundle ---------------------
-# Basis: European wholesale (fob/fca ARA), premium-INCLUSIVE, i.e. the basic
-# ex-terminal price the producer actually receives. One flat price each, held
-# CONSTANT across countries and years. Values are indicative central estimates
-# for the 2023-2026 window (see per-item ranges + sources). For a consistent
-# basis, all three are at comparable per-tonne wholesale value.
+# c149/c150/c151 have no unique trading codes, so the trade-based price ladder
+# returns nothing. Each gets one flat producer price, constant across countries
+# and years: the bid/ask midpoint of the RED-grade, premium-inclusive fob/fca
+# ARA spot assessment in Argus Biofuels Issue 26-23, 3 Feb 2026
+# Densities are Argus' own for those assessments.
+#   c149  RED HVO fob ARA, Class II        2,373.05 / 2,385.87 -> 2,379.46
+#   c150  Biopropane fca ARA               1,360.00 / 1,370.00 -> 1,365.00
+#   c151  RED bionaphtha fob ARA           2,210.00 / 2,220.00 -> 2,215.00
+# Caveats: 2026 prices applied to 2012:2022 without deflation; a single trading
+# day stands in for a constant; ARA is a European benchmark used globally (fob
+# China HVO II is 27% lower), which cancels in value-allocation shares but not
+# in absolute producer values.
 universal_bcp_prices <- data.table::data.table(
   comm_code   = c("c149",             "c150",       "c151"),
   item        = c("Renewable diesel", "Biopropane", "Bionaphtha"),
-  price_usd_t = c(2300,               2000,         2500),   # USD/t, see sources
-  t_per_1000L = c(1 / 1.282,          0.51,         0.71))   # HVO 0.780 / propane / naphtha
-
-# Sources & ranges (central value chosen mid-to-conservative in each range):
-#  c149 Renewable diesel (HVO): ~1,900-2,600 USD/t.
-#     European UCO-HVO spot ~2,530 USD/mt, late 2025 (Vesper Tool, Feb 2026).
-#     Benchmark series: Argus / S&P Platts / Fastmarkets HVO fob ARA (paywalled).
-#     Public reference: Neste "Renewable Products" market data page.
-#  c150 Biopropane: ~1,800-2,500 USD/t.
-#     European bio-propane ~2,496 USD/mt w/ ~1,950 USD/mt premium over fossil
-#     propane (S&P Global Commodity Insights, 2023); premiums have since
-#     compressed on weak petrochemical demand -> central set below the peak.
-#     Benchmark series: Argus biopropane fca ARA (paywalled).
-#  c151 Bionaphtha: ~2,200-3,200 USD/t (Inkwood Research; renewable naphtha
-#     avg vs ~550-680 USD/t fossil naphtha). Scarce, petrochem-demand-driven.
-#     Benchmark series: Argus / Quantum bionaphtha fob ARA (paywalled).
+  price_usd_t = c(2379.46,            1365.00,      2215.00),  # USD/t
+  t_per_1000L = c(0.780,              0.522,        0.690))    # kg/l
 
 
 # Recursive sum over vectors with NA, returns NA if all values are NA
