@@ -1,5 +1,5 @@
 # =============================================================================
-# 41_responsibility_value_added.R
+# 42_responsibility_value_added.R
 # Value-added-based responsibility allocation (Pinero et al. 2019, Econ. Syst.
 # Res. 31:2) for the bio-based transport fuels, using the IBIF biodiversity
 # impact as the environmental extension.
@@ -95,8 +95,8 @@
 # v = 0 node never carries responsibility.
 #
 # RUN -------------------------------------------------------------------------
-#   Rscript R/41_responsibility_value_added.R
-#   FABIO_RUN_MODE=bypass Rscript R/41_responsibility_value_added.R   # counterfactual
+#   Rscript R/42_responsibility_value_added.R
+#   FABIO_RUN_MODE=bypass Rscript R/42_responsibility_value_added.R   # counterfactual
 #   (must run AFTER 14 and 35; VA_BASE below selects gloria/exiobase)
 # =============================================================================
 # --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker -
@@ -113,39 +113,14 @@ setwd(fabio_root)
 library(data.table)
 library(Matrix)
 
-source("R/00_system_variables.R")   # years, output_dir_bcp
-source("R/00_run_config.R")         # RUN_MODE / mode_dir()
-
-# --- run config --------------------------------------------------------------
-model_version <- if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass")
-  "bypass" else "rescaled"
-
-base_path <- sub("/+$", "", output_dir_bcp)                      # version-invariant (E, V, io_labels)
-MRIO_PATH <- if (model_version == "bypass") file.path(base_path, "bypass") else base_path
-OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+source("R/00_run_config.R")               # RUN_MODE / mode_dir()
+source("R/40_responsibility_shared.R")    # the run, its file names, biofuel_groups
+SCRIPT <- "42"
 
 # --- run switches ------------------------------------------------------------
-# tag(): filename-safe slug of a switch, so the switches and the file names can
-# never drift apart (see the OUTPUTS block in the header).
-tag <- function(x, fallback) {
-  s <- gsub("^_|_$", "", gsub("[^a-z0-9]+", "_", tolower(x)))
-  if (nzchar(s)) s else fallback
-}
-
-allocation <- "value"                 # co-product rule of the Leontief inverse: "mass" | "value"
-STRESSOR   <- "ibif_total"  # "ibif_total" | "LCIM_EQ_terrestrial"
-VA_BASE    <- "exiobase"             # "gloria" | "exiobase"
-NORMALISE  <- TRUE                   # per-chain renormalisation by the implied unit value
-resp_years <- as.character(years)    # 2012:2022 from 00_system_variables
-
-ATAG <- tag(allocation, "alloc")                     # "mass" / "value"
-STAG <- tag(sub("_total$", "", STRESSOR), "metric")  # "ibif" / "lcim_eq_terrestrial"
-
-# every CSV this script writes goes through here: one naming convention, one place
-out_csv <- function(what, variant_tag = "")
-  file.path(OUT_DIR, sprintf("FABIO_bcp_%s_%s_%s_%s%s.csv",
-                             STAG, what, VA_BASE, ATAG, variant_tag))
+# The indicator, allocation, VA base and every derived file name come from 40;
+# only what this script alone decides is set here.
+NORMALISE <- TRUE                    # per-chain renormalisation by the implied unit value
 
 # Ecosystem-service items EXEMPT from the missed-tonnage (throughput_coverage)
 # diagnostic. These nodes carry no monetary value added (v = p/X = 0) by
@@ -170,24 +145,12 @@ ABSENT_VA_COUNTRIES <- c("ANT", "BRN", "DMA", "ERI", "PRI", "SSD")
 # Match is by item label (robust to comm_code renumbering).
 RESIDUAL_ITEMS <- c("Other, Waste", "Other, Unknown")   # c901, c999
 
-biofuel_groups <- list(
-  biogasoline      = "c146",
-  biodiesel        = "c147",
-  renewable_diesel = "c149"                       # c149 only; HVO co-products
-  # biopropane/bio-LPG (c150) and
-  # bionaphtha (c151) are excluded
-)
-
 va_variants <- c(full = FALSE, ex_tls = TRUE)   # ex_tls: value added net of taxes-less-subsidies
 
-message(sprintf(">>> [41] model_version='%s' | VA_BASE='%s' | allocation='%s' | stressor='%s' | normalise=%s",
-                model_version, VA_BASE, allocation, STRESSOR, NORMALISE))
+run_banner()
+message(sprintf(">>> [42] normalise=%s", NORMALISE))
 
 # --- static inputs (year-independent) ----------------------------------------
-need <- function(path, who) {
-  if (!file.exists(path)) stop("Missing input: ", path, "  (produced by ", who, ")")
-  path
-}
 X  <- readRDS(need(file.path(MRIO_PATH, "losses", "X.rds"),   "14_leontief_inverse.R / 13_mrio.R"))
 Y  <- readRDS(need(file.path(MRIO_PATH, "losses", "Y.rds"),   "13_mrio.R"))
 E  <- readRDS(need(file.path(base_path, "E.rds"),             "16_extensions_main.R"))
@@ -211,12 +174,12 @@ io_key <- paste0(io$iso3c, "_", io$comm_code)
 assert_grid <- function(obj, axis, who) {
   nm <- if (axis == "row") rownames(obj) else colnames(obj)
   if (is.null(nm)) {
-    warning(sprintf("[41] %s has no %snames -- cannot verify item alignment; trusting position.",
+    warning(sprintf("[42] %s has no %snames -- cannot verify item alignment; trusting position.",
                     who, axis)); return(invisible())
   }
   if (!identical(nm, io_key)) {
     i <- which(nm != io_key)[1]
-    stop(sprintf(paste0("[41] %s %s order != io_labels grid -- environmental/VA ",
+    stop(sprintf(paste0("[42] %s %s order != io_labels grid -- environmental/VA ",
                         "extensions would be misattributed to the wrong items.\n",
                         "     first mismatch at index %d: %s = '%s' vs io = '%s'.\n",
                         "     Re-run 16 (E) and 35 (V) against THIS io_labels.csv."),
@@ -227,12 +190,12 @@ assert_grid <- function(obj, axis, who) {
 assert_grid(X, "row", "X.rds")
 for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col", sprintf("E[[%s]]", yr))
 for (yr in intersect(as.character(years), names(V))) assert_grid(V[[yr]], "col", sprintf("V[[%s]]", yr))
-message(">>> [41] alignment guard passed: X rows and E/V columns match the io_labels grid.")
+message(">>> [42] alignment guard passed: X rows and E/V columns match the io_labels grid.")
 
 # static mask of ecosystem-service nodes excluded from the coverage diagnostic
 exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
 if (sum(exempt_node))
-  message(sprintf(">>> [41] exempting %d ecosystem-service node(s) from coverage: %s",
+  message(sprintf(">>> [42] exempting %d ecosystem-service node(s) from coverage: %s",
                   sum(exempt_node), paste(unique(io$item[exempt_node]), collapse = ", ")))
 
 # static mask of nodes in countries absent from the VA source (excluded from the
@@ -426,7 +389,7 @@ if (!nrow(gaps)) {
               nrow(gaps), uniqueN(gaps$comm_code), uniqueN(gaps$iso3c), sum(gaps$throughput)))
   cat("-- top real feedstocks by tonnage fed into the biofuel chains --\n")
   print(head(by_item, 15))
-  g_path <- out_csv("value_added_gaps")
+  g_path <- va_csv("value_added_gaps")
   fwrite(gaps[order(year, -throughput)], g_path)
   message(sprintf("Wrote %s (%d rows)", g_path, nrow(gaps)))
 }
@@ -434,8 +397,8 @@ if (!nrow(gaps)) {
 # --- save (one pair of files per VA variant) ---------------------------------
 for (variant in names(va_variants)) {
   tagv   <- if (variant == "full") "" else paste0("_", variant)   # 'full' keeps the base filename
-  a_path <- out_csv("value_added_responsibility", tagv)
-  c_path <- out_csv("value_added_coverage",       tagv)
+  a_path <- va_csv("value_added_responsibility", tagv)
+  c_path <- va_csv("value_added_coverage",       tagv)
   a <- alloc[va_variant == variant]; c <- cover[va_variant == variant]
   fwrite(a, a_path)
   fwrite(c, c_path)

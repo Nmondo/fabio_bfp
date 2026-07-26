@@ -1,5 +1,5 @@
 # =============================================================================
-# 40_responsibility_accounts_hdi.R
+# 41_responsibility_accounts_hdi.R
 # Production-, consumption- and HDI-weighted responsibility for the bio-based
 # transport fuels, using the IBIF biodiversity impact as the environmental
 # extension.
@@ -73,8 +73,8 @@
 #       conservation_gap_pct, imputed_hdi_exposure
 #
 # RUN -------------------------------------------------------------------------
-#   Rscript R/40_responsibility_accounts_hdi.R
-#   FABIO_RUN_MODE=bypass Rscript R/40_responsibility_accounts_hdi.R   # counterfactual
+#   Rscript R/41_responsibility_accounts_hdi.R
+#   FABIO_RUN_MODE=bypass Rscript R/41_responsibility_accounts_hdi.R   # counterfactual
 #   (must run AFTER 14 and 16)
 # =============================================================================
 # --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker -
@@ -91,56 +91,21 @@ setwd(fabio_root)
 library(data.table)
 library(Matrix)
 
-source("R/00_system_variables.R")   # years, output_dir_bcp
-source("R/00_run_config.R")         # RUN_MODE / mode_dir()
+source("R/00_run_config.R")               # RUN_MODE / mode_dir()
+source("R/40_responsibility_shared.R")    # the run, its file names, biofuel_groups
 source("R/00_responsibility_helpers.R")   # country_grid(), build_D()
-
-# --- run config --------------------------------------------------------------
-model_version <- if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass")
-  "bypass" else "rescaled"
-
-base_path <- sub("/+$", "", output_dir_bcp)                     # version-invariant (E, io_labels)
-MRIO_PATH <- if (model_version == "bypass") file.path(base_path, "bypass") else base_path
-OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+SCRIPT <- "41"
 
 # --- run switches ------------------------------------------------------------
-tag <- function(x, fallback) {
-  s <- gsub("^_|_$", "", gsub("[^a-z0-9]+", "_", tolower(x)))
-  if (nzchar(s)) s else fallback
-}
-
-allocation <- "value"                # co-product rule of the Leontief inverse: "mass" | "value"
-STRESSOR   <- "ibif_total"  # "ibif_total" | "LCIM_EQ_terrestrial"
-resp_years <- as.character(years)    # 2012:2022 from 00_system_variables
-
+# The indicator, allocation and every derived file name come from 40; only the
+# inputs this script alone consumes are set here.
 HDI_FILE  <- "input/value_added/HDR25_Composite_indices_complete_time_series.csv"
 HDI_URL   <- "https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_indices_complete_time_series.csv"
 ROW_CODES <- "ROW"                   # FABIO regions that lump countries the model does not resolve
 
-ATAG <- tag(allocation, "alloc")                     # "mass" / "value"
-STAG <- tag(sub("_total$", "", STRESSOR), "metric")  # "ibif" / "lcim_eq_terrestrial"
-
-# every CSV this script writes goes through here: one naming convention, one place
-out_csv <- function(what)
-  file.path(OUT_DIR, sprintf("FABIO_bcp_%s_%s_%s.csv", STAG, what, ATAG))
-
-biofuel_groups <- list(
-  biogasoline      = "c146",
-  biodiesel        = "c147",
-  renewable_diesel = "c149"                       # c149 only; HVO co-products
-  # biopropane/bio-LPG (c150) and
-  # bionaphtha (c151) are excluded
-)
-
-message(sprintf(">>> [40] model_version='%s' | allocation='%s' | stressor='%s'",
-                model_version, allocation, STRESSOR))
+run_banner()
 
 # --- inputs ------------------------------------------------------------------
-need <- function(path, who) {
-  if (!file.exists(path)) stop("Missing input: ", path, "  (produced by ", who, ")")
-  path
-}
 X  <- readRDS(need(file.path(MRIO_PATH, "losses", "X.rds"), "14_leontief_inverse.R / 13_mrio.R"))
 Y  <- readRDS(need(file.path(MRIO_PATH, "losses", "Y.rds"), "13_mrio.R"))
 E  <- readRDS(need(file.path(base_path, "E.rds"),           "16_extensions_main.R"))
@@ -158,12 +123,12 @@ io_key <- paste0(io$iso3c, "_", io$comm_code)
 assert_grid <- function(obj, axis, who) {
   nm <- if (axis == "row") rownames(obj) else colnames(obj)
   if (is.null(nm)) {
-    warning(sprintf("[40] %s has no %snames -- cannot verify item alignment; trusting position.",
+    warning(sprintf("[41] %s has no %snames -- cannot verify item alignment; trusting position.",
                     who, axis)); return(invisible())
   }
   if (!identical(nm, io_key)) {
     i <- which(nm != io_key)[1]
-    stop(sprintf(paste0("[40] %s %s order != io_labels grid -- the extension would be ",
+    stop(sprintf(paste0("[41] %s %s order != io_labels grid -- the extension would be ",
                         "misattributed to the wrong items.\n",
                         "     first mismatch at index %d: %s = '%s' vs io = '%s'.\n",
                         "     Re-run 16 (E) against THIS io_labels.csv."),
@@ -173,7 +138,7 @@ assert_grid <- function(obj, axis, who) {
 }
 assert_grid(X, "row", "X.rds")
 for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col", sprintf("E[[%s]]", yr))
-message(">>> [40] alignment guard passed: X rows and E columns match the io_labels grid.")
+message(">>> [41] alignment guard passed: X rows and E columns match the io_labels grid.")
 
 # --- country grid ------------------------------------------------------------
 grid      <- country_grid(io, fd)
@@ -186,7 +151,7 @@ S_fd      <- grid$S_fd
 read_hdr <- function(file, url) {
   if (!file.exists(file)) {
     dir.create(dirname(file), showWarnings = FALSE, recursive = TRUE)
-    message(">>> [40] HDI file not found, downloading: ", url)
+    message(">>> [41] HDI file not found, downloading: ", url)
     ok <- tryCatch(download.file(url, file, method = "auto", quiet = TRUE) == 0,
                    error = function(e) FALSE, warning = function(w) FALSE)
     if (!ok) stop("HDI download failed -- put the HDR composite-indices CSV at ", file)
@@ -211,7 +176,7 @@ hdi_weights <- function(iso, yrs, regions) {
   # HDI is the median over exactly those HDR countries (unweighted -- the HDR
   # file carries no population), computed per year.
   residual <- long[!iso3 %in% iso, .(hdi_row = median(hdi)), by = year]
-  message(sprintf(">>> [40] ROW (%s) = median HDI of %d HDR countries not resolved by FABIO",
+  message(sprintf(">>> [41] ROW (%s) = median HDI of %d HDR countries not resolved by FABIO",
                   paste(ROW_CODES, collapse = ", "), uniqueN(long[!iso3 %in% iso, iso3])))
   
   near <- function(dt, y) if (!nrow(dt)) NA_real_ else dt$hdi[which.min(abs(dt$year - y))]
@@ -253,16 +218,16 @@ hdi_weights <- function(iso, yrs, regions) {
   # synthetic. Country counts alone would hide that, e.g. SOM (no HDR entry
   # before 2022) carries nearly the whole `nearest_year` bill on its own.
   n_ok <- sum(w$hdi_source == "undp")
-  message(sprintf(">>> [40] HDI: %d/%d country-years year-matched to UNDP (%.1f%%)",
+  message(sprintf(">>> [41] HDI: %d/%d country-years year-matched to UNDP (%.1f%%)",
                   n_ok, nrow(w), 100 * n_ok / nrow(w)))
   imp <- w[hdi_source != "undp"]
   if (nrow(imp)) {
     brk <- imp[, .N, by = .(hdi_source, iso3c)][order(hdi_source, -N)][
       , .(n = sum(N), who = paste(sprintf("%s(%d)", iso3c, N), collapse = "/")),
       by = hdi_source][order(-n)]
-    message(sprintf(">>> [40]      %d filled by fallback:", nrow(imp)))
+    message(sprintf(">>> [41]      %d filled by fallback:", nrow(imp)))
     for (k in seq_len(nrow(brk)))
-      message(sprintf(">>> [40]        %-16s %3d  %s", brk$hdi_source[k], brk$n[k], brk$who[k]))
+      message(sprintf(">>> [41]        %-16s %3d  %s", brk$hdi_source[k], brk$n[k], brk$who[k]))
   }
   w[]
 }
@@ -380,8 +345,8 @@ shift <- resp[, .(hdi           = mean(hdi),
 print(head(shift[order(-abs(imbalance))], 15))
 
 # --- save --------------------------------------------------------------------
-r_path <- out_csv("hdi_responsibility")
-c_path <- out_csv("hdi_coverage")
+r_path <- acc_csv("hdi_responsibility")
+c_path <- acc_csv("hdi_coverage")
 fwrite(resp[order(year, biofuel_group, -justice_based)], r_path)
 fwrite(cover[order(year, biofuel_group)], c_path)
 message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)",
