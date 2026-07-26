@@ -1,6 +1,6 @@
 # =============================================================================
-# 40_responsibility_value_added.R
-# Value-added-based responsibility allocation (Piñero et al. 2019, Econ. Syst.
+# 41_responsibility_value_added.R
+# Value-added-based responsibility allocation (Pinero et al. 2019, Econ. Syst.
 # Res. 31:2) for the bio-based transport fuels, using the IBIF biodiversity
 # impact as the environmental extension.
 #
@@ -9,13 +9,33 @@
 # pressure embodied in that biofuel's final demand -- the standard FABIO
 # consumer/upstream footprint, identical in construction to 18_01's
 # `ext = E/X ; MP = ext * L` -- and RE-ALLOCATE it to every value-generating
-# sector along the chain in proportion to the value added it captures. This is
-# the value-added-based metric h = v_hat B t of Piñero et al., where
-#     f  = e / x                     IBIF intensity per unit output   (from E, X)
-#     B  = (I - A)^-1                Leontief inverse          (L_<allocation>)
-#     t_j = y_j (f' B)_j             consumer footprint of final product j
-#     h_i = v_i sum_j B_ij t_j       value-added responsibility of sector i
-#     v  = p / x                     value-added share per unit output (from V)
+# sector along the chain in proportion to the value added it captures:
+#     f   = e / x                      impact intensity per unit output  (E, X)
+#     v   = p / x                      value-added intensity per unit output (V, X)
+#     B   = (I - A)^-1                 Leontief inverse          (L_<allocation>)
+#     t_j = y_j (f' B)_j               consumer footprint of final product j
+#     s_j = (v' B)_j                   value added embodied per tonne of j
+#     h_i = v_i sum_j B_ij (t_j / s_j) value-added responsibility of sector i
+#
+# WHY THE s_j NORMALISATION ---------------------------------------------------
+# Z, X and Y are in MASS under EITHER co-product rule (13_mrio builds both
+# Z_mass and Z_value from mr_use[mass]; "mass"/"value" name the allocation rule,
+# not the unit). B is therefore a physical Leontief inverse and v is a PRICE
+# intensity (USD per tonne), not a dimensionless share: sum_i v_i B_ij is not 1
+# but s_j, the implied UNIT VALUE of j. The value-added share of sector i in
+# chain j is v_i B_ij / s_j, so dividing each chain by its own s_j is what makes
+# h a re-allocation that conserves the footprint:
+#     sum_i h_i = sum_{j: s_j > 0} t_j
+# Chains with s_j <= 0 have no valued sector to carry them and drop out; the
+# shortfall is reported as conservation_gap_pct rather than normalised away.
+# (NORMALISE = FALSE returns the un-normalised v_i sum_j B_ij t_j, which mixes
+# impact with price and is NOT a responsibility -- debugging only.)
+#
+# VA VARIANTS -----------------------------------------------------------------
+#   full     wages + capital + taxes-less-subsidies
+#   ex_tls   wages + capital, so a net-subsidised sector does not carry lower
+#            responsibility on that account
+# One pair of files per variant.
 #
 # BIOFUEL SCOPE (comm_codes, per 07_03a/07_03b/33 and 18_01's bf_set) ---------
 #     biogasoline       c146
@@ -46,80 +66,39 @@
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_coverage_<base>_<alloc>[_ex_tls].csv
 #       per (year, va_variant, biofuel_group): consumer_footprint,
 #       allocated_norm, conservation_gap_pct, implied_unit_value_usd_per_t,
-#       throughput_coverage (the HONESTY CHECK -- read the CAVEAT block).
+#       throughput_coverage
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_gaps_<base>_<alloc>.csv
 #       per (year, iso3c, comm_code, item) with output but no value added that
-#       feeds the studied chains: throughput, value_added, reason (see
-#       STRUCTURAL-GAP CHECK). Absent-VA countries, ecosystem services and
-#       residual catch-all nodes excluded.
-#   <OUT_DIR>/FABIO_bcp_<metric>_accounts_<base>_<alloc>.csv
-#       long: year, biofuel_group, account (production|consumption|value_added),
-#             iso3c, value -- the three-account contrast (full VA variant); `value`
-#             is in the units of <metric>, whichever stressor STRESSOR selects.
-#   va_variant: 'full' uses total value added; 'ex_tls' excludes taxes-less-
-#   subsidies (value added = wages + capital), so a sector that is net-subsidised
-#   does not carry lower responsibility on that account.
+#       feeds the studied chains: throughput, value_added, reason
 #
-# CAVEAT -- FABIO is a PHYSICAL table; V is the only monetary object -----------
-# Z, X and Y are in MASS under EITHER co-product rule (13_mrio builds both
-# Z_mass and Z_value from mr_use[mass]; "mass"/"value" name the allocation rule,
-# not the unit). So B is a physical Leontief inverse whatever `allocation` is set
-# to (tonnes of i per tonne of final j), and the two intensities have DIFFERENT
-# dimensions:
-#     f = e/X  -> impact per tonne          (ordinary physical footprint)
-#     v = p/X  -> USD per tonne             (a value/PRICE intensity, NOT a share)
-# There is no monetary output vector in the model, so v does not form a
-# dimensionless value-added share and sum_i v_i B_ij is NOT 1. Instead
-#     s_j = (v' B)_j = USD value added embodied per tonne of final product j
-#         = the implied UNIT VALUE (price) of j.
-# The value added captured by sector i in chain j is v_i B_ij y_j (USD), so the
-# value-added SHARE of i is v_i B_ij / s_j (dimensionless). The physically
-# correct value-added responsibility is therefore the NORMALISED allocation
-#     h_i = v_i * sum_j B_ij (t_j / s_j),
-# which distributes each biofuel's physical IBIF footprint by value-added share
-# and conserves it: sum_i h_i = sum_{j: s_j>0} t_j. This is the default and the
-# only allocation shipped in the responsibility CSV. (The un-normalised product
-# v_i * sum_j B_ij t_j mixes units -- impact x price -- and is NOT a
-# responsibility; NORMALISE=FALSE returns it for debugging only.)
-#
-# COVERAGE. Because v_i = 0 wherever V is zero-filled (35), those sectors get
-# zero value-added share and the normalisation redistributes each chain's
-# footprint among only the *valued* sectors. The true value-added denominator of
-# the uncovered part is unknown, so we report an honest PHYSICAL proxy instead:
+# COVERAGE AND GAPS -----------------------------------------------------------
+# v = 0 wherever V is zero-filled (35), so the normalisation splits each chain
+# among the valued sectors only. The true VA denominator of the uncovered part
+# is unknown, so the honest proxy reported instead is
 #     throughput_coverage = share of the chain's upstream tonnage (B y_g) that
-#                           passes through sectors with V > 0.
-# Low throughput_coverage => the split leans on few valued sectors; treat those
-# biofuel-years with caution. implied_unit_value_usd_per_t (= sum_j s_j y_j /
-# sum_j y_j) is a sanity check: does the biofuel's implied USD/tonne look real?
+#                           passes through sectors with V > 0
+# Low values mean the split leans on few sectors; treat those biofuel-years with
+# caution. implied_unit_value_usd_per_t is a sanity check on V: does the
+# biofuel's implied USD/tonne look real?
 #
-# STRUCTURAL-GAP CHECK. Most zero-valued sectors are harmless: V holds a VA cell
-# only where a country actually produces a commodity, so a node that is off-chain
-# or genuinely empty (X = 0) never matters. What DOES matter is a cell with real
-# output (X > 0) but no value added (VA <= 0) that nevertheless sits upstream of
-# the studied biofuels -- its footprint is real but has no valued sector to carry
-# it. The block after the console summary lists exactly those (year, iso3c,
-# comm_code, item) cells, ranked by the tonnage they feed into the three chains,
-# so the fixable gaps are one glance away. Two classes are set aside so they do
-# not swamp the list: whole countries absent from the VA source
-# (ABSENT_VA_COUNTRIES, handled upstream in fabio_bcp) and residual catch-all
-# nodes (RESIDUAL_ITEMS: Other, Waste/Unknown) with no producing sector to value;
-# the latter's upstream tonnage is reported as a single set-aside figure.
-#
-# ECOSYSTEM-SERVICE EXEMPTION. Some upstream nodes are ecosystem services rather
-# than market commodities (e.g. Grazing, c062): they have no monetary output and
-# so v = 0 by construction, NOT because we failed to value a real transaction.
-# Counting their tonnage as "missed" would wrongly depress throughput_coverage.
-# The items in ECOSYSTEM_SERVICE_ITEMS are therefore removed from BOTH the
-# numerator and denominator of throughput_coverage (their tonnage is reported
-# separately as ecosystem_service_throughput). The allocation h is untouched --
-# a v = 0 node never carries responsibility regardless.
+# Most zero-valued sectors are harmless -- off-chain or genuinely empty (X = 0).
+# What matters is a cell with real output (X > 0) but no value added (VA <= 0)
+# sitting upstream of the studied biofuels: its footprint is real but has no
+# valued sector to carry it. Those cells are listed in the gaps CSV, ranked by
+# the tonnage they feed into the chains. Three classes are held out of both the
+# gap list and the coverage check, because they carry v = 0 by construction
+# rather than through a missed transaction: ecosystem services
+# (ECOSYSTEM_SERVICE_ITEMS, e.g. Grazing -- no monetary output), residual
+# catch-all nodes (RESIDUAL_ITEMS -- no producing sector to value) and countries
+# absent from the VA source (ABSENT_VA_COUNTRIES, handled in fabio_bcp). Their
+# tonnage is reported separately. The allocation h is untouched either way -- a
+# v = 0 node never carries responsibility.
 #
 # RUN -------------------------------------------------------------------------
-#   Rscript R/40_responsibility_value_added.R
-#   FABIO_RUN_MODE=bypass Rscript R/40_responsibility_value_added.R   # counterfactual
+#   Rscript R/41_responsibility_value_added.R
+#   FABIO_RUN_MODE=bypass Rscript R/41_responsibility_value_added.R   # counterfactual
 #   (must run AFTER 14 and 35; VA_BASE below selects gloria/exiobase)
 # =============================================================================
-
 # --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker -
 fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
 if (!nzchar(fabio_root)) {
@@ -155,9 +134,9 @@ tag <- function(x, fallback) {
 }
 
 allocation <- "value"                 # co-product rule of the Leontief inverse: "mass" | "value"
-STRESSOR   <- "LCIM_EQ_terrestrial"  # "ibif_total" | "LCIM_EQ_terrestrial"
+STRESSOR   <- "ibif_total"  # "ibif_total" | "LCIM_EQ_terrestrial"
 VA_BASE    <- "exiobase"             # "gloria" | "exiobase"
-NORMALISE  <- TRUE                   # per-chain renormalisation (see CAVEAT)
+NORMALISE  <- TRUE                   # per-chain renormalisation by the implied unit value
 resp_years <- as.character(years)    # 2012:2022 from 00_system_variables
 
 ATAG <- tag(allocation, "alloc")                     # "mass" / "value"
@@ -201,7 +180,7 @@ biofuel_groups <- list(
 
 va_variants <- c(full = FALSE, ex_tls = TRUE)   # ex_tls: value added net of taxes-less-subsidies
 
-message(sprintf(">>> [40] model_version='%s' | VA_BASE='%s' | allocation='%s' | stressor='%s' | normalise=%s",
+message(sprintf(">>> [41] model_version='%s' | VA_BASE='%s' | allocation='%s' | stressor='%s' | normalise=%s",
                 model_version, VA_BASE, allocation, STRESSOR, NORMALISE))
 
 # --- static inputs (year-independent) ----------------------------------------
@@ -218,12 +197,6 @@ io <- fread(   need(file.path(base_path, "io_labels.csv"),    "12_b_update_label
 stopifnot(all(c("iso3c", "comm_code", "item") %in% names(io)))
 N <- nrow(io)
 
-# consuming-region labels: one row per column of Y, used to roll the
-# consumption-based account up to the consuming country (mirrors 18_01a).
-fd <- fread(need(file.path(MRIO_PATH, "losses", "fd_labels.csv"), "13_mrio.R"))
-stopifnot("iso3c" %in% names(fd))
-fd_iso3c <- fd$iso3c
-
 # --- ALIGNMENT GUARD: E / V columns and X rows MUST match the io grid --------
 # The footprint / responsibility math is purely POSITIONAL. Both here (f = e/X,
 # v = p/X) and in 18_01b (ext = E[stressor,]/X) the vectors are coerced with
@@ -238,12 +211,12 @@ io_key <- paste0(io$iso3c, "_", io$comm_code)
 assert_grid <- function(obj, axis, who) {
   nm <- if (axis == "row") rownames(obj) else colnames(obj)
   if (is.null(nm)) {
-    warning(sprintf("[40] %s has no %snames -- cannot verify item alignment; trusting position.",
+    warning(sprintf("[41] %s has no %snames -- cannot verify item alignment; trusting position.",
                     who, axis)); return(invisible())
   }
   if (!identical(nm, io_key)) {
     i <- which(nm != io_key)[1]
-    stop(sprintf(paste0("[40] %s %s order != io_labels grid -- environmental/VA ",
+    stop(sprintf(paste0("[41] %s %s order != io_labels grid -- environmental/VA ",
                         "extensions would be misattributed to the wrong items.\n",
                         "     first mismatch at index %d: %s = '%s' vs io = '%s'.\n",
                         "     Re-run 16 (E) and 35 (V) against THIS io_labels.csv."),
@@ -254,12 +227,12 @@ assert_grid <- function(obj, axis, who) {
 assert_grid(X, "row", "X.rds")
 for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col", sprintf("E[[%s]]", yr))
 for (yr in intersect(as.character(years), names(V))) assert_grid(V[[yr]], "col", sprintf("V[[%s]]", yr))
-message(">>> [40] alignment guard passed: X rows and E/V columns match the io_labels grid.")
+message(">>> [41] alignment guard passed: X rows and E/V columns match the io_labels grid.")
 
 # static mask of ecosystem-service nodes excluded from the coverage diagnostic
 exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
 if (sum(exempt_node))
-  message(sprintf(">>> [40] exempting %d ecosystem-service node(s) from coverage: %s",
+  message(sprintf(">>> [41] exempting %d ecosystem-service node(s) from coverage: %s",
                   sum(exempt_node), paste(unique(io$item[exempt_node]), collapse = ", ")))
 
 # static mask of nodes in countries absent from the VA source (excluded from the
@@ -299,7 +272,7 @@ compute_year <- function(yr) {
   Xi <- as.vector(X[, yr]);           stopifnot(length(Xi) == N)
   Ei <- E[[yr]];                      stopifnot(ncol(Ei) == N)
   Vi <- V[[yr]];                      stopifnot(ncol(Vi) == N)
-  Yi <- Y[[yr]];                      stopifnot(nrow(Yi) == N, ncol(Yi) == length(fd_iso3c))
+  Yi <- Y[[yr]];                      stopifnot(nrow(Yi) == N)
   if (!STRESSOR %in% rownames(Ei)) stop("Stressor '", STRESSOR, "' not in E[[", yr, "]]")
   
   # intensity f = e / x  (matches 18_01) -- variant-independent
@@ -308,7 +281,7 @@ compute_year <- function(yr) {
   y_all <- as.vector(rowSums(as.matrix(Yi)))   # world final demand by product node
   comm  <- io$comm_code
   
-  alloc_rows <- list(); cover_rows <- list(); acct_rows <- list()
+  alloc_rows <- list(); cover_rows <- list()
   
   # accumulators for the structural-gap diagnostic (full-variant VA; throughput
   # summed over the studied chains)
@@ -320,7 +293,7 @@ compute_year <- function(yr) {
     if (variant == "full") p_full <- p       # total VA, for the structural-gap check
     v <- p / Xi; v[!is.finite(v)] <- 0
     s <- as.vector(crossprod(v, B))     # (v' B)_j : USD value added per tonne of j = implied UNIT VALUE
-    #            (NOT a share; physical table -- see header CAVEAT)
+    #            (a price intensity, NOT a share -- see the header)
     
     for (g in names(biofuel_groups)) {
       cc_set <- biofuel_groups[[g]]
@@ -343,22 +316,6 @@ compute_year <- function(yr) {
       BY <- as.vector(B %*% y_g)                        # upstream throughput (tonnes)
       if (variant == "full") BY_studied <- BY_studied + BY   # tonnage feeding the studied chains
       
-      # three accounting principles for the SAME chain footprint (each sums to
-      # fp_consumer), keyed by iso3c so they can be contrasted side by side:
-      #   production  = IBIF located at the producing node   f_i * (B y_g)_i
-      #   consumption = footprint routed to the consumer of the biofuel
-      #                 sum_j fB_j * Y[j, r]  (biofuel final demand only)
-      #   value_added = the normalised VA responsibility h   (full VA variant)
-      # production and consumption are VA-source-independent; only value_added
-      # moves when VA_BASE is switched -- that contrast is the whole point.
-      if (variant == "full") {
-        cba_reg <- as.vector(crossprod(fB[in_g], Yi[in_g, , drop = FALSE]))  # per Y column
-        acct_rows[[g]] <- rbindlist(list(
-          data.table(biofuel_group = g, account = "production",  iso3c = io$iso3c, value = f * BY),
-          data.table(biofuel_group = g, account = "consumption", iso3c = fd_iso3c, value = cba_reg),
-          data.table(biofuel_group = g, account = "value_added", iso3c = io$iso3c, value = h)
-        ))[value != 0]
-      }
       BYd <- BY; BYd[exempt_node] <- 0                  # drop ecosystem services (e.g. Grazing) from the check
       exempt_throughput   <- sum(BY[exempt_node])       # tonnage set aside as ecosystem services (transparency)
       throughput_coverage <- if (sum(BYd) > 0) sum(BYd[v > 0]) / sum(BYd) else NA_real_
@@ -406,16 +363,10 @@ compute_year <- function(yr) {
     reason      = ifelse(p_full[gk] < 0, "negative_VA", "no_VA_cell")
   )[order(-throughput)] else NULL
   
-  acct_dt <- if (length(acct_rows))
-    rbindlist(acct_rows, use.names = TRUE, fill = TRUE)[
-      , .(value = sum(value)), by = .(biofuel_group, account, iso3c)][
-        , year := as.integer(yr)][] else NULL
-  
   list(alloc = rbindlist(alloc_rows, use.names = TRUE, fill = TRUE),
        cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE),
        residual = residual_t,
-       gap   = gap_dt,
-       acct  = acct_dt)
+       gap   = gap_dt)
 }
 
 # --- run all years -----------------------------------------------------------
@@ -425,26 +376,14 @@ alloc <- rbindlist(lapply(res, `[[`, "alloc"), use.names = TRUE, fill = TRUE)
 cover <- rbindlist(lapply(res, `[[`, "cover"), use.names = TRUE, fill = TRUE)
 gaps  <- rbindlist(lapply(res, `[[`, "gap"),   use.names = TRUE, fill = TRUE)
 residual_set_aside <- sum(unlist(lapply(res, `[[`, "residual")))   # tonnes in catch-all nodes
-accts <- rbindlist(lapply(res, `[[`, "acct"),  use.names = TRUE, fill = TRUE)
 
 # annotate value-generator continent (nice-to-have, mirrors 18_01)
 regions <- tryCatch(fread("inst/regions_full.csv"), error = function(e) NULL)
 if (!is.null(regions) && "continent" %in% names(regions))
   alloc[, va_continent := regions$continent[match(va_iso3c, regions$iso3c)]]
 
-# --- three-account contrast (production / consumption / value_added) ----------
-# long table keyed by iso3c; each account sums to the same per-chain footprint,
-# so differences are pure re-attribution. Only value_added depends on VA_BASE.
-if (nrow(accts)) {
-  if (!is.null(regions) && "continent" %in% names(regions))
-    accts[, continent := regions$continent[match(iso3c, regions$iso3c)]]
-  acc_path <- out_csv("accounts")
-  fwrite(accts[order(year, biofuel_group, account, -value)], acc_path)
-  message(sprintf("Wrote %s (%d rows)", acc_path, nrow(accts)))
-}
-
 # --- validation / console summary -------------------------------------------
-cat("\n================  IBIF value-added responsibility  ================\n")
+cat("\n================  value-added responsibility  ================\n")
 cat(sprintf("VA base: %-8s   allocation: %-5s   normalise: %s\n", VA_BASE, allocation, NORMALISE))
 if (nrow(cover)) {
   chk <- cover[, .(consumer   = sum(consumer_footprint),
@@ -454,7 +393,7 @@ if (nrow(cover)) {
                by = .(va_variant, biofuel_group)]
   chk[, conservation_gap_pct := 100 * (norm - consumer) / consumer]
   print(chk)
-  cat("\nInterpretation (physical table -- see CAVEAT):\n")
+  cat("\nInterpretation (physical table -- see the header):\n")
   cat(" - `norm` should match `consumer` (per-chain conservation of the footprint);\n")
   cat("   a gap means some chains have s_j = 0, i.e. NO valued sector to carry them.\n")
   cat(" - `unit_value` is the implied USD/tonne of the biofuel -- a sanity check on V.\n")

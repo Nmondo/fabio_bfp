@@ -6,13 +6,19 @@
 # and plots.
 #
 # READS  <IN_DIR>/ (one set per indicator x VA base x allocation, found by pattern)
-#   FABIO_bcp_<ind>_accounts_<vabase>_<alloc>.csv                       (40)
-#   FABIO_bcp_<ind>_value_added_responsibility_<vabase>_<alloc>_ex_tls.csv (40)
-#   FABIO_bcp_<ind>_hdi_responsibility_<alloc>.csv                      (41)
+#   FABIO_bcp_<ind>_hdi_responsibility_<alloc>.csv                         (40)
+#   FABIO_bcp_<ind>_value_added_responsibility_<vabase>_<alloc>_ex_tls.csv (41)
 #
 # WRITES output/plot/
 #   responsibility_accounts_<ind>_<vabase>_<alloc>.svg            continent x account
-#   responsibility_accounts_<ind>_<vabase>_<alloc>_by_biofuel.svg same, per chain
+#   responsibility_accounts_<ind>_<vabase>_<alloc>_by_biofuel.svg same, per chain:
+#       facet_grid(biofuel_group ~ period) -- PERIODS ARE THE COLUMNS, biofuel
+#       chains the ROWS, so with scales = "free_y" (BY_BIOFUEL_FREE_Y, on by
+#       default) each chain gets its own y axis while the two periods inside a
+#       row stay on one scale and remain directly comparable. Renewable diesel is
+#       an order of magnitude below biodiesel and would otherwise flatten out.
+#       Price: bar heights MAY NOT be compared ACROSS rows -- read the axis, and
+#       use the pooled figure above for cross-chain magnitude.
 #   hdi_imbalance_<ind>_<alloc>.svg                               justice - 50/50 split
 #
 # CAVEAT: the four accounts (production, consumption, HDI justice-based, value
@@ -55,6 +61,10 @@ PERIODS <- list("2012-2014" = 2012:2014,
 ACCOUNT_LEVELS <- c("Production", "Consumption",
                     "HDI justice-based", "Value added (ex TLS)")
 
+# by-biofuel figure: free the y axis per biofuel row (see the header). Set to
+# FALSE for one common scale across all chains, i.e. the old behaviour.
+BY_BIOFUEL_FREE_Y <- TRUE
+
 # Okabe-Ito hues, as elsewhere in the pipeline. Fill is by ACCOUNT here, not by
 # continent, so continent_palette does not apply to it.
 account_palette <- c("Production"           = "#0072B2",   # blue
@@ -82,17 +92,16 @@ meta_for <- function(ind_tag) {
 
 # --- discovery ---------------------------------------------------------------
 discover_runs <- function(dir = IN_DIR) {
-  files <- list.files(dir, pattern = "^FABIO_bcp_.+_accounts_[^_]+_[^_]+\\.csv$")
+  pat   <- "^FABIO_bcp_(.+)_value_added_responsibility_([^_]+)_([^_]+)_ex_tls\\.csv$"
+  files <- list.files(dir, pattern = pat)
   if (!length(files)) return(data.table())
-  m <- regmatches(files, regexec("^FABIO_bcp_(.+)_accounts_([^_]+)_([^_]+)\\.csv$", files))
+  m <- regmatches(files, regexec(pat, files))
   runs <- rbindlist(lapply(m, function(x)
     data.table(indicator = x[2], va_base = x[3], alloc = x[4])))
   runs[, `:=`(
-    acc_file = file.path(dir, sprintf("FABIO_bcp_%s_accounts_%s_%s.csv",
-                                      indicator, va_base, alloc)),
     va_file  = file.path(dir, sprintf("FABIO_bcp_%s_value_added_responsibility_%s_%s_ex_tls.csv",
                                       indicator, va_base, alloc)),
-    # 41 takes no VA base, so the HDI file is keyed by indicator x allocation only
+    # the accounts take no VA base: keyed by indicator x allocation only
     hdi_file = file.path(dir, sprintf("FABIO_bcp_%s_hdi_responsibility_%s.csv",
                                       indicator, alloc)))]
   runs[]
@@ -111,43 +120,29 @@ need_cols <- function(dt, cols, path) {
 # annual and keyed by continent. Files of DIFFERENT indicator/allocation are never
 # mixed: everything below comes from the one `run`.
 load_run <- function(run) {
-  acc <- fread(run$acc_file)
   va  <- fread(run$va_file)
   hdi <- fread(run$hdi_file)
-
-  need_cols(acc, c("biofuel_group", "account", "iso3c", "value", "year", "continent"), run$acc_file)
+  
   need_cols(va,  c("year", "va_variant", "biofuel_group", "va_iso3c", "va_resp", "va_continent"), run$va_file)
   need_cols(hdi, c("year", "biofuel_group", "iso3c", "continent", "production_based",
                    "consumption_based", "justice_based", "imbalance"), run$hdi_file)
-
-  # 41's production/consumption must reproduce 40's for the same allocation.
-  a_pc <- acc[account %in% c("production", "consumption"),
-              .(a = sum(value)), by = .(year, iso3c, account)]
-  h_pc <- rbind(hdi[, .(h = sum(production_based)),  by = .(year, iso3c)][, account := "production"],
-                hdi[, .(h = sum(consumption_based)), by = .(year, iso3c)][, account := "consumption"])
-  cmp  <- merge(a_pc, h_pc, by = c("year", "iso3c", "account"), all = TRUE)
-  cmp[is.na(a), a := 0][is.na(h), h := 0]
-  scale_ref <- max(abs(cmp$a), 0)
-  if (scale_ref > 0 && max(abs(cmp$a - cmp$h)) / scale_ref > 1e-6)
-    warning(sprintf("[42] %s/%s: 41's production/consumption differ from 40's (max %.3g) -- same allocation?",
-                    run$indicator, run$alloc, max(abs(cmp$a - cmp$h))))
-
-  # the `value_added` rows inside the accounts file are the FULL variant: skip them
-  # and take the value-added bar from the _ex_tls responsibility file instead.
+  
+  # the value-added bar is the ex_tls variant; the other three accounts come from
+  # the accounts file, which resolves them per (year, biofuel_group, iso3c).
   long <- rbindlist(list(
-    acc[account == "production",
-        .(year, biofuel_group, iso3c, continent, account = "Production", value)],
-    acc[account == "consumption",
-        .(year, biofuel_group, iso3c, continent, account = "Consumption", value)],
+    hdi[, .(year, biofuel_group, iso3c, continent,
+            account = "Production",  value = production_based)],
+    hdi[, .(year, biofuel_group, iso3c, continent,
+            account = "Consumption", value = consumption_based)],
     hdi[, .(year, biofuel_group, iso3c, continent,
             account = "HDI justice-based", value = justice_based)],
     va[va_variant == "ex_tls",
        .(year, biofuel_group, iso3c = va_iso3c, continent = va_continent,
          account = "Value added (ex TLS)", value = va_resp)]
   ), use.names = TRUE)
-
-  # a handful of iso3c carry no continent in 40's lookup but do in 41's; fill from
-  # there, and bucket whatever is still unresolved so the totals stay complete.
+  
+  # a handful of iso3c carry no continent in the VA table's lookup; fill from the
+  # accounts, and bucket whatever is still unresolved so the totals stay complete.
   long[continent == "", continent := NA_character_]
   cmap <- unique(hdi[continent != "", .(iso3c, continent)])
   long[is.na(continent), continent := cmap$continent[match(iso3c, cmap$iso3c)]]
@@ -157,10 +152,10 @@ load_run <- function(run) {
             " -- shown as 'Unknown'")
     long[is.na(continent), continent := "Unknown"]
   }
-
+  
   long[, account := factor(account, levels = ACCOUNT_LEVELS)]
   imb <- hdi[, .(imbalance = sum(imbalance)), by = .(year, continent)]
-
+  
   list(accounts  = long[, .(value = sum(value)), by = .(year, biofuel_group, continent, account)],
        imbalance = imb)
 }
@@ -192,18 +187,34 @@ check_totals <- function(d, what) {
 }
 
 # --- plots -------------------------------------------------------------------
-plot_accounts <- function(d, meta, title, by_biofuel = FALSE) {
+plot_accounts <- function(d, meta, title, subtitle = NULL, by_biofuel = FALSE) {
   d <- copy(d)[, value := value / meta$scale_factor]
   p <- ggplot(d, aes(x = continent, y = value, fill = account)) +
     geom_col(position = position_dodge2(preserve = "single"), width = 0.75) +
     scale_fill_manual(values = account_palette, drop = FALSE) +
-    labs(x = NULL, y = meta$y_label, fill = "Account", title = title) +
+    labs(x = NULL, y = meta$y_label, fill = "Account",
+         title = title, subtitle = subtitle) +
     theme_minimal() +
     theme(legend.position = "bottom",
           legend.title    = element_text(face = "bold"),
           strip.text      = element_text(face = "bold"),
           axis.text.x     = element_text(angle = 45, hjust = 1))
-  if (by_biofuel) p + facet_grid(period ~ biofuel_group) else p + facet_wrap(~ period, nrow = 1)
+  
+  if (!by_biofuel) return(p + facet_wrap(~ period, nrow = 1))
+  
+  # facet_grid(biofuel_group ~ period): the periods are the COLUMNS and the
+  # biofuel chains the ROWS. ggplot frees a scale per row/column, never per
+  # panel, so "free_y" on this layout gives each chain its own y axis while both
+  # periods of a chain share one -- exactly the comparison we want (early vs late
+  # within a chain), at the cost of cross-row heights (see the header caveat).
+  # The columns are the same two periods in every row, so rows can still be read
+  # against each other in SHAPE, just not in height.
+  p + facet_grid(biofuel_group ~ period,
+                 scales = if (BY_BIOFUEL_FREE_Y) "free_y" else "fixed",
+                 switch = "y") +
+    theme(strip.placement   = "outside",
+          strip.text.y.left = element_text(face = "bold", angle = 90),
+          panel.spacing.y   = unit(8, "pt"))
 }
 
 plot_imbalance <- function(d, meta, title) {
@@ -229,41 +240,52 @@ plot_imbalance <- function(d, meta, title) {
 runs <- discover_runs()
 
 if (!nrow(runs)) {
-  message(">>> [42] no `*_accounts_*.csv` in ", IN_DIR, " -- nothing to plot.")
+  message(">>> [42] no `*_value_added_responsibility_*_ex_tls.csv` in ", IN_DIR,
+          " -- nothing to plot.")
 } else {
   message(sprintf(">>> [42] %d run(s) discovered in %s", nrow(runs), IN_DIR))
   done_imbalance <- character()   # the HDI imbalance does not depend on the VA base
-
+  
   for (i in seq_len(nrow(runs))) {
     run <- runs[i]
     key <- sprintf("%s / %s / %s", run$indicator, run$va_base, run$alloc)
-
+    
     if (!file.exists(run$va_file))  { message("[42] skip ", key, ": no ex_tls value-added file"); next }
     if (!file.exists(run$hdi_file)) { message("[42] skip ", key, ": no HDI responsibility file"); next }
-
+    
     message(">>> [42] ", key)
     meta <- meta_for(run$indicator)
     d    <- load_run(run)
-
+    
     # main figure: biofuel groups pooled
     acc_p <- period_mean(d$accounts, "value", c("continent", "account"))
     if (!nrow(acc_p)) { message("[42] skip ", key, ": no years in the plotted periods"); next }
     check_totals(acc_p, key)
-
+    
     ttl <- sprintf("%s responsibility by continent - %s VA base, %s allocation",
                    meta$short_label, run$va_base, run$alloc)
     ggsave(file.path(PLOT_DIR, sprintf("responsibility_accounts_%s_%s_%s.svg",
                                        run$indicator, run$va_base, run$alloc)),
            plot_accounts(acc_p, meta, ttl),
            device = svglite::svglite, width = 12, height = 6)
-
-    # variant: same bars, split by biofuel chain
+    
+    # variant: same bars, split by biofuel chain (rows) x period (columns)
     bf_p <- period_mean(d$accounts, "value", c("continent", "account", "biofuel_group"))
+    n_bf  <- uniqueN(bf_p$biofuel_group)
+    n_per <- uniqueN(bf_p$period)
+    bf_sub <- if (BY_BIOFUEL_FREE_Y)
+      "Y axis is FREE PER BIOFUEL ROW: compare continents and periods within a row, not bar heights across rows."
+    else NULL
+    # the grid is now n_per columns wide and n_bf rows tall, so the canvas has to
+    # follow the data rather than stay at the old fixed 13 x 9.
     ggsave(file.path(PLOT_DIR, sprintf("responsibility_accounts_%s_%s_%s_by_biofuel.svg",
                                        run$indicator, run$va_base, run$alloc)),
-           plot_accounts(bf_p, meta, paste0(ttl, " - by biofuel"), by_biofuel = TRUE),
-           device = svglite::svglite, width = 13, height = 9)
-
+           plot_accounts(bf_p, meta, paste0(ttl, " - by biofuel"),
+                         subtitle = bf_sub, by_biofuel = TRUE),
+           device = svglite::svglite,
+           width  = 3.0 + 4.2 * max(n_per, 1),    # 2 periods -> 11.4in
+           height = 2.6 + 2.9 * max(n_bf, 1))     # 3 chains   -> 11.3in
+    
     # HDI imbalance (indicator x allocation only -- write it once)
     imb_key <- paste(run$indicator, run$alloc)
     if (!imb_key %in% done_imbalance) {
