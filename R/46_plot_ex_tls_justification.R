@@ -15,7 +15,10 @@
 #    sign-integrity without moving the headline attribution -- which pre-empts
 #    the "you picked the variant that suited you" objection.
 #
-# READS  VA_FULL_CSV, VA_RESP_CSV  (42)
+# READS  VA_FULL_CSV, VA_EXTLS_CSV  (42) -- both variants BY NAME. This script is
+#        the contrast itself, so it must NOT follow 40's VA_VARIANT: reading the
+#        selected variant would plot one definition against itself the moment the
+#        default is anything but 'ex_tls'.
 # WRITES output/plot/
 #   ex_tls_sign_flip_<ind>_<vabase>_<alloc>_<year>.svg
 #   ex_tls_country_totals_<ind>_<vabase>_<alloc>_<year>.svg
@@ -60,9 +63,9 @@ NODE_KEYS <- c("year", "biofuel_group", "va_iso3c", "va_comm_code", "va_item")
 load_run <- function() {
   cols <- c(NODE_KEYS, "va_resp")
   full <- fread(need(VA_FULL_CSV, "42"))
-  ex   <- fread(need(VA_RESP_CSV, "42"))
+  ex   <- fread(need(VA_EXTLS_CSV, "42"))
   need_cols(full, c(cols, "va_variant"), VA_FULL_CSV)
-  need_cols(ex,   c(cols, "va_variant"), VA_RESP_CSV)
+  need_cols(ex,   c(cols, "va_variant"), VA_EXTLS_CSV)
   
   # Subset to PLOT_YEAR BEFORE the join: 42 writes every year x node, and only one
   # year is ever drawn, so joining the whole files on five keys costs an order of
@@ -149,7 +152,7 @@ plot_country_totals <- function(d) {
 
 # --- run ---------------------------------------------------------------------
 d <- load_run()
-if (!nrow(d[year == PLOT_YEAR])) stop("[46] no rows for ", PLOT_YEAR, " in ", VA_RESP_CSV)
+if (!nrow(d[year == PLOT_YEAR])) stop("[46] no rows for ", PLOT_YEAR, " in ", VA_EXTLS_CSV)
 
 FTAG <- sprintf("%s_%s_%s_%d", STAG, VA_BASE, ATAG, PLOT_YEAR)
 

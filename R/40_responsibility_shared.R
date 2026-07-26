@@ -24,6 +24,11 @@ source("R/19_plot_definitions.R")   # indicator_meta, continent_palette, fuel_co
 STRESSOR   <- "ibif_total"   # "ibif_total" | "LCIM_EQ_terrestrial"
 allocation <- "value"        # co-product rule of the Leontief inverse: "mass" | "value"
 VA_BASE    <- "exiobase"     # "gloria" | "exiobase"
+VA_VARIANT <- "full"         # VA definition carried by the account 43-45/47 draw:
+#   "full"   wages + capital + taxes-less-subsidies
+#   "ex_tls" wages + capital
+# 42 writes BOTH; this only picks which one is read
+# back. 46 contrasts the two and ignores this switch.
 PLOT_YEAR  <- 2022L          # the single year every by-country figure shows
 resp_years <- as.character(years)   # 2012:2022, from 00_system_variables
 
@@ -73,10 +78,20 @@ va_csv <- function(what, variant_tag = "")
   file.path(OUT_DIR, sprintf("FABIO_bcp_%s_%s_%s_%s%s.csv",
                              STAG, what, VA_BASE, ATAG, variant_tag))
 
-HDI_CSV     <- acc_csv("hdi_responsibility")                                  # 41
-VA_RESP_CSV <- va_csv("value_added_responsibility", "_ex_tls")                # 42
-VA_FULL_CSV <- va_csv("value_added_responsibility")                           # 42
-ORDER_CSV   <- va_csv("responsibility_country_order", sprintf("_%d", PLOT_YEAR))  # 44 -> 45
+# VA_TAG mirrors 42's `tagv` exactly -- 'full' keeps the base filename, every
+# other variant is suffixed -- so the switch above and 42's output names cannot
+# drift apart. VA_FULL_CSV / VA_EXTLS_CSV name the two variants OUTRIGHT, for 46,
+# whose whole subject is the contrast: it must not follow VA_VARIANT, or it would
+# plot one variant against itself.
+if (!VA_VARIANT %in% c("full", "ex_tls"))
+  stop("[40] VA_VARIANT must be 'full' or 'ex_tls', not '", VA_VARIANT, "'.")
+VA_TAG <- if (VA_VARIANT == "full") "" else paste0("_", VA_VARIANT)
+
+HDI_CSV      <- acc_csv("hdi_responsibility")                                 # 41
+VA_RESP_CSV  <- va_csv("value_added_responsibility", VA_TAG)                  # 42
+VA_FULL_CSV  <- va_csv("value_added_responsibility")                          # 42
+VA_EXTLS_CSV <- va_csv("value_added_responsibility", "_ex_tls")               # 42
+ORDER_CSV    <- va_csv("responsibility_country_order", sprintf("_%d", PLOT_YEAR))  # 44 -> 45
 
 # --- the chains --------------------------------------------------------------
 # Keys, not labels: `biofuel_groups`' names are the biofuel_group column 41 and 42
@@ -90,22 +105,32 @@ biofuel_label  <- c(biogasoline      = "Biogasoline",
                     renewable_diesel = "Renewable diesel")
 
 # --- the accounts ------------------------------------------------------------
+# The VA account is NAMED for the variant it carries, so a figure can never claim
+# one definition while plotting the other. 43 and 47 label their VA column with
+# this constant rather than a literal.
+VA_ACCOUNT_LABEL <- if (VA_VARIANT == "full") "Value added" else "Value added (ex TLS)"
+
+# The same thing spelled out, for figure subtitles that have room for it (44).
+# Kept free of '%': it is pasted into sprintf() format strings.
+VA_DEFINITION_NOTE <- if (VA_VARIANT == "full") "wages + capital + TLS" else
+  "wages + capital, ex TLS"
+
 ACCOUNT_LEVELS <- c("Production", "Consumption",
-                    "HDI justice-based", "Value added (ex TLS)")
+                    "HDI justice-based", VA_ACCOUNT_LABEL)
 
 # Okabe-Ito, as elsewhere in the pipeline. An account keeps its colour across
-# every figure in the block.
-account_palette <- c("Production"           = "#0072B2",   # blue
-                     "Consumption"          = "#D55E00",   # vermillion
-                     "HDI justice-based"    = "#009E73",   # green
-                     "Value added (ex TLS)" = "#E69F00")   # orange
+# every figure in the block. setNames(), not c(name = value): the fourth name is
+# a variable now, and c() would take `VA_ACCOUNT_LABEL` as the literal name.
+# Keyed off ACCOUNT_LEVELS, so the names cannot drift from the levels either.
+account_palette <- setNames(c("#0072B2",   # blue
+                              "#D55E00",   # vermillion
+                              "#009E73",   # green
+                              "#E69F00"),  # orange
+                            ACCOUNT_LEVELS)
 
 # solid = descriptive (where it happens / who consumes),
 # dashed = normative (how it ought to be attributed)
-account_linetype <- c("Production"           = "solid",
-                      "Consumption"          = "solid",
-                      "HDI justice-based"    = "22",
-                      "Value added (ex TLS)" = "22")
+account_linetype <- setNames(c("solid", "solid", "22", "22"), ACCOUNT_LEVELS)
 
 # 43's divergence figures fill by ALLOCATION rather than by account; the two hues
 # are the entries above for the same two accounts, so the mapping survives.

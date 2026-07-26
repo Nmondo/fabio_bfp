@@ -1,8 +1,8 @@
 # =============================================================================
 # 47_plot_responsibility_timeseries.R
 # TEMPORAL development of the four responsibility accounts (production,
-# consumption, HDI justice-based, value added ex TLS) at COUNTRY x BIOFUEL
-# resolution: one panel per country, four lines per panel, one figure per chain.
+# consumption, HDI justice-based, value added in 40's VA_VARIANT) at COUNTRY x
+# BIOFUEL resolution: one panel per country, four lines per panel, one figure per chain.
 #
 # Nothing is recomputed. 41 and 42 already resolve every account to
 # (year, biofuel_group, iso3c); this script selects countries, normalises, and
@@ -94,9 +94,9 @@ load_run <- function() {
     hdi[, .(year, biofuel_group, iso3c, account = "Production",  value = production_based)],
     hdi[, .(year, biofuel_group, iso3c, account = "Consumption", value = consumption_based)],
     hdi[, .(year, biofuel_group, iso3c, account = "HDI justice-based", value = justice_based)],
-    va[va_variant == "ex_tls",
+    va[va_variant == VA_VARIANT,
        .(year, biofuel_group, iso3c = va_iso3c,
-         account = "Value added (ex TLS)", value = va_resp)]
+         account = VA_ACCOUNT_LABEL, value = va_resp)]
   ), use.names = TRUE)
   
   long <- long[, .(value = sum(value)), by = .(year, biofuel_group, iso3c, account)]
@@ -114,14 +114,14 @@ check_identity <- function(d) {
   # dcast drops a level with no rows at all, and setnames would then fail with an
   # opaque "items of 'old' not found". Say what is actually missing instead: an
   # absent account means one of the two CSVs is from a different run (or 42 was
-  # never run for the ex_tls variant), which is the same diagnosis the identity
-  # check below gives for an account that is merely inconsistent.
+  # never run for the selected VA variant), which is the same diagnosis the
+  # identity check below gives for an account that is merely inconsistent.
   miss <- setdiff(ACCOUNT_LEVELS, names(tot))
   if (length(miss))
     stop(sprintf(paste0("[47] no rows at all for account(s): %s. The accounts (41) and value-added ",
                         "(42) CSVs must come from the SAME indicator, VA base and allocation, and 42 ",
-                        "must have written the 'ex_tls' variant."),
-                 paste(miss, collapse = ", ")))
+                        "must have written the '%s' variant."),
+                 paste(miss, collapse = ", "), VA_VARIANT))
   setnames(tot, ACCOUNT_LEVELS, c("pba", "cba", "jus", "va"))
   
   # [1] the three conserved accounts must agree -- if they do not, the files do

@@ -27,9 +27,10 @@
 # 00_responsibility_helpers.R, so the math cannot drift from 41's:
 #     PBA(i) = rowSums(D)          impact at the producing node i
 #     CBA(c) = colSums(D)          impact routed to the consumer of the biofuel
-# The VA bar is NOT recomputed: it is read from 42's ex_tls responsibility CSV,
-# already resolved to (va_iso3c, va_comm_code). All three are then checked
-# against the country-level accounts CSV and against each other.
+# The VA bar is NOT recomputed: it is read from 42's responsibility CSV for the
+# variant 40's VA_VARIANT selects, already resolved to (va_iso3c, va_comm_code).
+# All three are then checked against the country-level accounts CSV and against
+# each other.
 #
 # ITEM SEMANTICS -- read before interpreting the stacks -----------------------
 #   PBA / CBA   the node where the impact PHYSICALLY OCCURS (the source item).
@@ -567,7 +568,7 @@ gg1 <- base_plot(p1) +
   labs(title = sprintf("%s responsibility for bio-based transport fuels, %d",
                        META$short_label, PLOT_YEAR),
        subtitle = sprintf(paste0("PBA production-based | CBA consumption-based | VA value-added-based ",
-                                 "(ex TLS): three attributions of one and the same total.\n",
+                                 "(", VA_DEFINITION_NOTE, "): three attributions of one and the same total.\n",
                                  "Countries (%d) selected by %s; items below %.0f%% of an account ",
                                  "pooled as 'Other'. %s"),
                           nrow(shown), RANK_NOTE, 100 * MIN_ITEM_SHARE_POOLED, LEGEND_NOTE),
@@ -594,7 +595,7 @@ gg2 <- base_plot(p2) +
   labs(title = sprintf("%s responsibility for bio-based transport fuels by fuel, %d",
                        META$short_label, PLOT_YEAR),
        subtitle = sprintf(paste0("PBA production-based | CBA consumption-based | VA value-added-based ",
-                                 "(ex TLS): three attributions of one and the same total, per fuel.\n",
+                                 "(", VA_DEFINITION_NOTE, "): three attributions of one and the same total, per fuel.\n",
                                  "Same %d countries as the pooled figure (selected by %s) in ",
                                  "every row; items below %.0f%% of an account x fuel pooled as 'Other'.\n",
                                  "Y AXIS IS FREE PER ROW -- compare bars within a fuel, not across ",

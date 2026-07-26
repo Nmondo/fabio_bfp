@@ -7,7 +7,8 @@
 #
 # TWO FAMILIES OF FIGURE ------------------------------------------------------
 # [1] THE ACCOUNTS THEMSELVES. Four alternative attributions of ONE identical
-#     total -- production, consumption, HDI justice-based, value added (ex TLS)
+#     total -- production, consumption, HDI justice-based, and the value-added
+#     account for whichever VA variant 40's VA_VARIANT names
 #     -- side by side per continent. Within a panel the four must sum to the same
 #     grand total; a spread between them is a broken input, not a finding.
 #
@@ -34,7 +35,7 @@
 # country-level table assembled once from the two CSVs.
 #
 # READS  HDI_CSV     (41)  production / consumption / justice, and `imbalance`
-#        VA_RESP_CSV (42)  the ex-TLS value-added account
+#        VA_RESP_CSV (42)  the value-added account, in 40's VA_VARIANT
 #
 # WRITES output/plot/
 #   responsibility_accounts_<ind>_<vabase>_<alloc>.svg              continent x account
@@ -102,7 +103,7 @@ ALLOC_LEVELS <- names(alloc_palette)
 ACCOUNT_OF <- c(production_based     = "Production",
                 consumption_based    = "Consumption",
                 justice_based        = "HDI justice-based",
-                va_resp              = "Value added (ex TLS)")
+                va_resp              = VA_ACCOUNT_LABEL)
 DIVERGENCE_OF <- c(divergence_hdi = "HDI (justice-based)",
                    divergence_va  = "Value added")
 
@@ -116,8 +117,9 @@ if (!setequal(DIVERGENCE_OF, ALLOC_LEVELS))
                         setdiff(ALLOC_LEVELS, DIVERGENCE_OF))), collapse = ", "))
 
 # --- the one country-level table both families are built from ----------------
-# The value-added column is the ex_tls variant throughout: it is the variant the
-# account palette is labelled for, and 46 is the figure that justifies it.
+# The value-added column is 40's VA_VARIANT throughout -- the same variant the
+# account label and palette are built for -- and 46 is the figure that contrasts
+# the two definitions and justifies the choice.
 load_countries <- function() {
   hdi <- fread(need(HDI_CSV,     "41"))
   va  <- fread(need(VA_RESP_CSV, "42"))
@@ -129,10 +131,11 @@ load_countries <- function() {
                    "va_continent"), VA_RESP_CSV)
   
   # 42 resolves VA per (country, commodity); we want it per country
-  vac <- va[va_variant == "ex_tls",
+  vac <- va[va_variant == VA_VARIANT,
             .(va_resp = sum(va_resp)), by = .(year, biofuel_group, iso3c = va_iso3c,
                                               va_continent)]
-  if (!nrow(vac)) stop("[43] ", basename(VA_RESP_CSV), " holds no 'ex_tls' rows.")
+  if (!nrow(vac)) stop("[43] ", basename(VA_RESP_CSV), " holds no '", VA_VARIANT,
+                       "' rows.")
   
   # FULL OUTER join. A country can produce or consume and still capture no value
   # added in these chains (ANT, BRN, DMA, ERI, PRI, SSD in the shipped run): it
