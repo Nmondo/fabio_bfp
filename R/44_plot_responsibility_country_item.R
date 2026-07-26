@@ -262,8 +262,10 @@ for (obj in list(list(rownames(X), "X.rds rows"), list(colnames(E[[YRC]]), "E co
 
 # --- the bilateral matrices D_g: impact at node i, driven by consumer c ------
 # ONE D PER FUEL. D is linear in Y_bf, so the pooled matrix is sum_g D_g and
-# nothing is computed twice. Only the biofuel rows of Y carry demand, so B is
-# subset to those columns (N x |bf_g|) rather than multiplied out in full.
+# nothing is computed twice. build_D masks Y to the group's own rows
+# (diag(sel) %*% Yc) rather than subsetting B; because B is sparse, the product
+# only ever touches the columns of B at those few biofuel nodes, so the mask buys
+# the same saving as an explicit subset without an index to keep in sync.
 Xi <- as.vector(X[, YRC])
 f  <- as.numeric(E[[YRC]][STRESSOR, ]) / Xi; f[!is.finite(f)] <- 0
 
@@ -274,21 +276,21 @@ acc_g <- list()
 for (g in names(biofuel_groups)) {
   sel <- as.numeric(io$comm_code %in% biofuel_groups[[g]])
   if (!sum(sel)) { warning("[44] no node for fuel '", g, "' -- skipped."); next }
-
+  
   # producing node x consuming country, at the node resolution the item stacks need
   D <- build_D(f, B, Yc, sel, countries = grid$countries)
   if (sum(D) == 0) { warning("[44] '", g, "' carries no ", STRESSOR, " in ", PLOT_YEAR, " -- skipped."); next }
-
+  
   # PBA: impact at the producing node i -- rowSums(D_g)
   pba <- data.table(iso3c = io$iso3c, comm_code = io$comm_code, value = rowSums(D)
   )[value != 0, .(value = sum(value)), by = .(iso3c, comm_code)][, account := "PBA"]
-
+  
   # CBA: same impact, routed to the consumer of the fuel -- colSums per source item
   Dc  <- rowsum(D, group = io$comm_code)                               # source item x consumer
   cba <- data.table(comm_code = rep(rownames(Dc), times = ncol(Dc)),
                     iso3c     = rep(colnames(Dc), each  = nrow(Dc)),
                     value     = as.vector(Dc))[value != 0][, account := "CBA"]
-
+  
   acc_g[[g]] <- rbindlist(list(pba, cba), use.names = TRUE)[, fuel := g]
 }
 if (!length(acc_g)) stop("[44] the biofuel chains carry no ", STRESSOR, " in ", PLOT_YEAR, ".")

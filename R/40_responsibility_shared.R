@@ -30,14 +30,27 @@ resp_years <- as.character(years)   # 2012:2022, from 00_system_variables
 SCRIPT <- "40"               # overwritten by each caller right after sourcing
 
 # --- run mode and paths ------------------------------------------------------
-model_version <- if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass")
-  "bypass" else "rescaled"
+# ONE derivation of the mode, and it defers to 00_run_config.R when that file has
+# been sourced (41 and 42 do; 43-47 do not). run_config honours a pre-existing
+# RUN_MODE *variable* as well as the env var, so re-reading only the env var here
+# would let `RUN_MODE <- "bypass"` in an interactive session print a bypass banner
+# while this file quietly pointed MRIO_PATH at the rescaled artefacts.
+model_version <- if (exists("BYPASS_RESCALE") && isTRUE(BYPASS_RESCALE)) {
+  "bypass"
+} else if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass") {
+  "bypass"
+} else {
+  "rescaled"
+}
 
 base_path <- sub("/+$", "", output_dir_bcp)   # version-invariant (E, V, io_labels)
 MRIO_PATH <- if (model_version == "bypass") file.path(base_path, "bypass") else base_path
 OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-IN_DIR    <- OUT_DIR                          # 43-47 read exactly what 41/42 wrote
-PLOT_DIR  <- file.path("output", "plot")
+# PLOT_DIR hangs off OUT_DIR, not off a hard-coded "output": the figure names
+# carry the indicator, VA base, allocation and year but NOT the model version, so
+# a bypass run writing into output/plot/ would silently overwrite the rescaled
+# run's SVGs -- the one place the "no two settings ever overwrite" rule leaked.
+PLOT_DIR  <- file.path(OUT_DIR, "plot")
 dir.create(OUT_DIR,  showWarnings = FALSE, recursive = TRUE)
 dir.create(PLOT_DIR, showWarnings = FALSE, recursive = TRUE)
 
@@ -102,8 +115,6 @@ alloc_palette <- c("HDI (justice-based)" = "#009E73",
 # 46 contrasts the two VA definitions
 variant_palette <- c("Full VA (wages + capital + TLS)" = "#D55E00",
                      "ex-TLS VA (wages + capital)"     = "#0072B2")
-
-continent_pal <- c(continent_palette, Unknown = "#BBBBBB")
 
 # --- the two periods 43 contrasts --------------------------------------------
 PERIODS <- list("2012-2014" = 2012:2014,

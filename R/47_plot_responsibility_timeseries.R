@@ -85,11 +85,11 @@ ROW_LABEL <- "Rest of world"
 load_run <- function() {
   va  <- fread(need(VA_RESP_CSV, "42"))
   hdi <- fread(need(HDI_CSV,     "41"))
-
+  
   need_cols(va,  c("year", "va_variant", "biofuel_group", "va_iso3c", "va_resp"), VA_RESP_CSV)
   need_cols(hdi, c("year", "biofuel_group", "iso3c", "production_based",
                    "consumption_based", "justice_based"), HDI_CSV)
-
+  
   long <- rbindlist(list(
     hdi[, .(year, biofuel_group, iso3c, account = "Production",  value = production_based)],
     hdi[, .(year, biofuel_group, iso3c, account = "Consumption", value = consumption_based)],
@@ -98,7 +98,7 @@ load_run <- function() {
        .(year, biofuel_group, iso3c = va_iso3c,
          account = "Value added (ex TLS)", value = va_resp)]
   ), use.names = TRUE)
-
+  
   long <- long[, .(value = sum(value)), by = .(year, biofuel_group, iso3c, account)]
   long[, account := factor(account, levels = ACCOUNT_LEVELS)]
   long[]
@@ -111,8 +111,19 @@ load_run <- function() {
 check_identity <- function(d) {
   tot <- dcast(d[, .(total = sum(value)), by = .(year, biofuel_group, account)],
                year + biofuel_group ~ account, value.var = "total")
+  # dcast drops a level with no rows at all, and setnames would then fail with an
+  # opaque "items of 'old' not found". Say what is actually missing instead: an
+  # absent account means one of the two CSVs is from a different run (or 42 was
+  # never run for the ex_tls variant), which is the same diagnosis the identity
+  # check below gives for an account that is merely inconsistent.
+  miss <- setdiff(ACCOUNT_LEVELS, names(tot))
+  if (length(miss))
+    stop(sprintf(paste0("[47] no rows at all for account(s): %s. The accounts (41) and value-added ",
+                        "(42) CSVs must come from the SAME indicator, VA base and allocation, and 42 ",
+                        "must have written the 'ex_tls' variant."),
+                 paste(miss, collapse = ", ")))
   setnames(tot, ACCOUNT_LEVELS, c("pba", "cba", "jus", "va"))
-
+  
   # [1] the three conserved accounts must agree -- if they do not, the files do
   #     not belong together and nothing below is trustworthy.
   tot[, rel_core := {
@@ -124,7 +135,7 @@ check_identity <- function(d) {
     warning(sprintf("[47] production/consumption/justice do not share one total (worst %s %d, rel %.3g) -- are the accounts and VA files from the SAME indicator, VA base and allocation?",
                     bad$biofuel_group[1], bad$year[1], bad$rel_core[1]))
   }
-
+  
   # [2] VA is allowed to fall short by 42's conservation gap; report it, and only
   #     escalate if it grows big enough to matter for the share axis.
   tot[, va_gap := fifelse(abs(pba) > 0, (va - pba) / abs(pba), 0)]
@@ -137,7 +148,7 @@ check_identity <- function(d) {
       warning(sprintf("[47] the VA account is short by up to %.3f%% of the chain total -- large enough to distort the share view. Check 42's coverage CSV (`conservation_gap_pct`) before using these panels.",
                       100 * max(abs(gaps$va_gap))))
   }
-
+  
   tot[, .(year, biofuel_group, chain_total = pba)]
 }
 
@@ -157,35 +168,44 @@ plot_ts <- function(d_bf, countries, chain_tot, bf, share) {
   d[, panel := fifelse(iso3c %in% countries, iso3c, ROW_LABEL)]
   if (!SHOW_ROW) d <- d[panel != ROW_LABEL]
   d <- d[, .(value = sum(value)), by = .(year, panel, account)]
-
+  
   # every panel x account x year present, so a zero reads as a zero, not a gap
   d <- d[CJ(year = sort(unique(d$year)), panel = unique(d$panel),
             account = factor(ACCOUNT_LEVELS, levels = ACCOUNT_LEVELS), unique = TRUE),
          on = .(year, panel, account)]
   d[is.na(value), value := 0]
-
+  
   if (share) {
     d <- merge(d, chain_tot[biofuel_group == bf, .(year, chain_total)], by = "year", all.x = TRUE)
+    # A chain-year with no footprint at all has no share to show: dividing by it
+    # gives Inf/NaN panels rather than the empty ones the guards elsewhere produce.
+    bad_yr <- d[!is.finite(chain_total) | chain_total == 0, sort(unique(year))]
+    if (length(bad_yr)) {
+      message(sprintf("[47]   %s: chain total is zero or absent in %s -- dropped from the share view.",
+                      bf, paste(bad_yr, collapse = ", ")))
+      d <- d[is.finite(chain_total) & chain_total != 0]
+    }
+    if (!nrow(d)) return(NULL)
     d[, value := 100 * value / chain_total]
-    y_lab <- sprintf("Share of the %s chain's global %s (%%)",
-                     tolower(biofuel_label[[bf]]), META$short_label)
+    # the unit cancels in a share, so the indicator is named in the title, not here
+    y_lab <- sprintf("Share of the %s chain's global total (%%)", tolower(biofuel_label[[bf]]))
     sub <- "Each year is normalised on that year's chain total, so the growth of the chain is divided out: what moves here is the ATTRIBUTION, not the volume."
   } else {
     d[, value := value / META$scale_factor]
     y_lab <- META$y_label
     sub <- "Absolute. All four lines rise when the chain grows -- read the share figure to separate growth from re-attribution."
   }
-
+  
   lev <- c(intersect(countries, unique(d$panel)),
            if (ROW_LABEL %in% d$panel) ROW_LABEL)
   d[, panel := factor(panel, levels = lev)]
-
+  
   # the production-consumption gap, as a band
   rib <- dcast(d[account %in% c("Production", "Consumption")],
                year + panel ~ account, value.var = "value")
   setnames(rib, c("Production", "Consumption"), c("pba", "cba"))
   rib[, `:=`(lo = pmin(pba, cba), hi = pmax(pba, cba))]
-
+  
   ggplot(d, aes(x = year, y = value)) +
     geom_ribbon(data = rib, aes(x = year, ymin = lo, ymax = hi),
                 inherit.aes = FALSE, fill = "grey50", alpha = 0.16) +
@@ -217,20 +237,26 @@ for (bf in intersect(names(biofuel_label), unique(d$biofuel_group))) {
   d_bf <- d[biofuel_group == bf]
   cty  <- select_countries(d_bf)
   if (!length(cty)) { message("[47]   ", bf, ": no countries selected"); next }
-
+  
   cov <- d_bf[year %in% SEL_YEARS & account == "Production",
               .(v = sum(value)), by = .(sel = iso3c %in% cty)]
   message(sprintf("[47]   %-17s %d panels: %s  (%.0f%% of production)",
                   bf, length(cty), paste(cty, collapse = " "),
                   100 * cov[sel == TRUE, sum(v)] / cov[, sum(v)]))
-
+  
   n_row <- ceiling((length(cty) + as.integer(SHOW_ROW)) / NCOL)
-  for (share in c(TRUE, FALSE))
+  for (share in c(TRUE, FALSE)) {
+    p <- plot_ts(d_bf, cty, chain_tot, bf, share)
+    if (is.null(p)) {
+      message(sprintf("[47]   %s: nothing to draw in the %s view -- skipped.",
+                      bf, if (share) "share" else "absolute"))
+      next
+    }
     save_svg(sprintf("responsibility_ts_%s_%s_%s_%s_%s",
                      if (share) "share" else "abs", bf, STAG, VA_BASE, ATAG),
-             plot_ts(d_bf, cty, chain_tot, bf, share),
-             width  = 1.2 + 3.2 * NCOL,
+             p, width  = 1.2 + 3.2 * NCOL,
              height = 2.2 + 2.4 * n_row)
+  }
 }
 
 message(">>> [47] plots written to ", PLOT_DIR)

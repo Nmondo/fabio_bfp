@@ -93,6 +93,28 @@ MIN_SHARE_PCT <- 0.5
 
 ALLOC_LEVELS <- names(alloc_palette)
 
+# --- column -> display label, BY NAME ----------------------------------------
+# ACCOUNT_LEVELS and alloc_palette live in 40 next to the colours, where they read
+# as display constants; reordering either to change a legend used to silently
+# relabel the accounts, because the melts below mapped melt()'s factor CODES onto
+# them by position. Map by column name instead, and fail loudly if the labels and
+# the palettes ever drift apart.
+ACCOUNT_OF <- c(production_based     = "Production",
+                consumption_based    = "Consumption",
+                justice_based        = "HDI justice-based",
+                va_resp              = "Value added (ex TLS)")
+DIVERGENCE_OF <- c(divergence_hdi = "HDI (justice-based)",
+                   divergence_va  = "Value added")
+
+if (!setequal(ACCOUNT_OF, ACCOUNT_LEVELS))
+  stop("[43] ACCOUNT_OF and 40's ACCOUNT_LEVELS disagree: ",
+       paste(sort(union(setdiff(ACCOUNT_OF, ACCOUNT_LEVELS),
+                        setdiff(ACCOUNT_LEVELS, ACCOUNT_OF))), collapse = ", "))
+if (!setequal(DIVERGENCE_OF, ALLOC_LEVELS))
+  stop("[43] DIVERGENCE_OF and 40's alloc_palette disagree: ",
+       paste(sort(union(setdiff(DIVERGENCE_OF, ALLOC_LEVELS),
+                        setdiff(ALLOC_LEVELS, DIVERGENCE_OF))), collapse = ", "))
+
 # --- the one country-level table both families are built from ----------------
 # The value-added column is the ex_tls variant throughout: it is the variant the
 # account palette is labelled for, and 46 is the figure that justifies it.
@@ -175,25 +197,23 @@ load_countries <- function() {
   d[]
 }
 
-# the four accounts as one long column, ready to facet. The measure order below
-# IS the ACCOUNT_LEVELS order, which is what the factor relabelling relies on.
+# the four accounts as one long column, ready to facet. Relabelled by COLUMN NAME
+# through ACCOUNT_OF, so neither the measure.vars order nor ACCOUNT_LEVELS' order
+# can silently rename an account.
 as_accounts <- function(d, keys) {
   long <- melt(d, id.vars = c("year", keys),
-               measure.vars = c("production_based", "consumption_based",
-                                "justice_based", "va_resp"),
+               measure.vars = names(ACCOUNT_OF),
                variable.name = "account", value.name = "value")
-  long[, account := factor(ACCOUNT_LEVELS[as.integer(account)], levels = ACCOUNT_LEVELS)]
+  long[, account := factor(ACCOUNT_OF[as.character(account)], levels = ACCOUNT_LEVELS)]
   long[, .(value = sum(value)), by = c("year", keys, "account")]
 }
 
 # the two divergences as one long column, ready to dodge
 as_divergences <- function(d, keys) {
   m <- melt(d, id.vars = c(keys, "period", "baseline_5050"),
-            measure.vars = c("divergence_hdi", "divergence_va"),
+            measure.vars = names(DIVERGENCE_OF),
             variable.name = "allocation", value.name = "divergence")
-  m[, allocation := factor(fifelse(allocation == "divergence_hdi",
-                                   ALLOC_LEVELS[1], ALLOC_LEVELS[2]),
-                           levels = ALLOC_LEVELS)]
+  m[, allocation := factor(DIVERGENCE_OF[as.character(allocation)], levels = ALLOC_LEVELS)]
   m[]
 }
 

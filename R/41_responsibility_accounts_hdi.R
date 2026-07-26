@@ -179,7 +179,11 @@ hdi_weights <- function(iso, yrs, regions) {
   message(sprintf(">>> [41] ROW (%s) = median HDI of %d HDR countries not resolved by FABIO",
                   paste(ROW_CODES, collapse = ", "), uniqueN(long[!iso3 %in% iso, iso3])))
   
-  near <- function(dt, y) if (!nrow(dt)) NA_real_ else dt$hdi[which.min(abs(dt$year - y))]
+  # Donor pool for the nearest-year rung: EVERY HDR year, not just the model's.
+  # Keyed once so the fill below is a single rolling join rather than a full scan
+  # of `long` per missing country-year.
+  donor <- long[, .(iso3c = iso3, year, hdi_near = hdi)]
+  setkey(donor, iso3c, year)
   
   w <- CJ(iso3c = iso, year = as.integer(yrs))
   w[long, on = .(iso3c = iso3, year), hdi := i.hdi]
@@ -187,9 +191,14 @@ hdi_weights <- function(iso, yrs, regions) {
   
   i <- which(is.na(w$hdi_source))                  # country-year gaps / edge years
   if (length(i)) {
-    v <- vapply(i, function(k) near(long[iso3 == w$iso3c[k]], w$year[k]), numeric(1))
-    w[i, hdi_source := fifelse(is.finite(v), "nearest_year", NA_character_)]
+    # roll = "nearest" walks to the closest year of the SAME country and yields NA
+    # where that country has no HDR row at all, which then falls through to the
+    # row_residual / continent_median rungs below. (An exact tie -- a target year
+    # equidistant between two donor years -- is broken by data.table rather than
+    # by which.min; either donor is equally defensible and ties are rare.)
+    v <- donor[w[i, .(iso3c, year)], on = .(iso3c, year), roll = "nearest"]$hdi_near
     w[i, hdi := v]
+    w[i, hdi_source := fifelse(is.finite(v), "nearest_year", NA_character_)]
   }
   
   w[residual, on = "year", hdi_row := i.hdi_row]

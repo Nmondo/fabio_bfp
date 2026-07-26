@@ -89,8 +89,8 @@ message(sprintf(">>> [45] year = %d", PLOT_YEAR))
 # --- figure switches ---------------------------------------------------------
 GROUPS     <- NULL     # biofuel chains to pool; NULL = all in the CSV
 SHOW_PBA   <- TRUE     # draw production-based as its own BAR: domestic + the whole
-                       # export. Its height is the country's physical production,
-                       # the reference the CBA and HDI bars move against.
+# export. Its height is the country's physical production,
+# the reference the CBA and HDI bars move against.
 BY_BIOFUEL <- TRUE     # also write the per-chain variant
 NEG_FLOWS  <- "clamp"  # malformed rows (see the header): "clamp" | "keep" | "drop"
 
@@ -137,14 +137,14 @@ split_components <- function(d, keys) {
              CBA         = sum(consumption_based),
              HDI         = sum(justice_based)),
          by = keys]
-
+  
   # HDI's own columns must rebuild its total (41 writes them that way). Test this
   # on the RAW numbers, BEFORE anything below touches them: it is a check on 41,
   # and a clamp would hide it.
   dev_h <- max(abs(a$domestic + a$hdi_export + a$hdi_import - a$HDI)) / max(abs(a$HDI), 1)
   if (dev_h > NOISE_TOL)
     warning(sprintf("[45] justice_domestic+export+import != justice_based (max rel. %.3g)", dev_h))
-
+  
   # --- are the PHYSICAL flows well-formed? ------------------------------------
   # D[p, c] is NOT guaranteed non-negative (see the header), so an export or
   # import RESIDUAL can come out negative and an HDI share can then exceed the
@@ -160,19 +160,19 @@ split_components <- function(d, keys) {
                     over_import  = pmax(a$hdi_import - a$import_full, 0) / s)
   chk[, worst := pmax(neg_domestic, neg_export, neg_import, over_export, over_import)]
   chk[, who := if ("biofuel_group" %in% keys) paste0(iso3c, "/", biofuel_group) else iso3c]
-
+  
   # A RELATIVE violation alone cannot be judged: "1.0 of its own scale" is what a
   # country whose whole account is one small NEGATIVE number looks like --
   # catastrophic as a ratio, invisible on the figure. So report the row's
   # absolute weight in the same breath.
   world <- sum(abs(a$CBA))
   chk[, share_of_world := scale / max(world, .Machine$double.eps)]
-
+  
   noise <- chk[worst > 0 & worst <= NOISE_TOL]
   if (nrow(noise))
     message(sprintf("[45] %d country-chain(s) off by <= %.0e of their own scale (float noise).",
                     nrow(noise), NOISE_TOL))
-
+  
   bad <- chk[worst > NOISE_TOL][order(-share_of_world)]
   if (nrow(bad)) {
     warning(sprintf(paste0("[45] %d country-chain(s) with a MALFORMED flow: a negative export/import ",
@@ -190,7 +190,7 @@ split_components <- function(d, keys) {
                       "negligible; whatever NEG_FLOWS does to them cannot move the figure."
                     else "big enough to matter: check them before quoting any bar."))
   }
-
+  
   if (NEG_FLOWS == "drop" && nrow(bad)) {
     a <- a[!bad[, ..keys], on = keys]
   } else if (NEG_FLOWS == "clamp") {
@@ -205,7 +205,7 @@ split_components <- function(d, keys) {
   } else if (NEG_FLOWS != "keep") {
     stop("[45] NEG_FLOWS must be 'clamp', 'keep' or 'drop'.")
   }
-
+  
   # Each bar is the account's charged impact, split by where the flow goes: PBA
   # keeps its whole export; CBA cedes it entirely (export_kept = 0); HDI keeps the
   # beta share. What is ceded is not drawn -- the bar height is the account.
@@ -214,19 +214,19 @@ split_components <- function(d, keys) {
                domestic    = a$domestic,
                export_kept = kept_exp,
                import_kept = kept_imp)
-
+  
   parts <- list(
     mk("CBA", kept_exp = 0,            kept_imp = a$import_full),
     mk("HDI", kept_exp = a$hdi_export, kept_imp = a$hdi_import)
   )
   if (SHOW_PBA)
     parts <- c(list(mk("PBA", kept_exp = a$export_full, kept_imp = 0)), parts)
-
+  
   long <- melt(rbindlist(parts, use.names = TRUE),
                id.vars       = c(keys, "account"),
                measure.vars  = COMPONENTS,
                variable.name = "component", value.name = "value")
-
+  
   # --- the identity the whole figure rests on ---------------------------------
   # charged = domestic + export kept + import kept. Derive it from THOSE
   # components, not from "every segment above zero": a country with no positive
@@ -248,10 +248,10 @@ split_components <- function(d, keys) {
       warning(sprintf("[45] %s: the charged segments do not sum to the account (max rel. %.3g)",
                       acc, dev))
   }
-
+  
   long[, component := factor(component, levels = COMPONENTS)]
   long[, account   := factor(account,   levels = ACCOUNTS)]
-
+  
   list(long = long, wide = a)
 }
 
@@ -314,6 +314,10 @@ message(sprintf("[45] %d countries shown; they cover %s of the world charged tot
                               100 * colSums(shown[, ..ACCOUNTS]) / colSums(ctot[, ..ACCOUNTS])),
                       collapse = " | ")))
 
+# Braces are load-bearing: at TOP LEVEL R closes an `if` as soon as its branch
+# ends, so a bare `else` on the next line is a parse error when the file is
+# echoed line by line (console, Ctrl+Enter). Inside {} the parser knows more is
+# coming. Same reason the `else`s further down sit inside a call or a function.
 SEL_NOTE <- if (from_44) {
   sprintf("Countries and their order follow the value-added figure (44, %s base).", VA_BASE)
 } else {
@@ -411,7 +415,7 @@ if (BY_BIOFUEL && uniqueN(h$biofuel_group) > 1) {
   lvls <- c(unname(biofuel_label[names(biofuel_label) %in% raw]),
             sort(setdiff(unique(lab), unname(biofuel_label))))
   pb[, biofuel_group := factor(lab, levels = lvls)]
-
+  
   save_svg(sprintf("responsibility_trade_split_%s_%s_%d_by_biofuel", STAG, ATAG, PLOT_YEAR),
            plot_split(pb,
                       sprintf("%s responsibility, %d - by biofuel chain", META$short_label, PLOT_YEAR),

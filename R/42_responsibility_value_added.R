@@ -241,7 +241,10 @@ compute_year <- function(yr) {
   # intensity f = e / x  (matches 18_01) -- variant-independent
   f <- as.numeric(Ei[STRESSOR, ]) / Xi; f[!is.finite(f)] <- 0
   fB    <- as.vector(crossprod(f, B))   # (f' B)_j : IBIF impact embodied per tonne of final demand j
-  y_all <- as.vector(rowSums(as.matrix(Yi)))   # world final demand by product node
+  # Matrix::rowSums, NOT rowSums(as.matrix(Yi)): Y is sparse and N x n_fd, so the
+  # densification cost ~150 MB per year to produce an N-vector. (41 already does
+  # this the sparse way.)
+  y_all <- as.vector(Matrix::rowSums(Yi))      # world final demand by product node
   comm  <- io$comm_code
   
   alloc_rows <- list(); cover_rows <- list()
@@ -399,8 +402,9 @@ for (variant in names(va_variants)) {
   tagv   <- if (variant == "full") "" else paste0("_", variant)   # 'full' keeps the base filename
   a_path <- va_csv("value_added_responsibility", tagv)
   c_path <- va_csv("value_added_coverage",       tagv)
-  a <- alloc[va_variant == variant]; c <- cover[va_variant == variant]
-  fwrite(a, a_path)
-  fwrite(c, c_path)
-  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)", a_path, nrow(a), c_path, nrow(c)))
+  a_dt <- alloc[va_variant == variant]; c_dt <- cover[va_variant == variant]
+  fwrite(a_dt, a_path)
+  fwrite(c_dt, c_path)
+  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)",
+                  a_path, nrow(a_dt), c_path, nrow(c_dt)))
 }

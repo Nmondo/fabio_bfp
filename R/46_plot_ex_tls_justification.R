@@ -63,12 +63,18 @@ load_run <- function() {
   ex   <- fread(need(VA_RESP_CSV, "42"))
   need_cols(full, c(cols, "va_variant"), VA_FULL_CSV)
   need_cols(ex,   c(cols, "va_variant"), VA_RESP_CSV)
-
-  d <- merge(full[, ..cols], ex[, ..cols], by = NODE_KEYS,
-             all = TRUE, suffixes = c("_full", "_ex"))
+  
+  # Subset to PLOT_YEAR BEFORE the join: 42 writes every year x node, and only one
+  # year is ever drawn, so joining the whole files on five keys costs an order of
+  # magnitude in both time and memory for nothing. need_cols runs first so a
+  # malformed file still gets the informative error rather than "year not found".
+  full <- full[year == PLOT_YEAR, ..cols]
+  ex   <- ex[  year == PLOT_YEAR, ..cols]
+  
+  d <- merge(full, ex, by = NODE_KEYS, all = TRUE, suffixes = c("_full", "_ex"))
   d[is.na(va_resp_full), va_resp_full := 0][is.na(va_resp_ex), va_resp_ex := 0]
-
-  tot <- d[year == PLOT_YEAR, .(full = sum(va_resp_full), ex = sum(va_resp_ex))]
+  
+  tot <- d[, .(full = sum(va_resp_full), ex = sum(va_resp_ex))]
   if (tot$full > 0 && abs(tot$full - tot$ex) / abs(tot$full) > TOL)
     warning(sprintf("[46] the two variants do not re-attribute one total (%.3g vs %.3g)",
                     tot$full, tot$ex))
@@ -90,7 +96,7 @@ plot_sign_flip <- function(d) {
   # least negative first => it becomes the bottom of the discrete axis, and the
   # most negative node sits at the top
   top[, lab := factor(lab, levels = top[order(-va_resp_full), lab])]
-
+  
   ggplot(top, aes(y = lab)) +
     annotate("rect", xmin = -Inf, xmax = 0, ymin = -Inf, ymax = Inf,
              fill = "#D55E00", alpha = 0.06) +
@@ -102,7 +108,7 @@ plot_sign_flip <- function(d) {
     geom_point(aes(x = ex,   colour = VARIANT_LEVELS[2]), size = 2.6) +
     scale_colour_manual(values = variant_palette,
                         limits = VARIANT_LEVELS, breaks = VARIANT_LEVELS) +
-    scale_x_continuous(trans = scales::pseudo_log_trans(sigma = SIGMA),
+    scale_x_continuous(transform = scales::pseudo_log_trans(sigma = SIGMA),
                        breaks = c(-100, -10, -1, 0, 1, 10, 100, 1000)) +
     labs(x = META$y_label, y = NULL, colour = NULL) +
     theme_minimal() +
@@ -121,10 +127,10 @@ plot_country_totals <- function(d) {
             paste(drop$iso3c, collapse = ", "))
   c_tot <- c_tot[full > 0 & ex > 0]
   if (!nrow(c_tot)) return(NULL)
-
+  
   lim     <- range(c(c_tot$full, c_tot$ex))
   labs_dt <- head(c_tot[order(-ex)], LABEL_TOP_N)
-
+  
   p <- ggplot(c_tot, aes(x = full, y = ex)) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed",
                 colour = "grey55", linewidth = 0.4) +
@@ -134,7 +140,7 @@ plot_country_totals <- function(d) {
     labs(x = paste0(META$y_label, " - full VA"),
          y = paste0(META$y_label, " - ex-TLS VA")) +
     theme_minimal()
-
+  
   if (LABEL_TOP_N > 0 && nrow(labs_dt))
     p <- p + geom_text(data = labs_dt, aes(label = iso3c),
                        hjust = -0.25, vjust = 0.4, size = 2.8, colour = "grey25")
