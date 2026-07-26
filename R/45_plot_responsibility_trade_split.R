@@ -1,9 +1,9 @@
 # =============================================================================
 # 45_plot_responsibility_trade_split.R
-# ONE figure: the production- (PBA), consumption- (CBA) and HDI justice-based
-# accounts as ADJACENT stacked bars per country, for PLOT_YEAR, each split by the
-# ORIGIN x DESTINATION of the CHARGED impact flow -- 19_01b's balance convention,
-# carried over to the responsibility accounts.
+# ONE figure: the production- (PBA), consumption- (CBA), HDI justice-based and
+# value added-based (VA) accounts as ADJACENT stacked bars per country, for
+# PLOT_YEAR, each split by the ORIGIN x DESTINATION of the CHARGED impact flow --
+# 19_01b's balance convention, carried over to the responsibility accounts.
 #   x = country (order taken from 44) | y = impact | one bar per account
 #   Each bar is a single account, ALL >= 0: the bar HEIGHT is the account total,
 #   and its segments show where that charged impact flows (domestic / export /
@@ -34,6 +34,20 @@
 #         beta = HDI_p / (HDI_p + HDI_c): the producer keeps beta of its export,
 #         the consumer keeps (1-beta) of its import. CBA is the beta = 0 corner.
 #   PBA   domestic + export, both charged in full; nothing imported.
+#   VA    a DIFFERENT matrix. 42 computes Pinero et al. (2019) eq. 8,
+#         H* = v_hat B T' with T = f_hat B y_hat, rolled up to countries on both
+#         axes: H*[r, p] is pressure extracted in p and charged to value added
+#         generated in r. Its margins are
+#             va_domestic(i) = H*[i, i]           extracted here, charged here
+#             va_import(i)   = sum_p!=i H*[i, p]  extracted abroad, charged here
+#             va_export(i)   = sum_r!=i H*[r, i]  extracted here, charged abroad
+#             VA(i) = va_domestic + va_import = the row margin
+#         Like CBA it charges none of its export, so its dark block is empty --
+#         but its mid-grey block is H*[i, i], NOT the D[i, i] the other three bars
+#         share, because the two matrices resolve "domestic" against different
+#         second axes (consumer vs. value generator). Both trade blocks are also
+#         about VALUE CAPTURE, not consumption. Do not read the VA bar as a fourth
+#         slicing of D.
 #
 # Summed over ALL countries the CHARGED segments of each account reach the SAME
 # global footprint -- the accounts re-attribute, never create. Checked below.
@@ -56,13 +70,17 @@
 # READS  HDI_CSV (41) -- needs year, biofuel_group, iso3c, continent,
 #          production_based, consumption_based, justice_based, justice_domestic,
 #          justice_export, justice_import. Nothing is recomputed.
+#        VA_SPLIT_CSV (42) -- needs year, va_variant, biofuel_group, iso3c,
+#          va_based, va_domestic, va_import, va_export, va_production. Merged onto
+#          41's rows as a FULL join (a pure value-capture hub can appear in one
+#          file and not the other), filtered to VA_VARIANT.
 #        ORDER_CSV (44) -- the country order to follow; if absent, this script
 #          ranks its own.
 # WRITES output/plot/
 #   responsibility_trade_split_<ind>_<alloc>_<year>.svg
 #   responsibility_trade_split_<ind>_<alloc>_<year>_by_biofuel.svg   (if BY_BIOFUEL)
 #
-# RUN: Rscript R/45_plot_responsibility_trade_split.R   (after 41, and 44 for order)
+# RUN: Rscript R/45_plot_responsibility_trade_split.R   (after 41 and 42, and 44 for order)
 # =============================================================================
 
 # --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker -
@@ -118,14 +136,69 @@ if (!is.null(GROUPS)) {
 message(sprintf("[45] %d rows | chains pooled: %s", nrow(h),
                 paste(sort(unique(h$biofuel_group)), collapse = " + ")))
 
+# --- load 42's eq. 8 trade split and merge it onto 41's rows ------------------
+# 41 keeps a country only when it produces or consumes the chain
+# (prod_v != 0 | cons_v != 0). A pure value-capture hub can do neither and still
+# carry VA responsibility, so this is a FULL join, not a left one -- an inner or
+# left join would silently drop exactly the countries the VA account exists to
+# surface. Countries new to the figure get zeros in the 41 columns, and vice
+# versa; both are true statements about those accounts.
+vs <- fread(need(VA_SPLIT_CSV, "42"))
+need_cols(vs, c("year", "va_variant", "biofuel_group", "iso3c", "va_based",
+                "va_domestic", "va_import", "va_export", "va_production"),
+          VA_SPLIT_CSV)
+vs <- vs[year == PLOT_YEAR & va_variant == VA_VARIANT]
+if (!nrow(vs))
+  stop("[45] ", basename(VA_SPLIT_CSV), " has no rows for year ", PLOT_YEAR,
+       " / variant '", VA_VARIANT, "' -- re-run 42.")
+if (!is.null(GROUPS)) vs <- vs[biofuel_group %in% GROUPS]
+
+VA_COLS  <- c("va_based", "va_domestic", "va_import", "va_export")
+KEY_COLS <- c("year", "biofuel_group", "iso3c")
+
+only_va  <- setdiff(unique(vs$iso3c), unique(h$iso3c))
+only_hdi <- setdiff(unique(h$iso3c),  unique(vs$iso3c))
+if (length(only_va))
+  message(sprintf("[45] %d country(ies) carry VA responsibility but no PBA/CBA row in 41 (added, zeros elsewhere): %s",
+                  length(only_va), paste(only_va, collapse = ", ")))
+if (length(only_hdi))
+  message(sprintf("[45] %d country(ies) in 41 with no VA row (VA columns zeroed): %s",
+                  length(only_hdi), paste(only_hdi, collapse = ", ")))
+
+h <- merge(h, vs[, c(KEY_COLS, VA_COLS), with = FALSE], by = KEY_COLS, all = TRUE)
+NUM <- c("production_based", "consumption_based", "justice_based", "justice_domestic",
+         "justice_export", "justice_import", VA_COLS)
+for (cc in NUM) set(h, which(is.na(h[[cc]])), cc, 0)
+# `continent` rides along for the keys; fill it for countries only 42 knows about
+if (anyNA(h$continent)) {
+  reg <- tryCatch(fread("inst/regions_full.csv"), error = function(e) NULL)
+  if (!is.null(reg) && all(c("iso3c", "continent") %in% names(reg)))
+    h[is.na(continent), continent := reg$continent[match(iso3c, reg$iso3c)]]
+  h[is.na(continent), continent := "Unknown"]
+}
+
 # --- the charged components --------------------------------------------------
 # 41 writes `justice_export` / `justice_import` ALREADY HDI-WEIGHTED (the beta the
 # producer keeps of its exports; the 1-beta the consumer keeps of its imports).
 # The PHYSICAL flows are the residuals of the two totals:
 #     export_full(i) = production_based(i)  - domestic(i)
 #     import_full(i) = consumption_based(i) - domestic(i)
-ACCOUNTS   <- c(if (SHOW_PBA) "PBA", "CBA", "HDI")
+ACCOUNTS   <- c(if (SHOW_PBA) "PBA", "CBA", "HDI", "VA")
 COMPONENTS <- c("domestic", "export_kept", "import_kept")   # each bar IS the charged account, all >= 0
+
+# THE VA BAR IS NOT A FOURTH VIEW OF THE SAME THREE FLOWS ----------------------
+# PBA, CBA and HDI are all margins of ONE matrix D[p, c] (producer x consumer),
+# so their `domestic` segment is literally the same number, D[i, i], in all three
+# bars and only the trade blocks move. The VA bar comes from a DIFFERENT matrix,
+# 42's H*[r, p] (value generator x extraction origin, Pinero eq. 8), whose
+# diagonal H[i, i] -- extracted in i, charged to value added in i -- is NOT
+# D[i, i]. Its `domestic` segment therefore moves too, and mk() below takes the
+# domestic block as an argument rather than reading one shared column.
+# Its trade blocks also mean something else: `import_kept` is foreign extraction
+# charged to DOMESTIC VALUE ADDED, not to domestic consumption, and va_export is
+# extraction here booked to FOREIGN value added. Like CBA, VA charges none of its
+# export, so its dark block is empty -- the VA argument lives in the other two
+# segments, not in the shrinking export block that drives PBA -> HDI -> CBA.
 
 split_components <- function(d, keys) {
   a <- d[, .(domestic    = sum(justice_domestic),
@@ -133,9 +206,13 @@ split_components <- function(d, keys) {
              import_full = sum(consumption_based) - sum(justice_domestic),
              hdi_export  = sum(justice_export),
              hdi_import  = sum(justice_import),
+             va_domestic = sum(va_domestic),
+             va_import   = sum(va_import),
+             va_export   = sum(va_export),
              PBA         = sum(production_based),
              CBA         = sum(consumption_based),
-             HDI         = sum(justice_based)),
+             HDI         = sum(justice_based),
+             VA          = sum(va_based)),
          by = keys]
   
   # HDI's own columns must rebuild its total (41 writes them that way). Test this
@@ -144,6 +221,12 @@ split_components <- function(d, keys) {
   dev_h <- max(abs(a$domestic + a$hdi_export + a$hdi_import - a$HDI)) / max(abs(a$HDI), 1)
   if (dev_h > NOISE_TOL)
     warning(sprintf("[45] justice_domestic+export+import != justice_based (max rel. %.3g)", dev_h))
+  
+  # Same test on 42's columns: the row margin of H* must be its own diagonal plus
+  # its off-diagonal. Also raw, also before any clamp.
+  dev_v <- max(abs(a$va_domestic + a$va_import - a$VA)) / max(abs(a$VA), 1)
+  if (dev_v > NOISE_TOL)
+    warning(sprintf("[45] va_domestic+va_import != va_based (max rel. %.3g) -- re-run 42", dev_v))
   
   # --- are the PHYSICAL flows well-formed? ------------------------------------
   # D[p, c] is NOT guaranteed non-negative (see the header), so an export or
@@ -157,8 +240,15 @@ split_components <- function(d, keys) {
                     neg_export   = pmax(-a$export_full, 0) / s,
                     neg_import   = pmax(-a$import_full, 0) / s,
                     over_export  = pmax(a$hdi_export - a$export_full, 0) / s,
-                    over_import  = pmax(a$hdi_import - a$import_full, 0) / s)
-  chk[, worst := pmax(neg_domestic, neg_export, neg_import, over_export, over_import)]
+                    over_import  = pmax(a$hdi_import - a$import_full, 0) / s,
+                    # VA has its own way of going negative, independent of D's:
+                    # v = p/x is negative wherever value added is (net subsidies,
+                    # negative operating surplus), so H* can carry negative cells
+                    # even where every D entry is clean.
+                    neg_va_dom   = pmax(-a$va_domestic, 0) / s,
+                    neg_va_imp   = pmax(-a$va_import,   0) / s)
+  chk[, worst := pmax(neg_domestic, neg_export, neg_import, over_export, over_import,
+                      neg_va_dom, neg_va_imp)]
   chk[, who := if ("biofuel_group" %in% keys) paste0(iso3c, "/", biofuel_group) else iso3c]
   
   # A RELATIVE violation alone cannot be judged: "1.0 of its own scale" is what a
@@ -167,28 +257,51 @@ split_components <- function(d, keys) {
   # absolute weight in the same breath.
   world <- sum(abs(a$CBA))
   chk[, share_of_world := scale / max(world, .Machine$double.eps)]
+  # What actually reaches the figure is the PRODUCT of the two: a row that is 3e-4
+  # of the world and violates by 2e-2 of itself distorts the world total by 6e-6,
+  # which is orders of magnitude below a pixel. Ranking and thresholding on the
+  # weight ALONE overstates the problem, because a row's weight is what it is
+  # whether or not the clamp touches it. `distortion` is the honest number.
+  chk[, distortion := worst * share_of_world]
+  # Name the check that fired, so a VA negative (v = p/x < 0) is not mistaken for a
+  # negative bilateral entry in D -- they have different causes and different fixes.
+  CULPRITS <- c(neg_domestic = "domestic < 0",  neg_export = "export residual < 0",
+                neg_import   = "import residual < 0", over_export = "HDI export > flow",
+                over_import  = "HDI import > flow",   neg_va_dom  = "VA domestic < 0",
+                neg_va_imp   = "VA import < 0")
+  chk[, culprit := CULPRITS[max.col(as.matrix(.SD), ties.method = "first")],
+      .SDcols = names(CULPRITS)]
   
   noise <- chk[worst > 0 & worst <= NOISE_TOL]
   if (nrow(noise))
     message(sprintf("[45] %d country-chain(s) off by <= %.0e of their own scale (float noise).",
                     nrow(noise), NOISE_TOL))
   
-  bad <- chk[worst > NOISE_TOL][order(-share_of_world)]
+  bad <- chk[worst > NOISE_TOL][order(-distortion)]
   if (nrow(bad)) {
-    warning(sprintf(paste0("[45] %d country-chain(s) with a MALFORMED flow: a negative export/import ",
-                           "residual, or an HDI share above the flow it splits. D has negative bilateral ",
+    drawn <- if (exists("shown", inherits = TRUE)) intersect(bad$iso3c, shown$iso3c) else NULL
+    warning(sprintf(paste0("[45] %d country-chain(s) with a MALFORMED flow. D has negative bilateral ",
                            "entries there -- FABIO's Y carries negative components (stock change), so a ",
                            "country that produces none of a chain and draws it down from stock gets a ",
-                           "NEGATIVE account. NEG_FLOWS = '%s'. Ranked by weight: %s"),
+                           "NEGATIVE account -- or the VA intensity v = p/x is negative (net subsidies, ",
+                           "negative operating surplus). NEG_FLOWS = '%s'. Ranked by the distortion each ",
+                           "one puts on the WORLD total: %s"),
                     nrow(bad), NEG_FLOWS,
-                    paste(sprintf("%s (%.0e of the world total; violates by %.1e of its own scale)",
-                                  head(bad$who, 5), head(bad$share_of_world, 5), head(bad$worst, 5)),
+                    paste(sprintf("%s [%s] %.1e of the world (weight %.0e x violation %.1e)",
+                                  head(bad$who, 5), head(bad$culprit, 5), head(bad$distortion, 5),
+                                  head(bad$share_of_world, 5), head(bad$worst, 5)),
                           collapse = "; ")))
-    message(sprintf("[45]   flagged rows are %.2g%% of the world total -- %s",
-                    100 * sum(bad$share_of_world),
-                    if (sum(bad$share_of_world) < 1e-4)
-                      "negligible; whatever NEG_FLOWS does to them cannot move the figure."
-                    else "big enough to matter: check them before quoting any bar."))
+    tot_d <- sum(bad$distortion)
+    message(sprintf("[45]   total distortion from the clamp: %.2g%% of the world total -- %s",
+                    100 * tot_d,
+                    if (tot_d < 1e-4)
+                      "far below a pixel; whatever NEG_FLOWS does to them cannot move the figure."
+                    else "big enough to see: check them before quoting any bar."))
+    if (length(drawn))
+      message("[45]   of these, DRAWN in the figure: ", paste(drawn, collapse = ", "),
+              " -- the others are flagged but never plotted.")
+    else if (!is.null(drawn))
+      message("[45]   none of the flagged countries are among those drawn; the figure is untouched.")
   }
   
   if (NEG_FLOWS == "drop" && nrow(bad)) {
@@ -199,9 +312,13 @@ split_components <- function(d, keys) {
              import_full = pmax(import_full, 0))]
     a[, `:=`(hdi_export  = pmin(pmax(hdi_export, 0), export_full),
              hdi_import  = pmin(pmax(hdi_import, 0), import_full))]
+    a[, `:=`(va_domestic = pmax(va_domestic, 0),
+             va_import   = pmax(va_import,   0),
+             va_export   = pmax(va_export,   0))]
     a[, `:=`(PBA = domestic + export_full,
              CBA = domestic + import_full,
-             HDI = domestic + hdi_export + hdi_import)]
+             HDI = domestic + hdi_export + hdi_import,
+             VA  = va_domestic + va_import)]
   } else if (NEG_FLOWS != "keep") {
     stop("[45] NEG_FLOWS must be 'clamp', 'keep' or 'drop'.")
   }
@@ -209,18 +326,21 @@ split_components <- function(d, keys) {
   # Each bar is the account's charged impact, split by where the flow goes: PBA
   # keeps its whole export; CBA cedes it entirely (export_kept = 0); HDI keeps the
   # beta share. What is ceded is not drawn -- the bar height is the account.
-  mk <- function(acc, kept_exp, kept_imp)
+  # `dom` is explicit: the VA bar's domestic block is H*[i, i], not D[i, i]
+  # (see the note at ACCOUNTS above).
+  mk <- function(acc, dom, kept_exp, kept_imp)
     data.table(a[, ..keys], account = acc,
-               domestic    = a$domestic,
+               domestic    = dom,
                export_kept = kept_exp,
                import_kept = kept_imp)
   
   parts <- list(
-    mk("CBA", kept_exp = 0,            kept_imp = a$import_full),
-    mk("HDI", kept_exp = a$hdi_export, kept_imp = a$hdi_import)
+    mk("CBA", dom = a$domestic,    kept_exp = 0,            kept_imp = a$import_full),
+    mk("HDI", dom = a$domestic,    kept_exp = a$hdi_export, kept_imp = a$hdi_import),
+    mk("VA",  dom = a$va_domestic, kept_exp = 0,            kept_imp = a$va_import)
   )
   if (SHOW_PBA)
-    parts <- c(list(mk("PBA", kept_exp = a$export_full, kept_imp = 0)), parts)
+    parts <- c(list(mk("PBA", dom = a$domestic, kept_exp = a$export_full, kept_imp = 0)), parts)
   
   long <- melt(rbindlist(parts, use.names = TRUE),
                id.vars       = c(keys, "account"),
@@ -261,11 +381,26 @@ wide <- d$wide
 
 # --- conservation & context --------------------------------------------------
 tot <- long[, .(charged = sum(value)), by = account]
-if ((max(tot$charged) - min(tot$charged)) / max(abs(tot$charged)) > TOL)
-  warning("[45] the accounts do not share one total:\n",
-          paste(sprintf("  %-4s %.6g", tot$account, tot$charged), collapse = "\n"))
+# PBA/CBA/HDI are re-attributions of ONE total, so they get the tight bound. VA is
+# not: 42 drops the chains with s_j <= 0 (no valued sector to carry them) and
+# reports the shortfall as conservation_gap_pct, so a small VA deficit is a known
+# property of the account, not a mismatched pair of files. Hence VA_GAP_TOL, and
+# hence the two checks are separate -- folding VA into the first would either
+# raise the bound for everyone or cry wolf every run.
+d3  <- tot[account != "VA"]
+if (nrow(d3) > 1 && (max(d3$charged) - min(d3$charged)) / max(abs(d3$charged)) > TOL)
+  warning("[45] the D-based accounts do not share one total:\n",
+          paste(sprintf("  %-4s %.6g", d3$account, d3$charged), collapse = "\n"))
+va_gap <- (tot[account == "VA", charged] - d3[account == "CBA", charged]) /
+  max(abs(d3[account == "CBA", charged]), .Machine$double.eps)
+if (abs(va_gap) > VA_GAP_TOL)
+  warning(sprintf(paste0("[45] the VA account is %.3g%% off the consumer footprint it re-allocates. ",
+                         "Small gaps are 42's s_j <= 0 chains; a gap this size will visibly bend the ",
+                         "VA bars -- check conservation_gap_pct in 42's coverage CSV before quoting them."),
+                  100 * va_gap))
 message("[45] charged totals (", META$short_label, ", ", PLOT_YEAR, "): ",
-        paste(sprintf("%s %.6g", tot$account, tot$charged), collapse = " | "))
+        paste(sprintf("%s %.6g", tot$account, tot$charged), collapse = " | "),
+        sprintf("  [VA gap vs CBA: %+.3g%%]", 100 * va_gap))
 
 # world exports must equal world imports: every traded flow is somebody's both
 we <- sum(wide$export_full); wi <- sum(wide$import_full)
@@ -273,6 +408,15 @@ if (abs(we - wi) / max(abs(we), 1) > TOL)
   warning(sprintf("[45] world exports (%.6g) != world imports (%.6g)", we, wi))
 message(sprintf("[45] traded share of the footprint: %.1f%% (the rest never crosses a border)",
                 100 * we / max(sum(wide$CBA), .Machine$double.eps)))
+
+# The same identity on the VA axis: every unit of pressure booked to foreign value
+# added is somebody's imported-into-VA. This is H*'s off-diagonal counted twice,
+# by row and by column, so it is a real test of 42's eq. 8 rather than a tautology.
+ve <- sum(wide$va_export); vi <- sum(wide$va_import)
+if (abs(ve - vi) / max(abs(ve), 1) > TOL)
+  warning(sprintf("[45] VA: world exports (%.6g) != world imports (%.6g) -- H* margins disagree", ve, vi))
+message(sprintf("[45] share of the VA account resting on FOREIGN extraction: %.1f%%",
+                100 * vi / max(sum(wide$VA), .Machine$double.eps)))
 
 # --- countries: follow 44's value-added figure -------------------------------
 # The set and its left-to-right order are read from 44's order file so this figure
@@ -333,21 +477,29 @@ SEL_NOTE <- if (from_44) {
 flow_colors <- c(domestic    = "grey52",
                  export_kept = "grey25",
                  import_kept = "grey78")
-flow_labels <- c(domestic    = "Domestic \u2192 domestic",
-                 export_kept = "Domestic \u2192 foreign",
-                 import_kept = "Foreign \u2192 domestic")
+# "destination" means the party the account CHARGES: the consumer for PBA/CBA/HDI,
+# the value generator for VA. The labels are deliberately neutral about which, so
+# they stay true across all four bars; the subtitle spells the difference out.
+flow_labels <- c(domestic    = "Extracted here \u2192 charged here",
+                 export_kept = "Extracted here \u2192 charged here (exported)",
+                 import_kept = "Extracted abroad \u2192 charged here")
 
 SUB <- paste0(
   if (SHOW_PBA) "PBA production-based | " else "",
-  "CBA consumption-based | HDI justice-based (Sun et al. 2022): re-attributions of one ",
-  "and the same total.\nEvery bar is the SAME country; only the charging rule moves, so the ",
-  "bar HEIGHT is that account. Segments show where the charged impact flows (see legend):\ndark = produced-here-for-export, ",
-  "mid-grey = domestic, light = imported-and-consumed-here. ",
+  "CBA consumption-based | HDI justice-based (Sun et al. 2022) | VA value added-based ",
+  "(Pi\u00f1ero et al. 2019, eq. 8): re-attributions of one and the same total.\n",
+  "Every bar is the SAME country; only the charging rule moves, so the bar HEIGHT is that ",
+  "account. Segments show where the charged impact was EXTRACTED (see legend):\ndark = extracted here for export, ",
+  "mid-grey = extracted and charged here, light = extracted abroad. ",
   if (SHOW_PBA)
     paste0("PBA charges the whole dark export block; CBA charges none of it (it vanishes); ",
            "HDI keeps HDI_p/(HDI_p+HDI_c) of it.")
   else
-    paste0("CBA charges none of the dark export block; HDI keeps HDI_p/(HDI_p+HDI_c) of it."))
+    paste0("CBA charges none of the dark export block; HDI keeps HDI_p/(HDI_p+HDI_c) of it."),
+  "\nThe first three bars split ONE matrix D[producer, consumer], so their mid-grey block is ",
+  "the same number in each. VA splits a DIFFERENT matrix, H*[value generator, extraction ",
+  "origin],\nso its mid-grey block moves too, and its light block is extraction abroad charged ",
+  "to value added here -- not to consumption here. Like CBA, VA charges none of its export.")
 
 plot_split <- function(p, title, subtitle, by_biofuel = FALSE) {
   gg <- ggplot(p, aes(x = account, y = value / META$scale_factor, fill = component)) +

@@ -23,7 +23,7 @@ source("R/19_plot_definitions.R")   # indicator_meta, continent_palette, fuel_co
 # --- the run -----------------------------------------------------------------
 STRESSOR   <- "ibif_total"   # "ibif_total" | "LCIM_EQ_terrestrial"
 allocation <- "value"        # co-product rule of the Leontief inverse: "mass" | "value"
-VA_BASE    <- "exiobase"     # "gloria" | "exiobase"
+VA_BASE    <- "gloria"     # "gloria" | "exiobase"
 VA_VARIANT <- "full"         # VA definition carried by the account 43-45/47 draw:
 #   "full"   wages + capital + taxes-less-subsidies
 #   "ex_tls" wages + capital
@@ -91,6 +91,7 @@ HDI_CSV      <- acc_csv("hdi_responsibility")                                 # 
 VA_RESP_CSV  <- va_csv("value_added_responsibility", VA_TAG)                  # 42
 VA_FULL_CSV  <- va_csv("value_added_responsibility")                          # 42
 VA_EXTLS_CSV <- va_csv("value_added_responsibility", "_ex_tls")               # 42
+VA_SPLIT_CSV <- va_csv("value_added_trade_split", VA_TAG)                     # 42 (Pinero eq. 8)
 ORDER_CSV    <- va_csv("responsibility_country_order", sprintf("_%d", PLOT_YEAR))  # 44 -> 45
 
 # --- the chains --------------------------------------------------------------

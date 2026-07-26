@@ -67,6 +67,19 @@
 #       per (year, va_variant, biofuel_group): consumer_footprint,
 #       allocated_norm, conservation_gap_pct, implied_unit_value_usd_per_t,
 #       throughput_coverage
+#   <OUT_DIR>/FABIO_bcp_<metric>_value_added_trade_split_<base>_<alloc>[_ex_tls].csv
+#       Pinero eq. 8, H* = v_hat B T' with T = f_hat B y_hat, rolled up to
+#       countries on BOTH axes: rows = value generator, columns = extraction
+#       origin. Written as margins, one row per (year, va_variant,
+#       biofuel_group, iso3c):
+#             va_based      row margin   = the VA account (= va_resp by country)
+#             va_domestic   diagonal     = extracted here, charged here
+#             va_import     row off-diag = extracted abroad, charged to this VA
+#             va_export     col off-diag = extracted here, charged to FOREIGN VA
+#             va_production column margin = extraction here (cross-check vs 41)
+#       This is the dimension va_resp alone cannot give: h sums over the final
+#       products j and so forgets where the pressure was extracted. 45 needs it
+#       to split the VA bar the way it splits the PBA/CBA/HDI bars.
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_gaps_<base>_<alloc>.csv
 #       per (year, iso3c, comm_code, item) with output but no value added that
 #       feeds the studied chains: throughput, value_added, reason
@@ -192,6 +205,18 @@ for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col",
 for (yr in intersect(as.character(years), names(V))) assert_grid(V[[yr]], "col", sprintf("V[[%s]]", yr))
 message(">>> [42] alignment guard passed: X rows and E/V columns match the io_labels grid.")
 
+# --- country universe for the eq. 8 origin split ------------------------------
+# BOTH axes of H* are io nodes (rows = value generators, columns = extraction
+# origin), so one universe serves both. It is the io grid only -- unlike 41's
+# country_grid(), which also has to cover Y's final-demand columns. `ctry` is
+# sorted so the axis order matches 41's `countries` for every iso3c they share,
+# and 45 joins on the LABEL anyway.
+ctry <- sort(unique(io$iso3c))
+R_c  <- length(ctry)
+cidx <- match(io$iso3c, ctry)
+# plain 0/1 roll-up, for aggregating node vectors (h, extraction) to countries
+S1   <- Matrix::sparseMatrix(i = seq_len(N), j = cidx, x = 1, dims = c(N, R_c))
+
 # static mask of ecosystem-service nodes excluded from the coverage diagnostic
 exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
 if (sum(exempt_node))
@@ -247,7 +272,12 @@ compute_year <- function(yr) {
   y_all <- as.vector(Matrix::rowSums(Yi))      # world final demand by product node
   comm  <- io$comm_code
   
-  alloc_rows <- list(); cover_rows <- list()
+  # f-weighted roll-up: crossprod(S_f, B)[p, j] = extraction in country p per unit
+  # of final demand for j. Built from the sparse aggregator rather than
+  # Diagonal(f) %*% B, which would copy the whole N x N inverse.
+  S_f <- Matrix::sparseMatrix(i = seq_len(N), j = cidx, x = f, dims = c(N, R_c))
+  
+  alloc_rows <- list(); cover_rows <- list(); split_rows <- list()
   
   # accumulators for the structural-gap diagnostic (full-variant VA; throughput
   # summed over the studied chains)
@@ -260,6 +290,9 @@ compute_year <- function(yr) {
     v <- p / Xi; v[!is.finite(v)] <- 0
     s <- as.vector(crossprod(v, B))     # (v' B)_j : USD value added per tonne of j = implied UNIT VALUE
     #            (a price intensity, NOT a share -- see the header)
+    # v-weighted roll-up: crossprod(S_v, B)[r, j] = value added captured in country
+    # r per tonne of final demand for j. Its column sums are s_j by construction.
+    S_v <- Matrix::sparseMatrix(i = seq_len(N), j = cidx, x = v, dims = c(N, R_c))
     
     for (g in names(biofuel_groups)) {
       cc_set <- biofuel_groups[[g]]
@@ -281,6 +314,71 @@ compute_year <- function(yr) {
       implied_unit_value <- sum(s * y_g) / sum(y_g)     # implied USD/tonne -- sanity check on V
       BY <- as.vector(B %*% y_g)                        # upstream throughput (tonnes)
       if (variant == "full") BY_studied <- BY_studied + BY   # tonnage feeding the studied chains
+      
+      # --- Pinero et al. (2019) eq. 8: the ORIGIN of the re-allocated pressure ---
+      # h above answers "who captured the value", but sums over j and so forgets
+      # WHERE the pressure was extracted. Eq. 8 keeps both:
+      #     T  = f_hat B y_hat        (extraction node k x final product j)
+      #     H* = v_hat B T'           (value generator i x extraction node k)
+      # rolled up to countries. Row margin = h by country (the VA account), column
+      # margin = extraction by country (= 41's production_based for this chain),
+      # diagonal = domestic, off-diagonals = foreign. Aggregating INSIDE the
+      # product keeps this at R x R and never materialises an N x N T'.
+      #     H[r, p] = sum_j (S_v' B)[r, j] * w_j * (S_f' B)[p, j]
+      # with w_j = y_j / s_j -- the SAME per-chain normalisation as t_use, which is
+      # what makes both margins land where they should (see the checks below).
+      w_all <- if (NORMALISE) ifelse(s > 0, y_g / s, 0) else y_g
+      jj    <- which(w_all != 0)
+      if (length(jj)) {
+        Bg <- B[, jj, drop = FALSE]                             # N x n_g
+        Mv <- as.matrix(Matrix::crossprod(S_v, Bg))             # R x n_g
+        Mf <- as.matrix(Matrix::crossprod(S_f, Bg))             # R x n_g
+        H  <- Mv %*% (w_all[jj] * t(Mf))                        # R x R
+      } else {
+        H <- matrix(0, R_c, R_c)
+      }
+      dimnames(H) <- list(ctry, ctry)
+      
+      va_tot <- rowSums(H)          # the VA account, by country  (= h rolled up)
+      va_dom <- diag(H)             # extracted here, charged here
+      va_imp <- va_tot - va_dom     # extracted ABROAD, charged to this country's VA
+      va_prd <- colSums(H)          # extracted here, charged to anyone (= production)
+      va_exp <- va_prd - va_dom     # extracted here, charged to FOREIGN value added
+      
+      # The two margins are the whole claim of eq. 8, so verify them rather than
+      # assert them. Row: the split must reproduce 42's own h. Column: it must
+      # reproduce the physical extraction by origin, which is what makes the VA
+      # bar commensurable with 41's PBA/CBA bars in 45.
+      h_ctry  <- as.vector(Matrix::crossprod(S1, h))
+      e_ctry  <- as.vector(Matrix::crossprod(S1, f * BY))
+      scale_h <- max(sum(abs(h_ctry)), .Machine$double.eps)
+      scale_e <- max(sum(abs(e_ctry)), .Machine$double.eps)
+      dev_row <- max(abs(va_tot - h_ctry)) / scale_h
+      # NOTE the column margin is only the FULL extraction for chains with s_j > 0;
+      # where s_j <= 0 the chain drops out of h as well, and the shortfall is the
+      # conservation_gap already reported. Compare against the same restriction.
+      # Only the NORMALISED product has a physical column margin: unnormalised,
+      # w_j = y_j leaves colSums(H) = sum_j y_j s_j (S_f' B)[p, j], an s-weighted
+      # quantity in no unit at all. NORMALISE = FALSE is debugging-only anyway.
+      e_kept  <- as.vector(Matrix::crossprod(S1, f * as.vector(B %*% ifelse(w_all != 0, y_g, 0))))
+      dev_col <- if (NORMALISE) max(abs(va_prd - e_kept)) / scale_e else NA_real_
+      if (dev_row > 1e-9 || isTRUE(dev_col > 1e-9))
+        warning(sprintf(paste0("[42] eq. 8 margins off for %s/%s/%s: row dev %.3g, col dev %.3g. ",
+                               "H* should reproduce h by country and extraction by origin."),
+                        yr, variant, g, dev_row, dev_col))
+      
+      keep_s <- which(va_tot != 0 | va_prd != 0)
+      if (length(keep_s)) split_rows[[paste(variant, g, sep = ".")]] <- data.table(
+        year          = as.integer(yr),
+        va_variant    = variant,
+        biofuel_group = g,
+        iso3c         = ctry[keep_s],
+        va_based      = va_tot[keep_s],      # the account = domestic + import
+        va_domestic   = va_dom[keep_s],
+        va_import     = va_imp[keep_s],
+        va_export     = va_exp[keep_s],      # booked to foreign VA, NOT charged here
+        va_production = va_prd[keep_s]       # column margin; cross-check against 41
+      )
       
       BYd <- BY; BYd[exempt_node] <- 0                  # drop ecosystem services (e.g. Grazing) from the check
       exempt_throughput   <- sum(BY[exempt_node])       # tonnage set aside as ecosystem services (transparency)
@@ -307,7 +405,9 @@ compute_year <- function(yr) {
         conservation_gap_pct     = 100 * (allocated_norm - fp_consumer) / fp_consumer,
         implied_unit_value_usd_per_t = implied_unit_value,
         ecosystem_service_throughput = exempt_throughput,  # upstream tonnes excluded from the check
-        throughput_coverage      = throughput_coverage  # in [0,1], EXCL. ecosystem services -- honesty check
+        throughput_coverage      = throughput_coverage, # in [0,1], EXCL. ecosystem services -- honesty check
+        eq8_row_margin_dev       = dev_row,             # H* row margin vs h (should be ~0)
+        eq8_col_margin_dev       = dev_col              # H* col margin vs extraction by origin
       )
     }
   }
@@ -331,6 +431,7 @@ compute_year <- function(yr) {
   
   list(alloc = rbindlist(alloc_rows, use.names = TRUE, fill = TRUE),
        cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE),
+       split = rbindlist(split_rows, use.names = TRUE, fill = TRUE),
        residual = residual_t,
        gap   = gap_dt)
 }
@@ -340,6 +441,7 @@ res   <- lapply(resp_years, function(yr) { message("  year ", yr); compute_year(
 res   <- Filter(Negate(is.null), res)
 alloc <- rbindlist(lapply(res, `[[`, "alloc"), use.names = TRUE, fill = TRUE)
 cover <- rbindlist(lapply(res, `[[`, "cover"), use.names = TRUE, fill = TRUE)
+split <- rbindlist(lapply(res, `[[`, "split"), use.names = TRUE, fill = TRUE)
 gaps  <- rbindlist(lapply(res, `[[`, "gap"),   use.names = TRUE, fill = TRUE)
 residual_set_aside <- sum(unlist(lapply(res, `[[`, "residual")))   # tonnes in catch-all nodes
 
@@ -365,6 +467,10 @@ if (nrow(cover)) {
   cat(" - `unit_value` is the implied USD/tonne of the biofuel -- a sanity check on V.\n")
   cat(" - `throughput_cov` in [0,1] is the share of upstream tonnage from valued\n")
   cat("   sectors; low values mean the split leans on few imputed sectors.\n")
+  cat(sprintf(" - eq. 8 margins: worst row dev %.2e, worst col dev %.2e (both should be ~1e-15;\n",
+              max(cover$eq8_row_margin_dev, na.rm = TRUE),
+              suppressWarnings(max(cover$eq8_col_margin_dev, na.rm = TRUE))))
+  cat("   row = H* reproduces h by country, col = H* reproduces extraction by origin).\n")
   if (exists("ECOSYSTEM_SERVICE_ITEMS") && length(ECOSYSTEM_SERVICE_ITEMS))
     cat(sprintf("   (ecosystem services exempt from the check: %s)\n",
                 paste(ECOSYSTEM_SERVICE_ITEMS, collapse = ", ")))
@@ -402,9 +508,12 @@ for (variant in names(va_variants)) {
   tagv   <- if (variant == "full") "" else paste0("_", variant)   # 'full' keeps the base filename
   a_path <- va_csv("value_added_responsibility", tagv)
   c_path <- va_csv("value_added_coverage",       tagv)
+  s_path <- va_csv("value_added_trade_split",    tagv)   # eq. 8 margins, for 45
   a_dt <- alloc[va_variant == variant]; c_dt <- cover[va_variant == variant]
+  s_dt <- split[va_variant == variant]
   fwrite(a_dt, a_path)
   fwrite(c_dt, c_path)
-  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)",
-                  a_path, nrow(a_dt), c_path, nrow(c_dt)))
+  fwrite(s_dt[order(year, biofuel_group, -va_based)], s_path)
+  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)\nWrote %s (%d rows)",
+                  a_path, nrow(a_dt), c_path, nrow(c_dt), s_path, nrow(s_dt)))
 }
