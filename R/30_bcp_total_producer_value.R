@@ -27,8 +27,9 @@
 #           intermediate_data/value_added_diagnostics/bcp_price_winsor_entries.csv
 #             Per-entry MAD-cap audit: one row per priced (exporter x product x
 #             year) the cap was evaluated against (NOT just clipped ones), with
-#             price_pre / price_post, the cap band [lo, hi], per-entry mad_z and
-#             a winsorized flag. Sorted by |mad_z| desc.
+#             price_pre / price_post, the cap band [lo, hi], the space it was
+#             built in, per-entry mad_z and a winsorized flag. Sorted by
+#             |mad_z| desc.
 #
 # Data-cleaning diagnostics (console + CSV) mirror the 13-series price scripts:
 # a cat() funnel of row drops at each stage, per-product winsor-cap counts with
@@ -65,6 +66,10 @@ output_dir_mode <- mode_dir(output_dir_bcp)
 
 IN_SCOPE_GROUPS <- c("Biofuels", "Building blocks", "Biopolymers")
 
+# Producer-price winsor, matching the 13-series price scripts.
+WINSOR_MAD_K   <- 2.5   # cap at median +/- WINSOR_MAD_K * MAD (robust |z|)
+WINSOR_MIN_OBS <- 8L    # min positive obs per product before a band is built
+
 
 # --- local helpers -----------------------------------------------------------
 
@@ -81,24 +86,47 @@ wq_median <- function(x, w) {
   x[which(cw >= 0.5)[1L]]
 }
 
-# Per-product winsor band in log space (prices are positive, heavy-tailed).
-# Returns one row per group: log-space center/scale, the back-transformed price
-# cap band [lo, hi], and n (positive obs). Products with < min_obs positive
-# prices, or a degenerate MAD, carry an NA band and pass through UNCAPPED. This
-# is the band-returning form of the old scalar mad_cap(): the applied cap is
-# identical, but the band is now auditable per entry (mirrors 13_2's
-# compute_winsor_stats() + build_winsor_diagnostic()).
-mad_cap_stats <- function(x, k = 3, min_obs = 8L) {
+scaled_mad <- function(x) stats::mad(x, constant = 1.4826, na.rm = TRUE)
+
+skewness <- function(v) {
+  n <- length(v); m <- mean(v); s <- stats::sd(v)
+  if (!is.finite(s) || s < .Machine$double.eps * max(1, abs(m))) return(NA_real_)
+  (n / ((n - 1) * (n - 2))) * sum(((v - m) / s)^3)
+}
+
+ex_kurtosis <- function(v) {
+  n <- length(v); m <- mean(v); s <- stats::sd(v)
+  if (!is.finite(s) || s < .Machine$double.eps * max(1, abs(m))) return(NA_real_)
+  (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3)) * sum(((v - m) / s)^4) -
+    3 * (n - 1)^2 / ((n - 2) * (n - 3))
+}
+
+# Per-product winsor band. Log space is used iff log(price) is more symmetric
+# than price (|skew| + |ex-kurtosis|); the band is built there and back-
+# transformed. Returns one row per group: the space flag, its center/scale, the
+# price cap band [lo, hi], and n (positive obs). Products with < min_obs
+# positive prices, or a degenerate MAD, carry an NA band and pass through
+# UNCAPPED; log_space is NA for those on the min_obs gate alone, so the two
+# cases stay separable in the diagnostic. Mirrors 13_2's compute_winsor_stats().
+mad_cap_stats <- function(x, k = WINSOR_MAD_K, min_obs = WINSOR_MIN_OBS) {
   v <- x[is.finite(x) & x > 0]
-  if (length(v) < min_obs)
-    return(list(n = length(v), center = NA_real_, scale = NA_real_,
-                lo = NA_real_, hi = NA_real_))
-  lx <- log(v); m <- median(lx); s <- mad(lx, constant = 1.4826)
-  if (!is.finite(s) || s <= 0)
-    return(list(n = length(v), center = m, scale = NA_real_,
-                lo = NA_real_, hi = NA_real_))
-  list(n = length(v), center = m, scale = s,
-       lo = exp(m - k * s), hi = exp(m + k * s))
+  na_band <- function(center = NA_real_, scale = NA_real_, ls = NA)
+    list(n = length(v), log_space = ls, center = center, scale = scale,
+         lo = NA_real_, hi = NA_real_)
+  
+  if (length(v) < min_obs) return(na_band())
+  
+  raw_obj <- abs(skewness(v))      + abs(ex_kurtosis(v))
+  log_obj <- abs(skewness(log(v))) + abs(ex_kurtosis(log(v)))
+  use_log <- is.finite(raw_obj) && is.finite(log_obj) && log_obj < raw_obj
+  
+  w <- if (use_log) log(v) else v
+  m <- median(w); s <- scaled_mad(w)
+  if (!is.finite(s) || s <= 0) return(na_band(m, s, use_log))
+  
+  list(n = length(v), log_space = use_log, center = m, scale = s,
+       lo = if (use_log) exp(m - k * s) else m - k * s,
+       hi = if (use_log) exp(m + k * s) else m + k * s)
 }
 
 
@@ -194,18 +222,23 @@ if (length(unmatched_iso3))
 
 
 # --- MAD winsorization (cap) with per-entry diagnostics ----------------------
-# Same k = 3 / min_obs = 8 log-space cap as before, but driven off a per-product
-# stats table so the applied band is auditable. Snapshot the pre-cap price and
-# the log-space robust z BEFORE clipping, so sign / magnitude are directly
-# comparable to the implied |z| = 3 boundary. Entries in short or degenerate
-# products carry mad_z = NA and cannot be winsorized (NA band => cap fails).
+# Per-product cap band, driven off a stats table so the applied band is
+# auditable. Snapshot the pre-cap price and the robust z BEFORE clipping,
+# evaluated in the same space as the cap (log or linear, per log_space) so sign
+# and magnitude are directly comparable to the implied |z| = WINSOR_MAD_K
+# boundary. Entries in short or degenerate products carry mad_z = NA and cannot
+# be winsorized (NA band => cap fails).
 wins_stats <- prices[, mad_cap_stats(unit_price), by = product]
-prices[wins_stats, `:=`(wins_n = i.n, wins_center = i.center, wins_scale = i.scale,
-                        wins_lo = i.lo, wins_hi = i.hi), on = "product"]
+prices[wins_stats, `:=`(wins_n = i.n, wins_log = i.log_space, wins_center = i.center,
+                        wins_scale = i.scale, wins_lo = i.lo, wins_hi = i.hi),
+       on = "product"]
 
 prices[, unit_price_pre := unit_price]
-prices[, mad_z := fifelse(!is.finite(wins_scale) | wins_scale == 0, NA_real_,
-                          (log(unit_price) - wins_center) / wins_scale)]
+prices[, mad_z := fifelse(
+  !is.finite(wins_scale) | wins_scale == 0, NA_real_,
+  fifelse(wins_log == TRUE,
+          (log(unit_price) - wins_center) / wins_scale,
+          (unit_price      - wins_center) / wins_scale))]
 
 prices[, unit_price_cap := unit_price]
 prices[!is.na(wins_lo) & unit_price_cap < wins_lo, unit_price_cap := wins_lo]
@@ -213,13 +246,18 @@ prices[!is.na(wins_hi) & unit_price_cap > wins_hi, unit_price_cap := wins_hi]
 prices[, winsorized := is.finite(unit_price_pre) & is.finite(unit_price_cap) &
          unit_price_pre != unit_price_cap]
 
-n_prod_capped   <- wins_stats[!is.na(scale), .N]
-n_prod_untouch  <- wins_stats[ is.na(scale), .N]
+n_prod_capped   <- wins_stats[!is.na(lo), .N]
+n_prod_untouch  <- wins_stats[ is.na(lo), .N]
+n_prod_short    <- wins_stats[ is.na(log_space), .N]
+n_prod_log      <- wins_stats[!is.na(lo) & log_space == TRUE, .N]
 n_wins_obs      <- prices[winsorized == TRUE, .N]
 
-cat("\nMAD winsorization diagnostics (k = 3, min_obs = 8, log space)\n")
+cat("\nMAD winsorization diagnostics (k = ", WINSOR_MAD_K,
+    ", min_obs = ", WINSOR_MIN_OBS, ")\n", sep = "")
 cat("  Products with a cap band applied:      ", n_prod_capped,  "\n", sep = "")
-cat("  Products left untouched (<8 obs / MAD0):", n_prod_untouch, "\n", sep = "")
+cat("  Products capped in log space:          ", n_prod_log,     "\n", sep = "")
+cat("  Products left untouched (short / MAD0):", n_prod_untouch,
+    " (of which short: ", n_prod_short, ")\n", sep = "")
 cat("  Observations capped:                   ", n_wins_obs,     "\n", sep = "")
 if (n_wins_obs > 0) {
   top_wins <- prices[winsorized == TRUE, .N, by = .(comm_code, product)][order(-N)]
@@ -233,10 +271,11 @@ if (n_wins_obs > 0) {
 winsor_entries <- prices[, .(
   exporter_iso3, area_code, product, comm_code, year,
   price_pre = unit_price_pre, price_post = unit_price_cap,
-  lo = wins_lo, hi = wins_hi, n_obs = wins_n, mad_z, winsorized)]
+  lo = wins_lo, hi = wins_hi, log_space = wins_log, n_obs = wins_n,
+  mad_z, winsorized)]
 winsor_entries <- winsor_entries[order(-abs(mad_z))]
 
-prices[, c("wins_n", "wins_center", "wins_scale", "wins_lo", "wins_hi",
+prices[, c("wins_n", "wins_log", "wins_center", "wins_scale", "wins_lo", "wins_hi",
            "unit_price_pre", "mad_z", "winsorized") := NULL]
 
 
@@ -407,9 +446,10 @@ diagnostics <- rbindlist(list(
                               n_bad_price, n_drop_product, n_drop_region)),
   data.table(category = "winsor_cap",
              comm_code = NA_character_, item = NA_character_,
-             detail = sprintf(paste0("k=3 min_obs=8 log-space | products capped=%d ",
-                                     "untouched=%d | observations capped=%d"),
-                              n_prod_capped, n_prod_untouch, n_wins_obs)),
+             detail = sprintf(paste0("k=%g min_obs=%d | products capped=%d ",
+                                     "(log-space=%d) untouched=%d | observations capped=%d"),
+                              WINSOR_MAD_K, WINSOR_MIN_OBS, n_prod_capped,
+                              n_prod_log, n_prod_untouch, n_wins_obs)),
   if (length(unmatched_iso3))
     data.table(category = "unmatched_exporter_iso3",
                comm_code = NA_character_, item = unmatched_iso3,
