@@ -41,7 +41,8 @@ library(svglite)
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
-regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
+regions <- setDT(read_csv("inst/regions_full.csv"))[current==TRUE]
+tcf <- readRDS("intermediate_data/tcf_table_final.rds")
 
 # ---- MODEL VERSION -----------------------------------------------------------
 #   "rescaled" (default) -> results in output/         (RED-rescaled run)
@@ -242,7 +243,7 @@ plot_feedstock_desc <- function(data,
   top_scope      <- match.arg(top_scope)
   tcf_on_missing <- match.arg(tcf_on_missing)
   if (is.null(y_lab))
-    y_lab <- if (to_supply) "Biofuel supply (M liters)"
+    y_lab <- if (to_supply) "Biofuel production (M liters)"
   else           "Feedstock mass embodied in biofuel consumption (ktonnes)"
   
   comm_lookup  <- setNames(as.character(commodity_meta$item),

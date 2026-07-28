@@ -45,7 +45,7 @@ library(openxlsx)
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)
-regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
+regions <- setDT(read_csv("inst/regions_full.csv"))[current==TRUE]
 tcf <- readRDS("intermediate_data/tcf_table_final.rds")
 
 # ---- MODEL VERSION -----------------------------------------------------------
@@ -486,6 +486,68 @@ build_feedstock_palette <- function(data,
 }
 
 # ─── Main plotting function ────────────────────────────────────────────
+# ─── Shared helpers: grid strip labelling ──────────────────────────────
+# The *_grid wrappers below assemble one ggplot per (commodity x indicator)
+# cell with patchwork. Instead of giving every cell its own title, they label
+# the assembled grid the way 19_01a's `facet_grid(target_comm ~ target_continent)`
+# does: COLUMN name on top of the first row, ROW name on the right of the last
+# column. Each cell carries its own single-level facet, so the strips are real
+# ggplot strips (same look as 19_01a) while every panel keeps its own y axis
+# and secondary consumption axis -- which a single facet_grid could not do.
+
+.resolve_indicator_labels <- function(indicators, indicator_labels = NULL,
+                                      meta = indicator_meta) {
+  m   <- as.data.table(meta)
+  out <- vapply(indicators, function(ind) {
+    v <- m[indicator == ind, short_label]
+    if (length(v) && !is.na(v[1])) as.character(v[1]) else ind
+  }, character(1))
+  names(out) <- indicators
+  if (!is.null(indicator_labels)) {
+    hit <- intersect(names(indicator_labels), indicators)
+    out[hit] <- as.character(indicator_labels[hit])
+  }
+  out
+}
+
+.resolve_commodity_labels <- function(commodities, commodity_labels = NULL,
+                                      items = items_full_bcp) {
+  it  <- as.data.table(items)
+  out <- vapply(commodities, function(cc) {
+    v <- it[comm_code == cc, item]
+    if (length(v) && !is.na(v[1])) as.character(v[1]) else cc
+  }, character(1))
+  names(out) <- commodities
+  if (!is.null(commodity_labels)) {
+    hit <- intersect(names(commodity_labels), commodities)
+    out[hit] <- as.character(commodity_labels[hit])
+  }
+  out
+}
+
+# Attach the constant facet key(s) to a panel's plotting data.
+.attach_strip_keys <- function(agg, col_strip = NULL, row_strip = NULL) {
+  if (!is.null(col_strip)) agg[, `.col_strip` := as.character(col_strip)]
+  if (!is.null(row_strip)) agg[, `.row_strip` := as.character(row_strip)]
+  agg
+}
+
+# Add the matching single-level facet to a finished panel.
+.apply_strips <- function(p, col_strip = NULL, row_strip = NULL) {
+  if (is.null(col_strip) && is.null(row_strip)) return(p)
+  p <- p + if (!is.null(col_strip) && !is.null(row_strip)) {
+    ggplot2::facet_grid(rows = ggplot2::vars(.row_strip),
+                        cols = ggplot2::vars(.col_strip))
+  } else if (!is.null(col_strip)) {
+    ggplot2::facet_grid(cols = ggplot2::vars(.col_strip))
+  } else {
+    ggplot2::facet_grid(rows = ggplot2::vars(.row_strip))
+  }
+  p + ggplot2::theme(strip.text       = ggplot2::element_text(face = "bold"),
+                     strip.background = ggplot2::element_blank())
+}
+
+
 plot_commodity_feedstock <- function(data,
                                      commodity_select,
                                      indicator_select,
@@ -497,7 +559,11 @@ plot_commodity_feedstock <- function(data,
                                      Y_summary       = NULL,        # consumption data
                                      cons_scale      = 1000,        # liters -> M liters
                                      cons_color      = "black",
-                                     cons_lab        = "Consumption (M liters)") {
+                                     cons_lab        = "Consumption (M liters)",
+                                     title           = NA,      # NA = auto ("IBIF by feedstock — Biodiesel"); NULL = none
+                                     x_lab           = "Year",  # NULL = no x-axis title
+                                     col_strip       = NULL,    # top strip text   (NULL = none)
+                                     row_strip       = NULL) {  # right strip text (NULL = none)
   
   dt <- as.data.table(data)
   
@@ -575,13 +641,18 @@ plot_commodity_feedstock <- function(data,
   
   commodity_name <- items_full_bcp[comm_code == commodity_select, item]
   
+  if (length(title) == 1L && is.na(title))
+    title <- paste0(m$short_label, " by feedstock — ", commodity_name)
+  
+  agg <- .attach_strip_keys(agg, col_strip, row_strip)
+  
   p <- ggplot(agg, aes(x = year, y = value, fill = feedstock_group)) +
     geom_bar(stat = "identity") +
     fill_scale +
     labs(
-      x     = "Year",
+      x     = x_lab,
       y     = m$y_label,
-      title = paste0(m$short_label, " by feedstock — ", commodity_name)
+      title = title
     ) +
     theme_minimal()
   
@@ -600,7 +671,7 @@ plot_commodity_feedstock <- function(data,
     p <- p + scale_y_continuous(labels = scales::label_number())
   }
   
-  p
+  .apply_strips(p, col_strip, row_strip)
 }
 
 # ─── Convenience wrapper for batch plotting ────────────────────────────
@@ -609,7 +680,16 @@ plot_commodity_feedstock_grid <- function(data, commodities, indicators,
                                           palette         = NULL,
                                           top_n_feedstock = 10,
                                           Y_summary       = NULL,
+                                          strip_labels     = TRUE,  # FALSE = old per-panel titles
+                                          indicator_labels = NULL,  # named override, e.g. c(ibif_total = "IBIF")
+                                          commodity_labels = NULL,  # named override, e.g. c(c146 = "Bioethanol")
+                                          compact_axes     = TRUE,  # x-axis title on the bottom row only
                                           ...) {
+  
+  ind_lab  <- .resolve_indicator_labels(indicators, indicator_labels)
+  comm_lab <- .resolve_commodity_labels(commodities, commodity_labels)
+  n_ind    <- length(indicators)
+  n_comm   <- length(commodities)
   
   if (is.null(palette) || is.null(names(palette))) {
     palette <- build_feedstock_palette(
@@ -624,7 +704,9 @@ plot_commodity_feedstock_grid <- function(data, commodities, indicators,
   palette_feeds <- setdiff(names(palette), "Other")
   
   # One horizontal row of plots per commodity.
-  row_stacks <- lapply(commodities, function(comm) {
+  row_stacks <- lapply(seq_along(commodities), function(i) {
+    
+    comm <- commodities[i]
     
     # Anchor stack order to the leftmost indicator's 2012 totals.
     dt_anchor <- as.data.table(data)[
@@ -647,14 +729,29 @@ plot_commodity_feedstock_grid <- function(data, commodities, indicators,
     level_order <- c(anchor_order,
                      setdiff(c(palette_feeds, "Other"), anchor_order))
     
-    plist <- lapply(indicators, function(ind) {
-      plot_commodity_feedstock(data, comm, ind,
-                               palette         = palette,
-                               top_n_feedstock = top_n_feedstock,
-                               level_order     = level_order,
-                               Y_summary       = Y_summary,
-                               ...)
+    plist <- lapply(seq_along(indicators), function(j) {
+      ind <- indicators[j]
+      # Column strip on the first row, row strip on the last column -- the
+      # facet_grid(rows ~ cols) convention used by 19_01a.
+      strip_args <- if (strip_labels) {
+        list(title     = NULL,
+             x_lab     = if (compact_axes && i < n_comm) NULL else "Year",
+             col_strip = if (i == 1L)     unname(ind_lab[ind])   else NULL,
+             row_strip = if (j == n_ind)  unname(comm_lab[comm]) else NULL)
+      } else list()
+      
+      do.call(plot_commodity_feedstock,
+              c(list(data, comm, ind,
+                     palette         = palette,
+                     top_n_feedstock = top_n_feedstock,
+                     level_order     = level_order,
+                     Y_summary       = Y_summary),
+                strip_args, list(...)))
     })
+    
+    # Replace NULL panels (commodity x indicator with no data) with spacers.
+    plist <- lapply(plist, function(p) if (is.null(p)) patchwork::plot_spacer() else p)
+    
     patchwork::wrap_plots(plist, nrow = 1) +
       patchwork::plot_layout(guides = "collect") &
       ggplot2::theme(legend.position = "left")
@@ -673,7 +770,11 @@ plot_commodity <- function(data,
                            indicator_select,
                            year_range = c(2012, 2022),
                            meta       = indicator_meta,
-                           bar_color  = "#4575B4") {
+                           bar_color  = "#4575B4",
+                           title      = NA,      # NA = auto; NULL = none
+                           x_lab      = "Year",
+                           col_strip  = NULL,
+                           row_strip  = NULL) {
   
   dt <- as.data.table(data)
   
@@ -697,15 +798,22 @@ plot_commodity <- function(data,
   
   commodity_name <- items_full_bcp[comm_code == commodity_select, item]
   
-  ggplot(agg, aes(x = year, y = value)) +
+  if (length(title) == 1L && is.na(title))
+    title <- paste0(m$short_label, " — ", commodity_name)
+  
+  agg <- .attach_strip_keys(agg, col_strip, row_strip)
+  
+  p <- ggplot(agg, aes(x = year, y = value)) +
     geom_bar(stat = "identity", fill = bar_color) +
     scale_y_continuous(labels = scales::label_number()) +
     labs(
-      x     = "Year",
+      x     = x_lab,
       y     = m$y_label,
-      title = paste0(m$short_label, " — ", commodity_name)
+      title = title
     ) +
     theme_minimal()
+  
+  .apply_strips(p, col_strip, row_strip)
 }
 
 # ─── Grid wrapper ──────────────────────────────────────────────────────
@@ -714,6 +822,10 @@ plot_commodity <- function(data,
 plot_commodity_grid <- function(data, commodities, indicators,
                                 year_range = c(2012, 2022),
                                 bar_color  = "#4575B4",
+                                strip_labels     = TRUE,
+                                indicator_labels = NULL,
+                                commodity_labels = NULL,
+                                compact_axes     = TRUE,
                                 ...) {
   
   dt <- as.data.table(data)
@@ -730,12 +842,37 @@ plot_commodity_grid <- function(data, commodities, indicators,
     return(invisible(NULL))
   }
   
-  row_stacks <- lapply(commodities, function(comm) {
-    plist <- lapply(indicators, function(ind) {
-      plot_commodity(data, comm, ind,
+  ind_lab  <- .resolve_indicator_labels(indicators, indicator_labels)
+  comm_lab <- .resolve_commodity_labels(commodities, commodity_labels)
+  n_ind    <- length(indicators)
+  n_comm   <- length(commodities)
+  
+  # Per-cell data availability: a row strip must land on a panel that exists,
+  # so it goes on the RIGHTMOST cell of the row that actually has data.
+  cell_ok <- outer(commodities, indicators, Vectorize(function(comm, ind) {
+    nrow(dt[commodity == comm & indicator == ind & year %between% year_range]) > 0
+  }))
+  
+  row_stacks <- lapply(seq_along(commodities), function(i) {
+    
+    comm      <- commodities[i]
+    row_strip_col <- if (any(cell_ok[i, ])) max(which(cell_ok[i, ])) else NA_integer_
+    
+    plist <- lapply(seq_along(indicators), function(j) {
+      ind <- indicators[j]
+      strip_args <- if (strip_labels) {
+        list(title     = NULL,
+             x_lab     = if (compact_axes && i < n_comm) NULL else "Year",
+             col_strip = if (i == 1L) unname(ind_lab[ind]) else NULL,
+             row_strip = if (!is.na(row_strip_col) && j == row_strip_col)
+               unname(comm_lab[comm]) else NULL)
+      } else list()
+      
+      do.call(plot_commodity,
+              c(list(data, comm, ind,
                      year_range = year_range,
-                     bar_color  = bar_color,
-                     ...)
+                     bar_color  = bar_color),
+                strip_args, list(...)))
     })
     # Replace NULL panels (commodity x indicator with no data) with spacers.
     plist <- lapply(plist, function(p) if (is.null(p)) patchwork::plot_spacer() else p)
@@ -757,10 +894,22 @@ plot_continent_heatmap <- function(dt_feedstock,
                                    ref_max   = NULL,  # reference max defining the colour curve; SHARE across indicators
                                    gamma     = 1,     # >1 keeps darker colours until larger values (rightward shift)
                                    region_order = NULL, # fix continent axis order (e.g. land_harv's); NULL = self self-flow
+                                   commodities  = NULL, # NULL = all commodities in `dt_feedstock`; else subset + sum
+                                   title        = "Biofuel consumer region",
+                                   legend_title = NULL, # NULL = per-indicator default from cfg_all
+                                   file_tag     = NULL, # extra token in the filename (e.g. "BP") to avoid collisions
                                    save_dir  = file.path("output", "plot"),
                                    save      = TRUE,
                                    breaks    = NULL,  # override auto breaks
                                    limits    = NULL) {
+  
+  # --- Optional commodity subset (summed over, e.g. the whole bp_set) -------
+  if (!is.null(commodities)) {
+    dt_feedstock <- as.data.table(dt_feedstock)[commodity %in% commodities]
+    if (nrow(dt_feedstock) == 0L)
+      stop("No rows left after filtering to commodities: ",
+           paste(commodities, collapse = ", "))
+  }
   
   # --- Map consumer country -> continent, aggregate ------------------------
   dt_feedstock <- left_join(
@@ -817,8 +966,12 @@ plot_continent_heatmap <- function(dt_feedstock,
                                 .(value = mean(value)),
                                 by = .(continent_origin, continent_target)]
   
-  label_base <- paste0(min(years_base), "-", max(years_base))
-  label_curr <- paste0(min(years_curr), "-", max(years_curr))
+  # single-year windows -> "2012" rather than "2012-2012"
+  .period_label <- function(y) {
+    if (min(y) == max(y)) as.character(min(y)) else paste0(min(y), "-", max(y))
+  }
+  label_base <- .period_label(years_base)
+  label_curr <- .period_label(years_curr)
   
   dt_heatmap_base[, period := label_base]
   dt_heatmap_curr[, period := label_curr]
@@ -910,8 +1063,8 @@ plot_continent_heatmap <- function(dt_feedstock,
     facet_wrap(~ period, axes = "all") +
     labs(x     = NULL,
          y     = "Impacted region",
-         title = "Biofuel consumer region",
-         fill  = cfg$legend_title) +
+         title = title,
+         fill  = if (is.null(legend_title)) cfg$legend_title else legend_title) +
     theme_minimal() +
     theme(plot.title       = element_text(hjust = 0.5, size = 10,
                                           margin = margin(b = 18)),
@@ -930,7 +1083,8 @@ plot_continent_heatmap <- function(dt_feedstock,
   
   # --- Save ----------------------------------------------------------------
   if (save) {
-    fname <- paste0(label_base, "_vs_", label_curr, "_", cfg$file_suffix, ".svg")
+    fname <- paste0(label_base, "_vs_", label_curr, "_", cfg$file_suffix,
+                    if (is.null(file_tag)) "" else paste0("_", file_tag), ".svg")
     ggsave(filename = file.path(save_dir, fname),
            plot = p, width = 10, height = 6, dpi = 300)
   }
@@ -1163,12 +1317,21 @@ plot_lcim_terrestrial_2012_2022 <- plot_balance(dt_tradeFeed, Y_summary, indicat
 #2. Plot impacts by commodity, by feedstock over time.
 ######################################################################################################################
 
+# Grid labelling (mirrors 19_01a's facet_grid layout): columns = indicator,
+# rows = commodity. Per-panel titles are off; override the strip text with
+# `indicator_labels` / `commodity_labels` (named vectors) when the metadata
+# short_label is too long for a strip.
+IND_STRIP <- c(ibif_total          = "IBIF",
+               LCIM_EQ_terrestrial = "LC-Impact",
+               land_harv           = "Land use")
+
 p_ibif <- plot_commodity_feedstock_grid(
   dt_tradeFeed,
   commodities = c("c146", "c147", "c149"),
   indicators  = "ibif_total",
   Y_summary = Y_summary,
-  top_n_feedstock = 7
+  top_n_feedstock = 7,
+  indicator_labels = IND_STRIP
 )
 
 p_lcim <- plot_commodity_feedstock_grid(
@@ -1176,7 +1339,8 @@ p_lcim <- plot_commodity_feedstock_grid(
   commodities = c("c146", "c147", "c149"),
   indicators  = "LCIM_EQ_terrestrial",
   Y_summary = Y_summary,
-  top_n_feedstock = 7
+  top_n_feedstock = 7,
+  indicator_labels = IND_STRIP
 )
 
 p_ibif_lcim <- plot_commodity_feedstock_grid(
@@ -1184,7 +1348,8 @@ p_ibif_lcim <- plot_commodity_feedstock_grid(
   commodities = c("c146", "c147", "c149"),
   indicators  = c("ibif_total","LCIM_EQ_terrestrial"),
   Y_summary = Y_summary,
-  top_n_feedstock = 7
+  top_n_feedstock = 7,
+  indicator_labels = IND_STRIP
 )
 
 p_grid <- plot_commodity_feedstock_grid(
@@ -1192,7 +1357,8 @@ p_grid <- plot_commodity_feedstock_grid(
   commodities = c("c146", "c147", "c149"),
   indicators  = c("ibif_total", "land_harv"),
   Y_summary = Y_summary,
-  top_n_feedstock = 7
+  top_n_feedstock = 7,
+  indicator_labels = IND_STRIP
 )
 
 ## For full comparison with LCIM terrestrial
@@ -1205,7 +1371,8 @@ p_grid <- plot_commodity_feedstock_grid(
 p_grid_BP <- plot_commodity_grid(
   dt_tradeFeed_BP,
   commodities = bp_set,
-  indicators  = "ibif_total"
+  indicators  = "ibif_total",
+  indicator_labels = IND_STRIP
 )
 
 
@@ -1223,6 +1390,29 @@ plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "LCIM_EQ_terrestrial"
 plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "land_harv",
                        ref_max = ref_max, gamma = 1.5, region_order = ord,
                        breaks = c(0, 1000, 10000, round(ref_max)))
+
+
+
+## --- Two-panel figure: (a) IBIF above (b) LC-Impact terrestrial ---------------
+## Each panel keeps its own colourbar (the two indicators have different units).
+## Comment this block out to skip it.
+p_hm_a <- plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "ibif_total",
+                                 ref_max = ref_max, gamma = 1.5, region_order = ord,
+                                 breaks = c(0, 10, 100, round(ref_max)), save = FALSE)
+p_hm_b <- plot_continent_heatmap(dt_feedstock, 2012:2014, 2020:2022, "LCIM_EQ_terrestrial",
+                                 ref_max = ref_max, gamma = 1.5, region_order = ord,
+                                 breaks = c(0, 20, 100, round(ref_max)), save = FALSE)
+
+p_hm_ab <- (p_hm_a / p_hm_b) +
+  patchwork::plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(plot.tag          = element_text(size = 14, face = "bold"),
+        plot.tag.position = "top",
+        plot.margin       = margin(t = 12, r = 5, b = 5, l = 5))
+
+ggsave(file.path("output", "plot",
+                 "2012-2014_vs_2020-2022_IBIF_LCIM_flows_continent_ab.svg"),
+       p_hm_ab, width = 10, height = 12.5, dpi = 300)
+p_hm_ab
 
 
 # Producer-located, end-product-decomposed (symmetric Ly footprint), RELATIVE %.
@@ -1579,3 +1769,185 @@ add_eu_sheet("EU_footprint", tab_EU)
 add_eu_sheet("shares",       tab_EU_sh, num_fmt = "0.00")
 
 saveWorkbook(wb_EU, TAB_FILE, overwrite = TRUE)
+
+
+######################################################################################################################
+############################## BIO-BASED PRODUCTS (bp_set): ibif_total BY COMMODITY ##################################
+######################################################################################################################
+# Two deliverables, both driven by dt_tradeFeed_BP (VALUE-allocated, from 18b):
+#   (1) TABLE  output/table/BP_footprint_ibif_by_commodity.xlsx
+#          consumption-based ibif_total per comm_code x year (global and EU-consumer)
+#   (2) PLOT   plot_continent_heatmap, summed over ALL bp_set commodities, 2012 vs 2022
+#
+# NOTE ON AGGREGATION. dt_tradeFeed_BP is a bilateral (country_origin x
+# country_consumer) table split by flow_type into "self" and "trade". The
+# consumption-based footprint of a consumer is therefore the sum over BOTH
+# flow types for that country_consumer -- exactly the `self + imports` quantity
+# built in `.balance_data()`. No de-duplication is needed; summing is correct.
+# ------------------------------------------------------------------------------
+
+BP_IND  <- "ibif_total"
+TAB_DIR <- file.path("output", "table")
+dir.create(TAB_DIR, recursive = TRUE, showWarnings = FALSE)
+
+# reg_cont is defined in the EU-table section above; redefine defensively so this
+# block also works when run on its own.
+if (!exists("reg_cont")) reg_cont <- unique(as.data.table(regions)[, .(iso3c, continent)])
+
+## ---- 0. Base BP slice, with origin continent attached -----------------------
+dt_bp <- as.data.table(dt_tradeFeed_BP)[commodity %in% bp_set]
+
+missing_bp <- setdiff(bp_set, unique(dt_bp$commodity))
+if (length(missing_bp) > 0L)
+  message("bp_set codes with no rows in dt_tradeFeed_BP: ",
+          paste(missing_bp, collapse = ", "))
+
+if (!BP_IND %in% unique(dt_bp$indicator))
+  stop("Indicator '", BP_IND, "' not present in dt_tradeFeed_BP.")
+
+# self-flows must carry their own country as consumer for the consumption-based
+# aggregation below; patch if 18b left them blank
+if (dt_bp[flow_type == "self" & (is.na(country_consumer) | country_consumer == ""), .N] > 0L) {
+  warning("self-flow rows with empty country_consumer found; filling from country_origin.")
+  dt_bp[flow_type == "self" & (is.na(country_consumer) | country_consumer == ""),
+        country_consumer := country_origin]
+}
+
+dt_bp <- merge(dt_bp, reg_cont, by.x = "country_origin", by.y = "iso3c",
+               all.x = TRUE, sort = FALSE)
+setnames(dt_bp, "continent", "continent_origin")
+dt_bp[country_origin == "EU27", continent_origin := "EU"]
+
+if (dt_bp[is.na(continent_origin), .N] > 0L) {
+  warning(sprintf("BP origin country/-ies without continent in `regions`: %s",
+                  paste(sort(unique(dt_bp[is.na(continent_origin), country_origin])),
+                        collapse = ", ")))
+  dt_bp[is.na(continent_origin), continent_origin := "Unmatched"]
+}
+
+# consumer continent, for the EU-restricted sheet
+dt_bp <- merge(dt_bp, reg_cont, by.x = "country_consumer", by.y = "iso3c",
+               all.x = TRUE, sort = FALSE)
+setnames(dt_bp, "continent", "continent_consumer")
+dt_bp[country_consumer == "EU27", continent_consumer := "EU"]
+
+
+######################################################################################################################
+# (1) TABLE: ibif_total by comm_code
+######################################################################################################################
+
+TAB_FILE_BP <- file.path(TAB_DIR, "BP_footprint_ibif_by_commodity.xlsx")
+
+comm_lbl <- unique(as.data.table(items_full_bcp)[, .(comm_code, item)])
+
+# ---- long form: one row per commodity x year (optionally restricted to a
+#      consumer continent) --------------------------------------------------
+bp_comm_long <- function(dt, consumer_cont = NULL) {
+  d <- dt[indicator == BP_IND]
+  if (!is.null(consumer_cont)) d <- d[continent_consumer == consumer_cont]
+  if (nrow(d) == 0L)
+    stop("No BP rows for consumer continent = ",
+         if (is.null(consumer_cont)) "<all>" else consumer_cont)
+  
+  agg <- d[, .(ibif_total = sum(value, na.rm = TRUE)), by = .(commodity, year)]
+  agg <- merge(agg, comm_lbl, by.x = "commodity", by.y = "comm_code",
+               all.x = TRUE, sort = FALSE)
+  setnames(agg, c("commodity", "item"), c("comm_code", "commodity_name"))
+  agg[is.na(commodity_name), commodity_name := comm_code]
+  setcolorder(agg, c("comm_code", "commodity_name", "year", "ibif_total"))
+  setorderv(agg, c("year", "comm_code"))
+  agg[]
+}
+
+# ---- wide form: rows = commodity, columns = years, + Total row -------------
+bp_comm_wide <- function(long) {
+  w <- dcast(long, comm_code + commodity_name ~ year,
+             value.var = "ibif_total", fill = 0)
+  yr_cols <- setdiff(names(w), c("comm_code", "commodity_name"))
+  
+  # order commodities by their footprint in the most recent year, descending
+  setorderv(w, yr_cols[length(yr_cols)], order = -1L)
+  
+  tot <- w[, lapply(.SD, sum, na.rm = TRUE), .SDcols = yr_cols]
+  tot[, `:=`(comm_code = "TOTAL", commodity_name = "All bio-based products")]
+  setcolorder(tot, names(w))
+  
+  rbind(w, tot)[]
+}
+
+# ---- same, as % of the all-BP total within each year ----------------------
+bp_comm_share <- function(wide) {
+  s       <- copy(wide)[comm_code != "TOTAL"]
+  yr_cols <- setdiff(names(s), c("comm_code", "commodity_name"))
+  s[, (yr_cols) := lapply(.SD, function(x) 100 * x / sum(x)), .SDcols = yr_cols]
+  s[]
+}
+
+bp_long_glob <- bp_comm_long(dt_bp)
+bp_wide_glob <- bp_comm_wide(bp_long_glob)
+bp_shr_glob  <- bp_comm_share(bp_wide_glob)
+
+bp_long_EU   <- bp_comm_long(dt_bp, consumer_cont = "EU")
+bp_wide_EU   <- bp_comm_wide(bp_long_EU)
+bp_shr_EU    <- bp_comm_share(bp_wide_EU)
+
+# ---- write ---------------------------------------------------------------
+wb_BP <- createWorkbook()
+hdr_style_bp <- createStyle(textDecoration = "bold", halign = "center",
+                            fgFill = "#EFEFEF", border = "bottom")
+
+add_bp_sheet <- function(name, dt, num_cols, num_fmt = "0.000E+00") {
+  addWorksheet(wb_BP, name)
+  writeData(wb_BP, name, dt, headerStyle = hdr_style_bp)
+  addStyle(wb_BP, name, createStyle(numFmt = num_fmt),
+           rows = 2:(nrow(dt) + 1),
+           cols = which(names(dt) %in% num_cols), gridExpand = TRUE)
+  freezePane(wb_BP, name, firstRow = TRUE, firstCol = TRUE)
+  setColWidths(wb_BP, name, cols = seq_along(dt), widths = "auto")
+}
+
+yr_cols_glob <- setdiff(names(bp_wide_glob), c("comm_code", "commodity_name"))
+yr_cols_EU   <- setdiff(names(bp_wide_EU),   c("comm_code", "commodity_name"))
+
+add_bp_sheet("ibif_by_commodity",      bp_wide_glob, yr_cols_glob)
+add_bp_sheet("shares_pct",             bp_shr_glob,  yr_cols_glob, num_fmt = "0.00")
+add_bp_sheet("ibif_by_commodity_EU",   bp_wide_EU,   yr_cols_EU)
+add_bp_sheet("shares_pct_EU",          bp_shr_EU,    yr_cols_EU,   num_fmt = "0.00")
+add_bp_sheet("long",                   bp_long_glob, "ibif_total")
+
+saveWorkbook(wb_BP, TAB_FILE_BP, overwrite = TRUE)
+message("Wrote ", TAB_FILE_BP,
+        "  (units: MSA*km2*yr; ", length(yr_cols_glob), " years, ",
+        nrow(bp_wide_glob) - 1L, " commodities)")
+
+
+######################################################################################################################
+# (2) PLOT: continent heatmap, all bp_set commodities summed, 2012 vs 2022
+######################################################################################################################
+
+# Reshape into the layout plot_continent_heatmap() expects:
+#   country_consumer | continent_origin | commodity | year | feedstock | indicator | value
+dt_feedstock_BP <- dt_bp[, .(value = sum(value, na.rm = TRUE)),
+                         by = .(country_consumer, continent_origin,
+                                commodity, year, feedstock, indicator)]
+
+# --- probe run to size the colour breaks to the BP order of magnitude --------
+p_bp_probe <- plot_continent_heatmap(
+  dt_feedstock_BP, 2012, 2022, "ibif_total",
+  commodities = bp_set,
+  save        = FALSE
+)
+bp_max    <- max(p_bp_probe$data$value, na.rm = TRUE)
+bp_breaks <- unique(c(0, signif(bp_max * c(0.01, 0.1, 1), 2)))
+
+p_bp_heatmap <- plot_continent_heatmap(
+  dt_feedstock_BP, 2012, 2022, "ibif_total",
+  commodities  = bp_set,
+  gamma        = 1.5,
+  breaks       = bp_breaks,
+  title        = "Bio-based product consumer region",
+  legend_title = "Mean species abundance loss (1000 MSA\u00b7km\u00b2\u00b7yr)",
+  file_tag     = "BP",
+  save         = TRUE
+)
+p_bp_heatmap
