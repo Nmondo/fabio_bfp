@@ -1,9 +1,8 @@
 # =============================================================================
-# 41_responsibility_hdi.R
-# Environmentally-just (HDI-weighted) responsibility sharing between producers
-# and consumers (Sun et al. 2022, Ecol. Econ. 194:107339, operationalising
-# Oliveira 2019) for the bio-based transport fuels, using the IBIF biodiversity
-# impact as the environmental extension.
+# 41_responsibility_accounts_hdi.R
+# Production-, consumption- and HDI-weighted responsibility for the bio-based
+# transport fuels, using the IBIF biodiversity impact as the environmental
+# extension.
 #
 # WHAT THIS COMPUTES ----------------------------------------------------------
 # The consumer footprint of each biofuel chain, resolved bilaterally into
@@ -11,17 +10,18 @@
 # consuming country c (same object as 18_01's fp_trade_breakdown_feedstock(
 # bilateral = TRUE), aggregated over feedstock and commodity):
 #     D = T' diag(f) B Y_g ,   f = e / x ,  B = (I - A)^-1 = L_<allocation>
+# Its two margins are the conventional accounts:
+#     production(p) = rowSums(D)        consumption(c) = colSums(D)
 # Every bilateral flow is then SPLIT between its two agents by their relative
-# HDI (Sun eqs. 1-3, with C = P = HDI):
+# HDI (Sun et al. 2022, Ecol. Econ. 194:107339, operationalising Oliveira 2019):
 #     producer p keeps   HDI_p / (HDI_p + HDI_c)      (beta)
 #     consumer c keeps   HDI_c / (HDI_p + HDI_c)      (alpha)
 # The two shares sum to one, so domestic flows (p == c) return in full and the
-# global footprint is conserved: production-, consumption- and justice-based
-# accounts are three re-attributions of one and the same number. A country's
-# justice-based footprint therefore decomposes into
+# footprint is conserved: the three accounts are three re-attributions of one
+# and the same number. A country's justice-based footprint decomposes into
 #     justice = domestic + export share (as producer) + import share (as consumer)
-# and imbalance = justice - mean(production, consumption) is Sun's Fig. 2 / 4:
-# positive where a high-HDI country shoulders more than the naive 50/50 split.
+# and imbalance = justice - mean(production, consumption) is positive where a
+# high-HDI country shoulders more than the naive 50/50 split.
 #
 # BIOFUEL SCOPE (comm_codes, per 07_03a/07_03b/33 and 18_01's bf_set) ---------
 #     biogasoline       c146
@@ -41,38 +41,27 @@
 #                                        HDI_URL if absent
 #   inst/regions_full.csv                continent, for the HDI fallback
 #
-# HDI COVERAGE -- the one judgement call --------------------------------------
-# The weighting grid is (every FABIO country) x (every model year), i.e. the
-# MRIO's `years`, NOT the HDR's 1990..2023: an HDI outside the model years has
-# no D[p, c] to weight. The HDR's other years are still read, because they are
-# the donor pool the `nearest_year` rung draws on.
+# HDI COVERAGE ----------------------------------------------------------------
+# The weighting grid is (every FABIO country) x (every model year), NOT the
+# HDR's 1990..2023: an HDI outside the model years has no D[p, c] to weight. The
+# HDR's other years are still read as the donor pool for `nearest_year`.
 #
 # The HDR does not resolve every FABIO region, so HDI is filled by an explicit
 # ladder whose choice is recorded per row in `hdi_source`:
-#   undp             year-matched HDR value                       -- the ~95% case
-#   nearest_year     nearest year of the SAME country (gaps, edge years); still a
-#                    real UNDP number, only off by a year or two
+#   undp             year-matched HDR value
+#   nearest_year     nearest year of the SAME country (gaps, edge years)
 #   row_residual     ROW: the median HDI of every HDR country the model does NOT
-#                    resolve separately -- i.e. exactly the countries ROW lumps
-#                    together (unweighted; the HDR file carries no population)
-#   continent_median other uncovered iso3c (small territories and the handful of
-#                    economies the HDR omits outright), by continent
-# The console reports the year-matched share first and the fallbacks as its
-# complement, broken down per source and per country-year -- a bare fallback
-# count reads like a hit rate, and a country list hides that one country with a
-# short HDR history (SOM: no entry before 2022) can dominate a whole rung.
-#
+#                    resolve separately (unweighted; the HDR carries no population)
+#   continent_median other uncovered iso3c, by continent
 # `imputed_hdi_exposure` in the coverage file is the share of each chain's
-# footprint whose bilateral split leans on any hdi_source != "undp". It is
-# deliberately conservative: an off-by-one-year UNDP value counts against it
-# exactly like a continent median. Read it before trusting a country's
-# imbalance, and if it is ever large enough to report, split it into
-# off-year vs synthetic rather than calling all of it "imputed".
+# footprint whose split leans on any hdi_source != "undp". It is deliberately
+# conservative: an off-by-one-year UNDP value counts against it exactly like a
+# continent median.
 #
 # OUTPUTS ---------------------------------------------------------------------
-# Named like 40's, so no two settings of the run switches ever overwrite:
-#   <metric> = STAG from STRESSOR      "ibif_total" -> "ibif",
-#                                      "LCIM_EQ_terrestrial" -> "lcim_eq_terrestrial"
+# Tagged so no two settings of the run switches ever overwrite:
+#   <metric> = STAG from STRESSOR    "ibif_total" -> "ibif",
+#                                    "LCIM_EQ_terrestrial" -> "lcim_eq_terrestrial"
 #   <alloc>  = ATAG from `allocation`  "mass" | "value" (the co-product rule of B)
 #
 #   <OUT_DIR>/FABIO_bcp_<metric>_hdi_responsibility_<alloc>.csv
@@ -84,11 +73,10 @@
 #       conservation_gap_pct, imputed_hdi_exposure
 #
 # RUN -------------------------------------------------------------------------
-#   Rscript R/41_responsibility_hdi.R
-#   FABIO_RUN_MODE=bypass Rscript R/41_responsibility_hdi.R   # counterfactual
+#   Rscript R/41_responsibility_accounts_hdi.R
+#   FABIO_RUN_MODE=bypass Rscript R/41_responsibility_accounts_hdi.R   # counterfactual
 #   (must run AFTER 14 and 16)
 # =============================================================================
-
 # --- portable repo root: FABIO_BFP_ROOT override, else walk up to the marker -
 fabio_root <- Sys.getenv("FABIO_BFP_ROOT", unset = "")
 if (!nzchar(fabio_root)) {
@@ -103,55 +91,21 @@ setwd(fabio_root)
 library(data.table)
 library(Matrix)
 
-source("R/00_system_variables.R")   # years, output_dir_bcp
-source("R/00_run_config.R")         # RUN_MODE / mode_dir()
-
-# --- run config --------------------------------------------------------------
-model_version <- if (tolower(trimws(Sys.getenv("FABIO_RUN_MODE", "rescaled"))) == "bypass")
-  "bypass" else "rescaled"
-
-base_path <- sub("/+$", "", output_dir_bcp)                     # version-invariant (E, io_labels)
-MRIO_PATH <- if (model_version == "bypass") file.path(base_path, "bypass") else base_path
-OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+source("R/00_run_config.R")               # RUN_MODE / mode_dir()
+source("R/40_responsibility_shared.R")    # the run, its file names, biofuel_groups
+source("R/00_responsibility_helpers.R")   # country_grid(), build_D()
+SCRIPT <- "41"
 
 # --- run switches ------------------------------------------------------------
-tag <- function(x, fallback) {
-  s <- gsub("^_|_$", "", gsub("[^a-z0-9]+", "_", tolower(x)))
-  if (nzchar(s)) s else fallback
-}
-
-allocation <- "value"                # co-product rule of the Leontief inverse: "mass" | "value"
-STRESSOR   <- "LCIM_EQ_terrestrial"  # "ibif_total" | "LCIM_EQ_terrestrial"
-resp_years <- as.character(years)    # 2012:2022 from 00_system_variables
-
+# The indicator, allocation and every derived file name come from 40; only the
+# inputs this script alone consumes are set here.
 HDI_FILE  <- "input/value_added/HDR25_Composite_indices_complete_time_series.csv"
 HDI_URL   <- "https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_indices_complete_time_series.csv"
 ROW_CODES <- "ROW"                   # FABIO regions that lump countries the model does not resolve
 
-ATAG <- tag(allocation, "alloc")                     # "mass" / "value"
-STAG <- tag(sub("_total$", "", STRESSOR), "metric")  # "ibif" / "lcim_eq_terrestrial"
-
-# every CSV this script writes goes through here: one naming convention, one place
-out_csv <- function(what)
-  file.path(OUT_DIR, sprintf("FABIO_bcp_%s_%s_%s.csv", STAG, what, ATAG))
-
-biofuel_groups <- list(
-  biogasoline      = "c146",
-  biodiesel        = "c147",
-  renewable_diesel = "c149"                       # c149 only; HVO co-products
-  # biopropane/bio-LPG (c150) and
-  # bionaphtha (c151) are excluded
-)
-
-message(sprintf(">>> [41] model_version='%s' | allocation='%s' | stressor='%s'",
-                model_version, allocation, STRESSOR))
+run_banner()
 
 # --- inputs ------------------------------------------------------------------
-need <- function(path, who) {
-  if (!file.exists(path)) stop("Missing input: ", path, "  (produced by ", who, ")")
-  path
-}
 X  <- readRDS(need(file.path(MRIO_PATH, "losses", "X.rds"), "14_leontief_inverse.R / 13_mrio.R"))
 Y  <- readRDS(need(file.path(MRIO_PATH, "losses", "Y.rds"), "13_mrio.R"))
 E  <- readRDS(need(file.path(base_path, "E.rds"),           "16_extensions_main.R"))
@@ -187,15 +141,11 @@ for (yr in intersect(as.character(years), names(E))) assert_grid(E[[yr]], "col",
 message(">>> [41] alignment guard passed: X rows and E columns match the io_labels grid.")
 
 # --- country grid ------------------------------------------------------------
-# One country universe for both axes of D: producers (io rows) and consumers
-# (Y columns). T_origin rolls the io grid up to producing countries, S_fd rolls
-# the final-demand columns up to consuming countries.
-countries <- sort(unique(c(io$iso3c, fd$iso3c)))
-R <- length(countries)
-T_origin <- sparseMatrix(i = seq_len(N),        j = match(io$iso3c, countries), x = 1,
-                         dims = c(N, R))
-S_fd     <- sparseMatrix(i = seq_along(fd$iso3c), j = match(fd$iso3c, countries), x = 1,
-                         dims = c(length(fd$iso3c), R))
+grid      <- country_grid(io, fd)
+countries <- grid$countries
+R         <- grid$R
+T_origin  <- grid$T_origin
+S_fd      <- grid$S_fd
 
 # --- HDI weights -------------------------------------------------------------
 read_hdr <- function(file, url) {
@@ -229,7 +179,11 @@ hdi_weights <- function(iso, yrs, regions) {
   message(sprintf(">>> [41] ROW (%s) = median HDI of %d HDR countries not resolved by FABIO",
                   paste(ROW_CODES, collapse = ", "), uniqueN(long[!iso3 %in% iso, iso3])))
   
-  near <- function(dt, y) if (!nrow(dt)) NA_real_ else dt$hdi[which.min(abs(dt$year - y))]
+  # Donor pool for the nearest-year rung: EVERY HDR year, not just the model's.
+  # Keyed once so the fill below is a single rolling join rather than a full scan
+  # of `long` per missing country-year.
+  donor <- long[, .(iso3c = iso3, year, hdi_near = hdi)]
+  setkey(donor, iso3c, year)
   
   w <- CJ(iso3c = iso, year = as.integer(yrs))
   w[long, on = .(iso3c = iso3, year), hdi := i.hdi]
@@ -237,9 +191,14 @@ hdi_weights <- function(iso, yrs, regions) {
   
   i <- which(is.na(w$hdi_source))                  # country-year gaps / edge years
   if (length(i)) {
-    v <- vapply(i, function(k) near(long[iso3 == w$iso3c[k]], w$year[k]), numeric(1))
-    w[i, hdi_source := fifelse(is.finite(v), "nearest_year", NA_character_)]
+    # roll = "nearest" walks to the closest year of the SAME country and yields NA
+    # where that country has no HDR row at all, which then falls through to the
+    # row_residual / continent_median rungs below. (An exact tie -- a target year
+    # equidistant between two donor years -- is broken by data.table rather than
+    # by which.min; either donor is equally defensible and ties are rare.)
+    v <- donor[w[i, .(iso3c, year)], on = .(iso3c, year), roll = "nearest"]$hdi_near
     w[i, hdi := v]
+    w[i, hdi_source := fifelse(is.finite(v), "nearest_year", NA_character_)]
   }
   
   w[residual, on = "year", hdi_row := i.hdi_row]
@@ -310,16 +269,16 @@ compute_year <- function(yr) {
   imputed <- h$hdi_source[match(countries, h$iso3c)] != "undp"
   pair_imputed <- outer(imputed, imputed, `|`)
   
-  comm <- io$comm_code
+  comm  <- io$comm_code
+  y_all <- as.vector(Matrix::rowSums(Yc))                       # final demand by product node
   resp_rows <- list(); cover_rows <- list()
   
   for (g in names(biofuel_groups)) {
     sel <- as.numeric(comm %in% biofuel_groups[[g]])   # biofuel-group final demand only
-    Yg  <- Diagonal(x = sel) %*% Yc
-    if (sum(Yg) == 0) next
+    if (sum(y_all[sel == 1]) == 0) next
     
     # D[p, c]: impact in producing country p driven by final demand in consumer c
-    D  <- as.matrix(crossprod(T_origin, Diagonal(x = f) %*% (B %*% Yg)))
+    D  <- build_D(f, B, Yc, sel, T_origin = T_origin)   # rows/cols follow `countries`
     fp <- sum(D)
     if (fp == 0) next
     
@@ -374,7 +333,7 @@ setcolorder(resp, c("year", "biofuel_group", "iso3c", "continent", "hdi", "hdi_s
                     "justice_import", "imbalance"))
 
 # --- validation / console summary -------------------------------------------
-cat("\n================  HDI-weighted (environmentally just) responsibility  ================\n")
+cat("\n================  responsibility accounts: production / consumption / HDI  ================\n")
 cat(sprintf("stressor: %-24s allocation: %-5s  years: %s-%s\n",
             STRESSOR, allocation, min(resp$year), max(resp$year)))
 if (nrow(cover)) {
@@ -395,8 +354,8 @@ shift <- resp[, .(hdi           = mean(hdi),
 print(head(shift[order(-abs(imbalance))], 15))
 
 # --- save --------------------------------------------------------------------
-r_path <- out_csv("hdi_responsibility")
-c_path <- out_csv("hdi_coverage")
+r_path <- acc_csv("hdi_responsibility")
+c_path <- acc_csv("hdi_coverage")
 fwrite(resp[order(year, biofuel_group, -justice_based)], r_path)
 fwrite(cover[order(year, biofuel_group)], c_path)
 message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)",

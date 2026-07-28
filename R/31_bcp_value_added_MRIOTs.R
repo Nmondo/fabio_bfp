@@ -179,14 +179,17 @@ ihs_theta <- function(x) {
 }
 
 # Pooled MAD winsor at median +/- k * MAD, in IHS space when a theta is found,
-# else in raw space. Returns the capped values plus the cap band and robust z.
-mad_winsor <- function(x, theta, k = WINSOR_MAD_K) {
+# else in raw space. Groups with fewer than min_obs finite values, or a
+# degenerate MAD, get an infinite band and pass through uncapped -- the raw-space
+# fallback covers a degenerate theta fit, not a thin group. Returns the capped
+# values plus the cap band and robust z.
+mad_winsor <- function(x, theta, k = WINSOR_MAD_K, min_obs = WINSOR_MIN_OBS) {
   use <- is.finite(theta)
   w   <- if (use) asinh(x * theta) else x
   med <- median(w, na.rm = TRUE)
   sc  <- scaled_mad(w)
-  if (!is.finite(sc) || sc <= 0)
-    return(list(values = x, cap_lower = NA_real_, cap_upper = NA_real_,
+  if (sum(is.finite(x)) < min_obs || !is.finite(sc) || sc <= 0)
+    return(list(values = x, cap_lower = -Inf, cap_upper = Inf,
                 mad_z = rep(NA_real_, length(x))))
   lo_w <- med - k * sc; hi_w <- med + k * sc
   lo   <- if (use) sinh(lo_w) / theta else lo_w

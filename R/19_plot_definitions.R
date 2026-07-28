@@ -84,7 +84,7 @@ indicator_meta <- data.table(
   scale_factor = c(1e3, rep(1, 8)),
   y_label      = c(
     "Land use (1000 ha)",
-    "Species abundance loss (MSA\u00b7km\u00b2\u00b7yr)",
+    "Pristine area loss equivalents (MSA-loss\u00b7km\u00b2)",
     "Freshwater biodiversity loss (PDF\u00b7yr)",
     "Marine biodiversity loss (PDF\u00b7yr)",
     "Terrestrial biodiversity loss (PDF\u00b7yr)",
@@ -159,9 +159,9 @@ feedstock_meta <- data.table(
 # ============================================================================
 
 # ---- Max-contrast pool: Starchy / Sugar crops (12 slots) -------------------
-# min pairwise ΔE2000 ≈ 20.1
+# min pairwise ΔE2000 ≈ 20.4 (slot 1 was #61C748 leaf green; see note there)
 starchy_pool <- c(
-  "#61C748",  # leaf green
+  "#24757E",  # deep teal  (slot 1 = Sugar cane; see note below)
   "#9E1597",  # magenta
   "#00441B",  # dark forest green
   "#F53666",  # raspberry / pink-red
@@ -174,6 +174,15 @@ starchy_pool <- c(
   "#3257A0",  # royal blue
   "#F69978"   # salmon (reserve slot)
 )
+# NOTE on slot 1 (Sugar cane). It was #61C748 (leaf green), which sits only
+# ~8.3 dE from the oilcrops' slot-1 green #8EC029 (Palm Oil). The two pools are
+# meant to be "rarely stacked together", but the biofuel figures (43_*, 18_01b,
+# 19_01b) DO put a bioethanol feedstock (sugar cane) next to a biodiesel one
+# (palm oil), so those two greens were indistinguishable there. Slot 1 is now a
+# deep teal #24757E: 43 dE from Palm Oil, >=23 dE within its own pool (so the
+# max-contrast guarantee is preserved), and 28 dE from the pool's other teal
+# (#1DC6AF, Sugar beet). The two sugar crops now read as a distinct cool pair
+# rather than colliding with the oilcrop greens.
 
 # ---- Max-contrast pool: Oilcrops (12 slots) --------------------------------
 # min pairwise ΔE2000 ≈ 18.1

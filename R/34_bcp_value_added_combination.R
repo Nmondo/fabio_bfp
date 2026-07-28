@@ -6,7 +6,7 @@
 # the FABIOv2 value-added repository: a base is kept, and higher-authority
 # sources overwrite the (iso3c, comm_code, year) cells they cover.
 #
-# SOURCES combined here (BioSAMs -- script 35 -- are NOT combined: they overlap
+# SOURCES combined here (BioSAMs -- script 36 -- are NOT combined: they overlap
 # the model window in a single useful year and are reserved for validation):
 #
 #   BASE     31_bcp_value_added_MRIOTs.R   MRIO chemical-sector VA intensity x

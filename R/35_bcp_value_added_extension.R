@@ -178,7 +178,7 @@ remap_v123   <- build_remap(items_v123, items_bcp)
 target_order <- paste0(io_labels_bcp$iso3c, "_", io_labels_bcp$comm_code)
 items_isic   <- setNames(items_v123$ISIC, items_v123$comm_code)   # comm_code -> ISIC
 
-va_v2       <- readRDS(paste0(output_dir, "V.rds"))               # v2 value-added strands
+va_v2       <- readRDS(paste0(output_dir, "V_updated.rds"))               # v2 value-added strands
 need_rows   <- sprintf("VA_%s_isic_%s_%s",
                        rep(VA_COMPONENTS, times = 4),
                        rep(rep(c("a", "c"), each = 3), times = 2),
@@ -221,7 +221,7 @@ for (yr in names(V_bcp)) {
             all(rownames(V_bcp[[yr]]) == v_labels$Stressor))
 }
 
-# Repo-local copy (always writable) — this is what R/40 consumes.
+# Repo-local copy (always writable) — this is what the 40s scripts consume
 dir.create("intermediate_data", showWarnings = FALSE, recursive = TRUE)
 saveRDS(V_bcp,   "intermediate_data/V.rds")
 fwrite(v_labels, "intermediate_data/v_labels.csv")
