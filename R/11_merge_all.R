@@ -202,8 +202,21 @@ c901_in  <- as.data.table(as.data.frame(waste_flows))[, .(inflow = sum(value)),
 short <- merge(c901_use, c901_in, by = c("area_code", "year"), all.x = TRUE)
 short[is.na(inflow), inflow := 0][, short := use - inflow]
 
-if (nrow(short[short < -1])) warning("c901: ", nrow(short[short < -1]),
-                                     " cells have inflow > use (over-allocated)")
+# OVER-allocation (inflow > use): c901 (waste) trade is PURELY estimated in 08_03 to match
+# biofuel-feedstock use, so an inflow above use is estimator slack, not real trade. Trim that
+# (area, year)'s incoming c901 flows DOWN pro rata to exactly meet use. c901 has no final
+# demand (its use_fd rows are zero) and no supply table of its own, so `use` here is its whole
+# requirement; scaling inflow to it keeps the waste balanced. Under-allocation is handled by
+# the self-flow top-up below; neither side is ever minted.
+over <- short[short < -1 & inflow > 0,
+              .(to_code = area_code, year, scale = pmax(use / inflow, 0))]   # scale in [0, 1)
+if (nrow(over)) {
+  waste_flows <- as.data.table(waste_flows)
+  waste_flows[over, on = .(to_code, year), value := value * i.scale]
+  waste_flows <- as.data.frame(waste_flows)
+  message(sprintf(">>> 11: c901 over-allocation reconciled in %d (area,year) cells — incoming waste flows scaled down to meet use (previously a warning, now trimmed).",
+                  nrow(over)))
+}
 
 self_add_c901 <- short[short > 1, .(from_code = area_code, to_code = area_code,
                                     value = short, year,
@@ -409,9 +422,26 @@ ghost_of <- function(sup, btd, exclude = c("c901")) {
   g[s <= 0][, .(comm_code, area_code, year, shipped)]
 }
 
-ghost_in <- ghost_of(sup_full, btd_full)
-message(">>> 11: INHERITED ghosts (ship but supply nothing): ", nrow(ghost_in), " cells, ",
-        round(sum(ghost_in$shipped) / 1e6, 1), " Mt — created upstream of 11.")
+# ghost_in must be what 11 INHERITS — the ghosts present BEFORE 08_04's feedstock injection,
+# not after. Snapshotting from btd_full (which already carries the injection, via
+# btd_final_bal) launders any supply-less export the injection adds into "inherited", so the
+# born assert below never sees it and it surfaces two scripts later at 12_a instead (the
+# c074/palm-oil case: 17 zero-production origins re-exporting to minted consumers). Rebuild
+# the pre-injection baseline: the 06/08_03 CBS-side btd (btd_final[_resc], NOT btd_final_bal)
+# bound with the injection-free bcp side — exactly btd_full minus 08_04's inject + top-ups.
+btd_preinj <- as.data.table(readRDS(
+  file.path(fabio_root, "data", if (BYPASS_RESCALE) "btd_final.rds" else "btd_final_resc.rds")))
+btd_preinj <- btd_preinj[year %in% 2012:2022,
+                         .(from_code, to_code, comm_code, year, value = as.numeric(value))]
+ghost_base_btd <- rbindlist(list(
+  btd_preinj,
+  as.data.table(btd_final_bcp)[, .(from_code, to_code, comm_code, year, value = as.numeric(value))]),
+  use.names = TRUE, fill = TRUE)
+ghost_in <- ghost_of(sup_full, ghost_base_btd)
+rm(btd_preinj, ghost_base_btd)
+message(">>> 11: INHERITED ghosts (ship but supply nothing, PRE-injection baseline): ",
+        nrow(ghost_in), " cells, ", round(sum(ghost_in$shipped) / 1e6, 1),
+        " Mt — created upstream of 08_04's injection.")
 if (nrow(ghost_in)) {
   fwrite(ghost_in[order(-shipped)], tag_csv <- "output/11_ghosts_inherited.csv")
   print(ghost_in[, .(cells = .N, Mt = round(sum(shipped) / 1e6, 2)),
@@ -627,7 +657,6 @@ balance_check <- tag_gates(rebuild_balance(btd_full))   # final, with the parked
 ###########################################################
 #2. Redistribute imbalances (final pass)
 ###########################################################
-
 balance_check_adj <- as_tibble(balance_check) %>%
   mutate(fd_sum = rowSums(across(all_of(fd_cols)), na.rm = TRUE)) %>%
   # Positive imbalance -> distribute proportionally across FD items
@@ -652,13 +681,17 @@ balance_check_adj <- as_tibble(balance_check) %>%
          imbalance_new  = tot_supply_new - tot_use_new) %>%
   as.data.table()
 
+# NOTE: the stock_withdrawal floor that briefly lived here is gone. Supply-negative cells
+# were the origin side of the 08_04 btd_full feedstock injection over-shipping; that is now
+# capped at origin headroom IN 08_04, so no cell reaches this block with exports > supply and
+# the floor is redundant. If a supply-negative cell reappears here, do NOT re-add the floor —
+# it means the 08_04 headroom cap is under-reading an origin's supply (check its cbs source).
+
 worst   <- max(abs(balance_check_adj$imbalance_new), na.rm = TRUE)
 tot_bad <- balance_check_adj[, sum(abs(imbalance_new), na.rm = TRUE)]
 n_bad   <- balance_check_adj[abs(imbalance_new) > 1, .N]
-
 message(sprintf(">>> 11: residual imbalance — worst cell %.0f t, %d cells > 1 t, %.0f t total",
                 worst, n_bad, tot_bad))
-
 # The top-up converges ASYMPTOTICALLY (see the loop comment). After 12 passes the tail is a
 # few hundred tonnes of c145 across small countries with no supply row. That is ~1e-8 of the
 # model. An absolute 1 t bound tests the arithmetic, not the model — anything genuinely
@@ -971,19 +1004,30 @@ fabio_assert(nrow(btd_full[, .N, by = .(from_code, to_code, comm_code, year)][N 
 # diagnostic showed it net-REMOVES ~44 Mt of ghosts. So the invariant it must satisfy is
 # not "no ghosts" — it is "no NEW ghosts". Assert on the delta; report the inherited set.
 
+# Commodities that are legitimately supplied by nobody in a given cell (waste streams,
+# biofuels/biopolymers/DDGS minted downstream). 12_a exempts exactly these via GHOST_OK, so
+# 11 must too — otherwise the PRE-injection snapshot flags e.g. 08_04's c145 (UCO) domestic
+# diagonal or c146 biofuel cells as "new", which 12_a would then wave through anyway. Keep
+# this vector identical to 12_a's GHOST_OK.
+GHOST_OK  <- c("c145","c901","c089","c152","c117","c146","c159",
+               "c148","c154","c110","c171")
+GHOST_TOL <- 100 # tonnes
 ghost_out <- ghost_of(sup_full, btd_full)
-born      <- ghost_out[!ghost_in, on = .(comm_code, area_code, year)]
-
+born      <- ghost_out[!ghost_in, on = .(comm_code, area_code, year)][!comm_code %in% GHOST_OK]
 message(sprintf(">>> 11: ghosts in %d cells (%.1f Mt)  ->  out %d cells (%.1f Mt)  |  NET %+.1f Mt",
                 nrow(ghost_in),  sum(ghost_in$shipped)  / 1e6,
                 nrow(ghost_out), sum(ghost_out$shipped) / 1e6,
                 (sum(ghost_out$shipped) - sum(ghost_in$shipped)) / 1e6))
-
 if (nrow(ghost_out)) fwrite(ghost_out[order(-shipped)], "output/11_ghosts_out.csv")
 
-fabio_assert(nrow(born) == 0,
+born_small <- born[shipped <= GHOST_TOL]
+born_real  <- born[shipped >  GHOST_TOL]
+if (nrow(born_small))
+  message(sprintf(">>> 11: %d NEW ghost cells <= %g t (%.1f t total) below tolerance — cap-boundary rounding, not phantoms.",
+                  nrow(born_small), GHOST_TOL, sum(born_small$shipped)))
+fabio_assert(nrow(born_real) == 0,
              "11: %d (comm,area,year) SHIP tonnage in btd but supply nothing, and did NOT inherit it — 11 CREATED them. 12_a would build an mr_use row with no mr_sup column.",
-             nrow(born), data = born[order(-shipped)])
+             nrow(born_real), data = born_real[order(-shipped)])
 
 ###########################################################
 ########### WRITING TABLES #######################

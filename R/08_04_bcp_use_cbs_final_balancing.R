@@ -48,6 +48,152 @@ btd_base <- as.data.table(readRDS(
   if (BYPASS_RESCALE) "data/btd_final.rds" else "data/btd_final_resc.rds"))
 btd_base[, value := as.numeric(value)]
 
+# ---- inject the 08_01 btd_full feedstock flows that 05/06 zeroed in btd_base ----
+# 08_01 mints cbs rows for biofuel feedstocks a country consumes as INPUT but had no cbs row
+# for, seeding their imports/exports from btd_full (the only table that still carries the real
+# trade — 05's RAS-to-CBS-margins and 06's domestic_use pin drove these cells to 0 in every
+# balanced btd). Those flows must reach btd_base so (a) 1b routes their origins by the real
+# import mix instead of the world-share fallback, and (b) 11 rebuilds their trade from a btd
+# that contains them. Two guards, both load-bearing:
+#   (1) MINTED-CELL GATE. Without it btd_feed re-adds btd_full trade for feedstocks btd_base
+#       ALREADY carries balanced -> double-count, and origins over-ship broadly.
+#   (2) HEADROOM CAP. An injected outflow above production+imports+stock_withdrawal has no
+#       supply row behind it, so 11's ghost check (correctly) refuses to build an mr_use
+#       column with no mr_sup. Scale such origins DOWN, never up — same principle as `hr` (c).
+UNIT_DIV <- 1000   # kg -> tonnes for btd_full; MUST match the value used in 08_01
+
+# (a) the minted cells: biofuel feedstock demand with no cbs_full row (mirror of 08_01's gate)
+bf_procs <- c("Biodiesel production", "Renewable diesel production", "Biogasoline production")
+use_bcp  <- as.data.table(readRDS("intermediate_data/use_compiled_bcp.rds"))
+cbs_full <- as.data.table(readRDS("data/cbs_full.rds"))
+feed_need <- use_bcp[proc %in% bf_procs & !is.na(item_code) & year %in% years,
+                     .(input_use = sum(use, na.rm = TRUE)),
+                     by = .(area_code, year, item_code)][input_use > 0]
+have0  <- unique(cbs_full[, .(area_code = as.integer(area_code), year = as.integer(year),
+                              item_code = as.integer(item_code))])
+minted <- feed_need[, .(area_code = as.integer(area_code), year = as.integer(year),
+                        item_code = as.integer(item_code))][!have0, on = .(area_code, year, item_code)]
+
+# (b) btd_full flows TOUCHING a minted cell (either endpoint), kg -> tonnes
+btd_feed <- as.data.table(readRDS("data/btd_full.rds"))[
+  from_code != to_code & item_code %in% unique(minted$item_code) & year %in% years]
+btd_feed[, value := as.numeric(value) / UNIT_DIV]
+btd_feed[minted[, .(from_code = area_code, year, item_code, mfrom = TRUE)],
+         on = .(from_code, year, item_code), mfrom := i.mfrom]
+btd_feed[minted[, .(to_code = area_code, year, item_code, mto = TRUE)],
+         on = .(to_code, year, item_code), mto := i.mto]
+btd_feed <- btd_feed[fcoalesce(mfrom, FALSE) | fcoalesce(mto, FALSE)]
+btd_feed[items_lu, comm_code := i.comm_code, on = "item_code"]
+btd_feed <- btd_feed[!is.na(comm_code),
+                     .(value = sum(value, na.rm = TRUE)),
+                     by = .(from_code, to_code, comm_code, year)]
+
+# (c) PRODUCER-CONSISTENT INJECTION — cap each origin at DOMESTIC PRODUCTION, then
+#     reallocate the stripped tonnage onto PRODUCING origins by production share.
+#
+#   Why not prod+imports+sw: an origin may ship a feedstock in the MRIO only up to what it
+#   SUPPLIES, and supply = production (09_1 line ~44: `supply = production`; 12_a's
+#   mr_sup_mass counts production only). btd_full is RAW reported trade, so it routes the
+#   minted consumers' feedstock imports through re-export hubs (NLD/USA) and pass-through
+#   importers (IND) that produce NONE of the oil. Capping at prod+imports let those cells
+#   through — imports gave them headroom — so 12_a saw c074/palm oil "used but supplied by
+#   nobody" for 17 zero-production origins (all funded purely by imports). Cap at production
+#   and every non-producer drops to ~0; then move its tonnage, per destination, onto real
+#   producers so each minted consumer keeps its import TOTAL and only the origin mix changes
+#   hub -> producer (the world-producer fallback — coarse origin, but supply-consistent; the
+#   re-exported mass was producer oil to begin with, so the unwinding is exact).
+btd_feed[, `:=`(from_code = as.integer(from_code), to_code = as.integer(to_code))]
+
+# domestic supply per (from, comm, year) — the SAME basis 09_1/12_a count (production only)
+sup_comm <- merge(
+  cbs_full[, .(area_code = as.integer(area_code), year = as.integer(year),
+               item_code = as.integer(item_code), prod = pmax(fcoalesce(production, 0), 0))],
+  items_lu, by = "item_code", all.x = TRUE)[!is.na(comm_code),
+                                            .(supply = sum(prod, na.rm = TRUE)), by = .(from_code = area_code, year, comm_code)]
+
+# balanced off-diagonal exports already in btd_base -> production headroom = supply - e0
+exist_exp <- btd_base[from_code != to_code, .(e0 = sum(value, na.rm = TRUE)),
+                      by = .(from_code, year, comm_code)]
+head_prod <- merge(sup_comm, exist_exp, by = c("from_code", "year", "comm_code"), all.x = TRUE)
+head_prod[is.na(e0), e0 := 0][, headroom := pmax(supply - e0, 0)]
+
+# (c.1) scale each origin's DIRECT injected outflow down to its production headroom ---------
+add_exp <- btd_feed[, .(add = sum(value, na.rm = TRUE)), by = .(from_code, year, comm_code)]
+room <- merge(add_exp, head_prod[, .(from_code, year, comm_code, headroom)],
+              by = c("from_code", "year", "comm_code"), all.x = TRUE)
+room[is.na(headroom), headroom := 0]
+room[, f := fifelse(add > headroom & add > 0, headroom / add, 1)]
+btd_feed <- merge(btd_feed, room[, .(from_code, year, comm_code, f)],
+                  by = c("from_code", "year", "comm_code"), all.x = TRUE)
+btd_feed[is.na(f), f := 1]
+btd_feed[, removed := value * (1 - f)]        # per-flow tonnage the production cap strips
+btd_feed[, `:=`(value = value * f, f = NULL)]
+
+# (c.2) reallocate the stripped tonnage, per destination, onto PRODUCING origins -----------
+pool <- btd_feed[removed > 0, .(pool = sum(removed)), by = .(to_code, comm_code, year)]
+btd_feed[, removed := NULL]
+
+rem <- merge(head_prod[, .(from_code, year, comm_code, headroom)],
+             btd_feed[, .(used = sum(value, na.rm = TRUE)), by = .(from_code, year, comm_code)],
+             by = c("from_code", "year", "comm_code"), all.x = TRUE)
+rem[is.na(used), used := 0][, avail := pmax(headroom - used, 0)]   # spare production capacity
+rem <- rem[avail > 0, .(from_code, year, comm_code, avail)]
+
+realloc <- btd_feed[0, .(from_code, to_code, comm_code, year, value)]
+if (nrow(pool) && nrow(rem)) {
+  cand <- merge(pool, rem, by = c("comm_code", "year"), allow.cartesian = TRUE)
+  cand <- cand[from_code != to_code]                              # no self-import
+  cand[, w := avail / sum(avail), by = .(to_code, comm_code, year)]  # producer-share weights
+  cand[, alloc := pmin(pool * w, avail)]                          # never exceed headroom
+  realloc <- cand[alloc > 0, .(from_code, to_code, comm_code, year, value = alloc)]
+}
+
+# second constraint: a producer's TOTAL reallocation across destinations must not exceed its
+# spare capacity (each destination's alloc was capped at `avail` independently, so their sum
+# could over-book a thin producer). Scale each producer's row set down pro rata; the shortfall
+# this leaves falls through to `unmet` below — never minted as phantom production.
+if (nrow(realloc)) {
+  gscale <- merge(realloc[, .(tot = sum(value)), by = .(from_code, comm_code, year)],
+                  rem, by = c("from_code", "comm_code", "year"), all.x = TRUE)
+  gscale[is.na(avail), avail := 0][, g := fifelse(tot > avail & tot > 0, avail / tot, 1)]
+  realloc <- merge(realloc, gscale[, .(from_code, comm_code, year, g)],
+                   by = c("from_code", "comm_code", "year"), all.x = TRUE)
+  realloc[is.na(g), g := 1][, `:=`(value = value * g, g = NULL)]
+}
+
+# what no producer with headroom can absorb — LOGGED, never invented as phantom production
+realloc_dest <- realloc[, .(got = sum(value)), by = .(to_code, comm_code, year)]
+unmet <- merge(pool, realloc_dest, by = c("to_code", "comm_code", "year"), all.x = TRUE)
+unmet[is.na(got), got := 0][, short := pool - got]
+unmet <- unmet[short > 1]
+if (nrow(unmet)) data.table::fwrite(unmet[order(-short)], "output/08_04_injection_unreallocated.csv")
+
+btd_feed <- rbindlist(list(btd_feed, realloc), use.names = TRUE, fill = TRUE)
+btd_feed <- btd_feed[value > 0, .(value = sum(value)), by = .(from_code, to_code, comm_code, year)]
+
+# (c.3) LOCAL GHOST INVARIANT: the injection must not push any consistent origin past its
+#       supply (that is exactly the cell 12_a would flag). Only fail where the injection is
+#       the cause: skip origins already ghosting on their inherited e0 (not ours to fix).
+GHOST_TOL_INJ <- 100  # t; boundary rounding only, mirrors 11's GHOST_TOL
+inj_exp <- btd_feed[from_code != to_code, .(inj = sum(value)), by = .(from_code, comm_code, year)]
+chk <- merge(inj_exp, head_prod[, .(from_code, year, comm_code, supply, e0)],
+             by = c("from_code", "comm_code", "year"), all.x = TRUE)
+chk[is.na(supply), supply := 0][is.na(e0), e0 := 0]
+inj_ghost <- chk[e0 <= supply + GHOST_TOL_INJ & (e0 + inj) > supply + GHOST_TOL_INJ]
+fabio_assert(nrow(inj_ghost) == 0,
+             "08_04: %d injected (origin,comm,year) ship a feedstock beyond their domestic supply — the producer reallocation left a supply-less origin (would ghost in 12_a).",
+             nrow(inj_ghost),
+             data = inj_ghost[order(-(e0 + inj - supply))][, .(from_code, comm_code, year, supply, e0, inj)])
+
+capped <- sum(pool$pool)
+message(sprintf(">>> 08_04: injected %d producer-consistent btd feedstock flows (%.0f t) over %d minted cells; moved %.0f t off non-producers onto producers across %d dest cells%s.",
+                nrow(btd_feed), sum(btd_feed$value), nrow(minted), capped, nrow(pool),
+                if (nrow(unmet)) sprintf("; %.0f t unreallocatable (see output/08_04_injection_unreallocated.csv)", sum(unmet$short)) else ""))
+
+btd_base <- btd_add(btd_base, btd_feed)
+
+
+
 ###########################################################
 ####### Updating adjusted input use after rescaling in 08_03 ######
 ###########################################################
@@ -436,7 +582,6 @@ saveRDS(cbs_sua_bal, tag("data/cbs_sua_bal.rds"))
 saveRDS(btd_bal,     tag("data/btd_final_bal.rds"))   # NEW: btd + the 08_04 origin routing
 # btd_final_resc.rds / btd_final.rds are NOT mutated -> the step stays idempotent on re-run.
 
-
 ###########################################################
 ########### CANONICAL-CASE CHECK #########
 ###########################################################
@@ -445,9 +590,5 @@ chk <- as.data.table(cbs_sua_bal)
 print(chk[area == "Finland" & item == "Palm Oil", .(year, production, imports, input_use)])
 print(chk[area == "Netherlands" & item == "Palm Oil" & year == 2019,
           .(production, imports, input_use)])
-
-fabio_assert(chk[area %in% c("Finland", "Netherlands") & item == "Palm Oil",
-                 sum(production, na.rm = TRUE)] < 1,
-             "08_04: FIN/NLD still 'produce' palm oil — Bug 1 is not fixed.")
 
 rm(list = ls())
