@@ -1026,7 +1026,7 @@ p <- plot_feedstock_desc(Z_per_year,
                          c("EU","ASI","NAM","LAM"),
                          scale        = 1e3,
                          accuracy     = 1,
-                         y_lab        = "Biofuel supply (B liters)")  # default tcf_on_missing = "drop"
+                         y_lab        = "Biofuel production (B liters)")  # default tcf_on_missing = "drop"
 
 ggsave(
   filename = file.path("output", "plot", "desc_embodied_feedstock_BF_ASI-EU-NAM.svg"),
