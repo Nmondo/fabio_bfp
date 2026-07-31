@@ -607,17 +607,6 @@ plot_SDA_chain_continent <- function(first_year,
   invisible(p)
 }
 
-########### Plotting for various extensions
-
-plot_SDA_chain(2012, 2022, "ibif_total")
-# plot_SDA_chain(2012, 2022, "LCIM_EQ_terrestrial")
-
-plot_SDA_chain_continent(2012, 2022, "ibif_total",
-                         continents = c("EU", "ASI", "LAM", "NAM"))
-
-# plot_SDA_chain_continent(2012, 2022, "ibif_total",
-#                          continents     = character(0),
-#                          include_global = TRUE)
 
 
 ######################################################################################################################
@@ -804,8 +793,6 @@ plot_SDA_chained_drivers <- function(indicator,
   invisible(list(plots = plots, plot_base = plot_base))
 }
 
-# --- Usage -----------------------------------------------------------------
-plot_SDA_chained_drivers("ibif_total")
 
 
 
@@ -971,5 +958,3 @@ plot_SDA_chained_drivers_continent <- function(indicator,
   invisible(list(plots = plots, plot_base = plot_base))
 }
 
-# --- Usage -----------------------------------------------------------------
-plot_SDA_chained_drivers_continent("ibif_total", consumer_continent = "EU")
