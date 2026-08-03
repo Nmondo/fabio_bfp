@@ -80,6 +80,16 @@
 #       This is the dimension va_resp alone cannot give: h sums over the final
 #       products j and so forgets where the pressure was extracted. 45 needs it
 #       to split the VA bar the way it splits the PBA/CBA/HDI bars.
+#   <OUT_DIR>/FABIO_bcp_<metric>_value_added_continent_flows_<base>_<alloc>[_ex_tls].csv
+#       the SAME H*, folded onto continents on both axes and written WHOLE:
+#       year, va_variant, biofuel_group, va_continent (value generator),
+#       origin_continent (extraction), impact.   (zero cells dropped)
+#       48 needs the fold rather than the margins above, for the reason 41's
+#       header spells out: summing va_domestic over the countries of a region
+#       keeps the COUNTRY meaning of "charged where it was extracted", so value
+#       captured in NLD on pressure extracted in DEU would read as a foreign
+#       flow inside an EU panel. The ROW margin is invariant under the fold, so
+#       the VA account totals are unchanged -- only the diagonal moves.
 #   <OUT_DIR>/FABIO_bcp_<metric>_value_added_gaps_<base>_<alloc>.csv
 #       per (year, iso3c, comm_code, item) with output but no value added that
 #       feeds the studied chains: throughput, value_added, reason
@@ -217,6 +227,19 @@ cidx <- match(io$iso3c, ctry)
 # plain 0/1 roll-up, for aggregating node vectors (h, extraction) to countries
 S1   <- Matrix::sparseMatrix(i = seq_len(N), j = cidx, x = 1, dims = c(N, R_c))
 
+# --- continent grid: the second axis, for 48 ---------------------------------
+# 48 needs H* folded onto regions on BOTH axes, for the same reason 41 folds D:
+# summing va_domestic over the countries of a region keeps the COUNTRY meaning
+# of "extracted here, charged here", so value captured in NLD on pressure
+# extracted in DEU would still read as a foreign flow inside an EU panel. The
+# ROW margin is invariant under the fold, so the VA account totals are exactly
+# what 43 plots; only the diagonal moves. Same continent_of() as 41, so the two
+# matrices are folded onto the SAME partition -- an axis built independently
+# here is how the two files would come to disagree about where a country sits.
+S_cont_va <- continent_aggregator(ctry)
+message(sprintf(">>> [42] continent grid (%d regions): %s",
+                ncol(S_cont_va), paste(colnames(S_cont_va), collapse = " ")))
+
 # static mask of ecosystem-service nodes excluded from the coverage diagnostic
 exempt_node <- io$item %in% ECOSYSTEM_SERVICE_ITEMS
 if (sum(exempt_node))
@@ -277,7 +300,7 @@ compute_year <- function(yr) {
   # Diagonal(f) %*% B, which would copy the whole N x N inverse.
   S_f <- Matrix::sparseMatrix(i = seq_len(N), j = cidx, x = f, dims = c(N, R_c))
   
-  alloc_rows <- list(); cover_rows <- list(); split_rows <- list()
+  alloc_rows <- list(); cover_rows <- list(); split_rows <- list(); cont_rows <- list()
   
   # accumulators for the structural-gap diagnostic (full-variant VA; throughput
   # summed over the studied chains)
@@ -367,6 +390,22 @@ compute_year <- function(yr) {
                                "H* should reproduce h by country and extraction by origin."),
                         yr, variant, g, dev_row, dev_col))
       
+      # --- the same matrix, folded onto continents (for 48) -------------------
+      # H*[r, p] rolled up on both axes: rows stay value generators, columns stay
+      # extraction origins, so the diagonal is "extracted in this region, charged
+      # to value added in this region" -- which is NOT the sum of the country
+      # diagonals, and is exactly the block 48 needs. Written whole rather than
+      # as margins: the off-diagonal is a regional value-capture map in its own
+      # right, and deriving margins downstream costs nothing.
+      Hc  <- fold_continents(H, S_cont_va)
+      flc <- melt_continent_matrix(Hc, "impact")[impact != 0]
+      if (nrow(flc)) {
+        setnames(flc, c("from", "to"), c("va_continent", "origin_continent"))
+        cont_rows[[paste(variant, g, sep = ".")]] <-
+          data.table(year = as.integer(yr), va_variant = variant,
+                     biofuel_group = g, flc)
+      }
+      
       keep_s <- which(va_tot != 0 | va_prd != 0)
       if (length(keep_s)) split_rows[[paste(variant, g, sep = ".")]] <- data.table(
         year          = as.integer(yr),
@@ -432,6 +471,7 @@ compute_year <- function(yr) {
   list(alloc = rbindlist(alloc_rows, use.names = TRUE, fill = TRUE),
        cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE),
        split = rbindlist(split_rows, use.names = TRUE, fill = TRUE),
+       cont  = rbindlist(cont_rows,  use.names = TRUE, fill = TRUE),
        residual = residual_t,
        gap   = gap_dt)
 }
@@ -442,7 +482,37 @@ res   <- Filter(Negate(is.null), res)
 alloc <- rbindlist(lapply(res, `[[`, "alloc"), use.names = TRUE, fill = TRUE)
 cover <- rbindlist(lapply(res, `[[`, "cover"), use.names = TRUE, fill = TRUE)
 split <- rbindlist(lapply(res, `[[`, "split"), use.names = TRUE, fill = TRUE)
+cflow <- rbindlist(lapply(res, `[[`, "cont"),  use.names = TRUE, fill = TRUE)
 gaps  <- rbindlist(lapply(res, `[[`, "gap"),   use.names = TRUE, fill = TRUE)
+
+# --- the fold must not move the VA account ----------------------------------
+# Row margin of S'H*S = row margin of H* summed by region = the VA account by
+# region. Checked against this run's own country-level split file, at source:
+# see 41 for why a fold bug must not be allowed to reach 48 as a plotting
+# mystery. (The COLUMN margin is extraction by origin and is checked per year
+# inside the loop, against e_kept.)
+if (nrow(cflow) && nrow(split)) {
+  ref <- split[, .(va = sum(va_based)),
+               by = .(year, va_variant, biofuel_group, continent = continent_of(iso3c))]
+  got <- cflow[, .(va = sum(impact)),
+               by = .(year, va_variant, biofuel_group, continent = va_continent)]
+  cmp <- merge(ref, got, by = c("year", "va_variant", "biofuel_group", "continent"),
+               all = TRUE, suffixes = c("", "_fold"))
+  for (j in c("va", "va_fold")) set(cmp, which(is.na(cmp[[j]])), j, 0)
+  dev <- max(abs(cmp$va - cmp$va_fold)) / max(abs(cmp$va), 1e-12)
+  if (dev > 1e-9)
+    warning(sprintf(paste0("[42] the continent fold does not reproduce the VA account ",
+                           "(max rel. %.3g) -- rowSums(S'H*S) should equal va_based summed by ",
+                           "region. Do NOT plot 48 until this is 0."), dev))
+  else
+    message(sprintf(">>> [42] continent fold verified against the VA account (max rel. dev %.1e)", dev))
+  # How much of the value-capture story the fold absorbs: pressure extracted in
+  # one country and charged to value added in another, but WITHIN one region.
+  vt_ctry <- split[va_variant == VA_VARIANT, sum(va_import)]
+  vt_cont <- cflow[va_variant == VA_VARIANT & va_continent != origin_continent, sum(impact)]
+  message(sprintf(">>> [42] of the VA account resting on foreign extraction, %.1f%% stays inside one region.",
+                  100 * (1 - vt_cont / max(vt_ctry, .Machine$double.eps))))
+}
 residual_set_aside <- sum(unlist(lapply(res, `[[`, "residual")))   # tonnes in catch-all nodes
 
 # annotate value-generator continent (nice-to-have, mirrors 18_01)
@@ -509,11 +579,16 @@ for (variant in names(va_variants)) {
   a_path <- va_csv("value_added_responsibility", tagv)
   c_path <- va_csv("value_added_coverage",       tagv)
   s_path <- va_csv("value_added_trade_split",    tagv)   # eq. 8 margins, for 45
+  f_path <- va_csv("value_added_continent_flows", tagv)  # eq. 8 folded to regions, for 48
   a_dt <- alloc[va_variant == variant]; c_dt <- cover[va_variant == variant]
   s_dt <- split[va_variant == variant]
+  f_dt <- if (nrow(cflow)) cflow[va_variant == variant] else cflow
   fwrite(a_dt, a_path)
   fwrite(c_dt, c_path)
   fwrite(s_dt[order(year, biofuel_group, -va_based)], s_path)
-  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)\nWrote %s (%d rows)",
-                  a_path, nrow(a_dt), c_path, nrow(c_dt), s_path, nrow(s_dt)))
+  fwrite(if (nrow(f_dt)) f_dt[order(year, biofuel_group, va_continent, origin_continent)] else f_dt,
+         f_path)
+  message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)\nWrote %s (%d rows)\nWrote %s (%d rows)",
+                  a_path, nrow(a_dt), c_path, nrow(c_dt), s_path, nrow(s_dt),
+                  f_path, nrow(f_dt)))
 }

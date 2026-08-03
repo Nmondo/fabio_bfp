@@ -38,21 +38,29 @@
 #        VA_RESP_CSV (42)  the value-added account, in 40's VA_VARIANT
 #
 # WRITES output/plot/
-#   responsibility_accounts_<ind>_<vabase>_<alloc>.svg              continent x account
-#   responsibility_accounts_<ind>_<vabase>_<alloc>_by_biofuel.svg   same, per chain
-#   responsibility_divergence_<ind>_<vabase>_<alloc>.svg            absolute units
-#   responsibility_divergence_<ind>_<vabase>_<alloc>_pct.svg        % of the 50/50 baseline
-#   responsibility_divergence_<ind>_<vabase>_<alloc>_by_biofuel.svg per chain
+#   responsibility_accounts_<ind>_<vabase>_<alloc>.svg     continent x account
+#   responsibility_divergence_<ind>_<vabase>_<alloc>.svg   absolute units
+#   responsibility_divergence_<ind>_<vabase>_<alloc>_pct.svg  % of the 50/50 baseline
 # and the country-level table behind the divergence figures, via
 #   va_csv("responsibility_divergence")
 #
-# THE BY-BIOFUEL FIGURES ARE FREE-SCALED --------------------------------------
-# Both use facet_grid(biofuel_group ~ period): periods are the COLUMNS, chains the
-# ROWS, and the value axis is freed PER ROW. Renewable diesel is an order of
-# magnitude below biodiesel and would otherwise flatten out, so each chain gets
-# its own scale while the two periods inside a row stay directly comparable.
-# Price: bar heights/lengths MAY NOT be compared ACROSS rows -- read the axis, and
-# use the pooled figures for cross-chain magnitude.
+# ONE GRID PER FIGURE, TOTAL ON TOP -------------------------------------------
+# There used to be two files per family: the chains pooled, and a `_by_biofuel`
+# companion. They are now ONE figure of four rows -- Total, then the three chains
+# -- built by handing the country table to 40's with_total() before it is
+# aggregated. The Total row is the same number the pooled file used to carry:
+# with_total() only duplicates rows under a fourth key, and the sum that follows
+# does the pooling, so nothing is recomputed and the two cannot drift.
+#
+# EVERY FIGURE IS THEREFORE FREE-SCALED PER ROW -------------------------------
+# facet_grid(biofuel_group ~ period): periods are the COLUMNS, chains the ROWS,
+# and the value axis is freed PER ROW. This was already necessary between chains
+# -- renewable diesel is an order of magnitude below biodiesel -- and the Total
+# row makes it unavoidable, since it is by construction the sum of the three and
+# on one common scale would flatten all of them. Price: bar heights/lengths MAY
+# NOT be compared ACROSS rows, INCLUDING against Total. Read the axis. Within a
+# row the two periods share a scale and are directly comparable, which is the
+# comparison every one of these figures is actually for.
 #
 # THE % FIGURE IS THE DANGEROUS ONE -------------------------------------------
 # divergence / baseline explodes wherever the baseline is small: ROW's VA
@@ -85,8 +93,12 @@ run_banner()
 
 # --- figure switches ---------------------------------------------------------
 # Free the value axis per biofuel row (see the header). FALSE gives one common
-# scale across all chains, in both by-biofuel figures.
+# scale across the whole grid, which now includes the Total row -- keep it TRUE
+# unless you specifically want to SEE how small the chains are against the pool.
 BY_BIOFUEL_FREE_Y <- TRUE
+if (!BY_BIOFUEL_FREE_Y)
+  message("[43] BY_BIOFUEL_FREE_Y = FALSE: the Total row shares its scale with the ",
+          "chains and will flatten them. This is a deliberate setting, not a default.")
 
 # % figure only: drop continents whose 50/50 baseline is below this share of the
 # global baseline in a period -- see the header. Set to 0 to keep everything.
@@ -229,55 +241,68 @@ order_by_baseline <- function(m) {
 }
 
 # --- plots -------------------------------------------------------------------
-plot_accounts <- function(d, title, subtitle = NULL, by_biofuel = FALSE) {
+# ONE layout, always faceted by chain: the `by_biofuel` argument is gone because
+# there is no longer a pooled figure to switch to -- the pool is the top ROW.
+plot_accounts <- function(d, title, subtitle = NULL) {
   d <- copy(d)[, value := value / META$scale_factor]
-  p <- ggplot(d, aes(x = continent, y = value, fill = account)) +
+  ggplot(d, aes(x = continent, y = value, fill = account)) +
     geom_col(position = position_dodge2(preserve = "single"), width = 0.75) +
     scale_fill_manual(values = account_palette, drop = FALSE) +
     labs(x = NULL, y = META$y_label, fill = "Account",
          title = title, subtitle = subtitle) +
+    # ggplot frees a scale per row/column, never per panel, so "free_y" on this
+    # layout gives each chain -- and the Total row -- its own y axis while both
+    # periods inside a row share one. The columns are the same two periods in
+    # every row, so rows can still be read against each other in SHAPE, just not
+    # in height.
+    facet_grid(biofuel_group ~ period,
+               scales   = if (BY_BIOFUEL_FREE_Y) "free_y" else "fixed",
+               switch   = "y",
+               labeller = labeller(biofuel_group = chain_labeller)) +
     theme_minimal() +
-    theme(legend.position = "bottom",
-          legend.title    = element_text(face = "bold"),
-          strip.text      = element_text(face = "bold"),
-          axis.text.x     = element_text(angle = 45, hjust = 1))
-  
-  if (!by_biofuel) return(p + facet_wrap(~ period, nrow = 1))
-  
-  # ggplot frees a scale per row/column, never per panel, so "free_y" on this
-  # layout gives each chain its own y axis while both periods of a chain share
-  # one. The columns are the same two periods in every row, so rows can still be
-  # read against each other in SHAPE, just not in height.
-  p + facet_grid(biofuel_group ~ period,
-                 scales = if (BY_BIOFUEL_FREE_Y) "free_y" else "fixed",
-                 switch = "y") +
-    theme(strip.placement   = "outside",
+    theme(legend.position   = "bottom",
+          legend.title      = element_text(face = "bold"),
+          strip.text        = element_text(face = "bold"),
+          axis.text.x       = element_text(angle = 45, hjust = 1),
+          strip.placement   = "outside",
           strip.text.y.left = element_text(face = "bold", angle = 90),
           panel.spacing.y   = unit(8, "pt"))
 }
 
-plot_divergence <- function(m, title, subtitle, x_lab, by_biofuel = FALSE) {
-  p <- ggplot(m, aes(x = divergence, y = continent, fill = allocation)) +
-    geom_vline(xintercept = 0, colour = "grey40", linewidth = 0.3) +
+# THE VALUE IS MAPPED TO y AND THE PANEL IS FLIPPED, NOT MAPPED TO x ----------
+# This looks like a detour and is not. facet_grid frees a scale PER ROW for y and
+# PER COLUMN for x -- always, regardless of which way the bars point. The earlier
+# version mapped the divergence to x and asked for `free_x` under
+# biofuel_group ~ period, which freed it per PERIOD COLUMN: every chain in a
+# column shared one range, the exact opposite of what its own comment and
+# subtitle claimed. It was survivable while the rows were three chains of broadly
+# similar size. It is not survivable now that the top row is their sum, which
+# would set the column range and squash all three chains into slivers.
+# So: value on y, categories on x, coord_flip() for the horizontal bars, and
+# `free_y` genuinely frees the value axis per row.
+plot_divergence <- function(m, title, subtitle, x_lab) {
+  ggplot(m, aes(x = continent, y = divergence, fill = allocation)) +
+    geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.3) +
     geom_col(position = position_dodge2(preserve = "single"), width = 0.75) +
+    coord_flip() +
     scale_fill_manual(values = alloc_palette, drop = FALSE) +
-    labs(x = x_lab, y = NULL, fill = "Allocation",
+    labs(x = NULL, y = x_lab, fill = "Allocation",
          title = title, subtitle = subtitle) +
+    facet_grid(biofuel_group ~ period,
+               scales   = if (BY_BIOFUEL_FREE_Y) "free_y" else "fixed",
+               switch   = "y",
+               labeller = labeller(biofuel_group = chain_labeller)) +
     theme_minimal() +
     theme(legend.position    = "bottom",
           legend.title       = element_text(face = "bold"),
           strip.text         = element_text(face = "bold"),
-          panel.grid.major.y = element_blank())
-  
-  if (!by_biofuel) return(p + facet_wrap(~ period, nrow = 1))
-  
-  # the bars run horizontally here, so it is the x axis that is freed per row
-  p + facet_grid(biofuel_group ~ period,
-                 scales = if (BY_BIOFUEL_FREE_Y) "free_x" else "fixed",
-                 switch = "y") +
-    theme(strip.placement   = "outside",
-          strip.text.y.left = element_text(face = "bold", angle = 90),
-          panel.spacing.x   = unit(10, "pt"))
+          # under coord_flip the theme grid elements follow the RENDERED axes, so
+          # .y is still the horizontal ruling behind the continent categories --
+          # the value gridlines survive, which is the point.
+          panel.grid.major.y = element_blank(),
+          strip.placement    = "outside",
+          strip.text.y.left  = element_text(face = "bold", angle = 90),
+          panel.spacing.x    = unit(10, "pt"))
 }
 
 # --- run ---------------------------------------------------------------------
@@ -295,73 +320,86 @@ SUB_DIV <- paste0("positive: the allocation loads more onto the region than an e
                   "producer/consumer split; both allocations sum to zero across all regions")
 X_LAB   <- paste0(META$y_label, "  (allocation - 50/50 average)")
 DIV_COLS <- c("baseline_5050", "divergence_hdi", "divergence_va")
+SUB_ROWS <- if (BY_BIOFUEL_FREE_Y)
+  paste0("Top row is all three chains pooled. The value axis is FREE PER ROW: ",
+         "compare continents and periods WITHIN a row, never bar sizes across ",
+         "rows -- not even against Total.") else NULL
 
-# --- [1] the four accounts, chains pooled ------------------------------------
-acc_p <- period_mean(as_accounts(d, "continent"), "value", c("continent", "account"))
-if (!nrow(acc_p)) stop("[43] no years of ", paste(names(PERIODS), collapse = " / "), " in the CSVs.")
+# THE PLOTTING TABLE ----------------------------------------------------------
+# `dp` is `d` plus a copy of every row under the `total` chain. Every aggregation
+# below is a sum by keys that INCLUDE biofuel_group, so the duplicate rows pool
+# themselves and the Total panel is arithmetically identical to the pooled figure
+# this used to write as a separate file. `d` itself stays unpooled, for the CSV
+# above and the console table below.
+dp <- with_total(d)
 
-save_svg(paste0("responsibility_accounts_", FTAG),
-         plot_accounts(acc_p, TTL_ACC), width = 12, height = 6)
+# --- [1] the four accounts: Total, then one row per chain --------------------
+acc <- period_mean(as_accounts(dp, c("continent", "biofuel_group")), "value",
+                   c("continent", "account", "biofuel_group"))
+if (!nrow(acc)) stop("[43] no years of ", paste(names(PERIODS), collapse = " / "), " in the CSVs.")
 
-# --- [1b] the same bars, one row per biofuel chain ---------------------------
-bf_acc <- period_mean(as_accounts(d, c("continent", "biofuel_group")), "value",
-                      c("continent", "account", "biofuel_group"))
-n_bf   <- uniqueN(bf_acc$biofuel_group)
-n_per  <- uniqueN(bf_acc$period)
+n_row <- uniqueN(acc$biofuel_group)   # 4: Total + the three chains
+n_col <- uniqueN(acc$period)
 # the canvas follows the grid rather than staying at a fixed size
-save_svg(paste0("responsibility_accounts_", FTAG, "_by_biofuel"),
-         plot_accounts(bf_acc, paste0(TTL_ACC, " - by biofuel"),
-                       subtitle = if (BY_BIOFUEL_FREE_Y)
-                         "Y axis is FREE PER BIOFUEL ROW: compare continents and periods within a row, not bar heights across rows.",
-                       by_biofuel = TRUE),
-         width  = 3.0 + 4.2 * max(n_per, 1),    # 2 periods -> 11.4in
-         height = 2.6 + 2.9 * max(n_bf, 1))     # 3 chains  -> 11.3in
+save_svg(paste0("responsibility_accounts_", FTAG),
+         plot_accounts(acc, TTL_ACC, subtitle = SUB_ROWS),
+         width  = 3.0 + 4.2 * max(n_col, 1),    # 2 periods -> 11.4in
+         height = 2.6 + 2.9 * max(n_row, 1))    # 4 rows    -> 14.2in
 
 # --- [2] divergence from the 50/50 split, absolute ---------------------------
-cont <- period_mean(d, DIV_COLS, "continent")
-m    <- order_by_baseline(as_divergences(cont, "continent"))
+# order_by_baseline() sees the total rows as well as the chains, which exactly
+# doubles every continent's baseline sum and therefore leaves the ORDER -- the
+# only thing it uses -- untouched.
+cont <- period_mean(dp, DIV_COLS, c("continent", "biofuel_group"))
+m    <- order_by_baseline(as_divergences(cont, c("continent", "biofuel_group")))
 m[, divergence := divergence / META$scale_factor]
 
 save_svg(paste0("responsibility_divergence_", FTAG),
-         plot_divergence(m, TTL_DIV, SUB_DIV, x_lab = X_LAB), width = 11, height = 6)
+         plot_divergence(m, TTL_DIV, paste(SUB_DIV, SUB_ROWS), x_lab = X_LAB),
+         width  = 3.0 + 4.2 * max(uniqueN(m$period), 1),
+         height = 2.6 + 2.9 * max(uniqueN(m$biofuel_group), 1))
 
 # --- [2b] relative: % of each continent's own 50/50 baseline -----------------
 # Scale-free, and therefore treacherous on a small baseline -- hence the cut.
+#
+# THE DENOMINATOR IS PER ROW. `by = .(period, biofuel_group)` and not `by =
+# period`: with the total rows in the table, a global-per-period denominator
+# would be the pool PLUS the three chains, i.e. twice the world, and every share
+# would read half its true value -- silently, and just far enough below
+# MIN_SHARE_PCT to drop continents that belong on the figure.
 pc <- copy(cont)
-pc[, share := 100 * baseline_5050 / sum(baseline_5050), by = period]
-drop <- sort(unique(pc[share < MIN_SHARE_PCT, as.character(continent)]))
-if (length(drop))
-  message("[43]   % figure drops (baseline < ", MIN_SHARE_PCT, "% of global): ",
-          paste(drop, collapse = ", "))
+pc[, share := 100 * baseline_5050 / sum(baseline_5050), by = .(period, biofuel_group)]
+
+# The cut is now made PANEL BY PANEL, so a continent can be material in the pool
+# and negligible in renewable diesel. It keeps its slot on the shared axis and
+# simply has no bar in the panels where it was cut -- `continent` is a factor
+# whose levels are fixed by order_by_baseline(), so dropping rows leaves a gap
+# rather than re-indexing the axis. A continent cut EVERYWHERE disappears.
+drop <- unique(pc[share < MIN_SHARE_PCT,
+                  .(biofuel_group, continent = as.character(continent))])
+if (nrow(drop))
+  for (g in unique(drop$biofuel_group))
+    message("[43]   % figure, ", chain_labeller(g), ": no bar for (baseline < ",
+            MIN_SHARE_PCT, "% of that panel's total) ",
+            paste(sort(drop[biofuel_group == g, continent]), collapse = ", "))
 pc <- pc[share >= MIN_SHARE_PCT & baseline_5050 > 0]
 if (nrow(pc)) {
-  mp <- order_by_baseline(as_divergences(pc, "continent"))
+  mp <- order_by_baseline(as_divergences(pc, c("continent", "biofuel_group")))
   mp[, divergence := 100 * divergence / baseline_5050]   # NOT scaled by META: it is a %
   save_svg(paste0("responsibility_divergence_", FTAG, "_pct"),
            plot_divergence(mp, paste0(TTL_DIV, " - relative"),
-                           paste0(SUB_DIV, ". Regions below ", MIN_SHARE_PCT,
-                                  "% of the global baseline are omitted: a % on a ",
-                                  "negligible base is noise."),
+                           paste0(SUB_DIV, ". Within each panel, regions below ",
+                                  MIN_SHARE_PCT, "% of that panel's baseline are ",
+                                  "omitted: a % on a negligible base is noise."),
                            x_lab = "Divergence from the 50/50 average (% of that region's baseline)"),
-           width = 11, height = 6)
-}
-
-# --- [2c] divergence, one row per biofuel chain ------------------------------
-bf_div <- period_mean(d, DIV_COLS, c("continent", "biofuel_group"))
-if (nrow(bf_div)) {
-  mb <- order_by_baseline(as_divergences(bf_div, c("continent", "biofuel_group")))
-  mb[, divergence := divergence / META$scale_factor]
-  save_svg(paste0("responsibility_divergence_", FTAG, "_by_biofuel"),
-           plot_divergence(mb, paste0(TTL_DIV, " - by biofuel"),
-                           if (BY_BIOFUEL_FREE_Y)
-                             "X axis is FREE PER BIOFUEL ROW: compare regions within a row, not bar lengths across rows.",
-                           x_lab = X_LAB, by_biofuel = TRUE),
-           width  = 3.0 + 4.2 * max(uniqueN(mb$period), 1),
-           height = 2.6 + 2.9 * max(uniqueN(mb$biofuel_group), 1))
+           width  = 3.0 + 4.2 * max(uniqueN(mp$period), 1),
+           height = 2.6 + 2.9 * max(uniqueN(mp$biofuel_group), 1))
 }
 
 # --- console: who moves, and do the two criteria agree? ----------------------
-late <- copy(cont[period == names(PERIODS)[length(PERIODS)]])
+# The pooled row only: the per-chain numbers are on the figure, and four times
+# the rows in the terminal is not four times the information.
+late <- copy(cont[period == names(PERIODS)[length(PERIODS)] & biofuel_group == TOTAL_KEY])
 if (nrow(late)) {
   late[, agree := fifelse(sign(divergence_hdi) == sign(divergence_va), "same", "OPPOSED")]
   cat(sprintf("\n-- %s | %s: divergence from the 50/50 split, %s --\n",
