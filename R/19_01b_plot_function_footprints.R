@@ -39,7 +39,7 @@ library(paletteer)
 library(RColorBrewer)
 library(gridExtra)
 library(patchwork)
-library(svglite)
+svg_device <- if (requireNamespace("svglite", quietly = TRUE)) svglite::svglite else grDevices::svg
 library(openxlsx)
 
 
@@ -54,13 +54,24 @@ tcf <- readRDS("intermediate_data/tcf_table_final.rds")
 # Keep in sync with 18b.
 model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
 model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
-IN_DIR <- if (model_version == "bypass") "output/bypass" else "output"
-message(sprintf(">>> [19b environmental] model_version = '%s'  (reading footprints from: %s)",
-                model_version, IN_DIR))
+
+# ---- CAPPING VARIANT (default = capped) --------------------------------------
+# FABIO_VARIANT = "capped" (default) or "uncapped". Environmental footprint CSVs
+# come from 18_01b and are variant-dependent (output_capped/). MATERIAL summaries
+# (Y/Z/X_summary from 18_01a) are capping-invariant and always read from output/.
+VARIANT   <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "capped")))
+is_capped <- VARIANT == "capped"
+vsuf      <- if (is_capped) "_capped" else ""
+base_out  <- if (model_version == "bypass") "output/bypass" else "output"
+ENV_DIR   <- paste0(base_out, vsuf)          # 18_01b footprint CSVs (capped-aware)
+MAT_DIR   <- base_out                         # 18_01a material CSVs (baseline only)
+PLOT_DIR  <- file.path(ENV_DIR, "plot")       # plots separated per variant
+message(sprintf(">>> [19b environmental] model_version = '%s' | variant = '%s'  (env: %s | material: %s | plots: %s)",
+                model_version, VARIANT, ENV_DIR, MAT_DIR, PLOT_DIR))
 
 source("R/19_plot_definitions.R")
 
-dir.create(file.path("output", "plot"), recursive = TRUE, showWarnings = FALSE)
+dir.create(PLOT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 ## Clean TCF (kept for parity with the shared setup; not used by env plots) ----
 setDT(tcf)
@@ -80,7 +91,7 @@ tcf <- tcf[!item %in% c("Oilcrops Oil, Other", "Total")]
 fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"),
                         alloc      = NULL,
                         must_match = NULL,
-                        dir = IN_DIR) {
+                        dir = ENV_DIR) {
   group <- match.arg(group)
   yr    <- "(201[2-9]|202[0-2])"
   all   <- list.files(dir,
@@ -102,7 +113,7 @@ fabio_files <- function(prefix, group = c("BF", "BP", "BF_BP"),
 ######################################################################################################################
 
 ## Consumption reference (Y-based; overlaid on several impact plots) ----------
-Y_summary <- fread(file.path(IN_DIR, "Y_summary_c146_c147_c149.csv"))
+Y_summary <- fread(file.path(MAT_DIR, "Y_summary_c146_c147_c149.csv"))
 
 ## Stressor footprints -- VALUE-allocated files from 18b ----------------------
 # The "_value_" tag now separates these cleanly from the material "_mass_" run.
@@ -150,7 +161,7 @@ dt_feedstock <- rbindlist(
 ## Producer-located end-use decomposition -- combined per-indicator files (18b) 
 # Columns: country, continent, year, indicator, allocation,
 #          end_group, enduse_impact, total_ag_impact, share
-load_endUseOrigin <- function(dir = IN_DIR, alloc = "value") {
+load_endUseOrigin <- function(dir = ENV_DIR, alloc = "value") {
   f <- list.files(dir, pattern = "^FABIO_endUseOrigin_.*\\.csv$", full.names = TRUE)
   f <- f[!file.info(f)$isdir]
   if (!is.null(alloc)) f <- f[grepl(paste0("_", alloc), f)]
@@ -898,7 +909,7 @@ plot_continent_heatmap <- function(dt_feedstock,
                                    title        = "Biofuel consumer region",
                                    legend_title = NULL, # NULL = per-indicator default from cfg_all
                                    file_tag     = NULL, # extra token in the filename (e.g. "BP") to avoid collisions
-                                   save_dir  = file.path("output", "plot"),
+                                   save_dir  = PLOT_DIR,
                                    save      = TRUE,
                                    breaks    = NULL,  # override auto breaks
                                    limits    = NULL) {
@@ -1135,7 +1146,7 @@ plot_enduse_origin <- function(data,
                                legend_labels = c(   # compact legend-only relabels (data untouched)
                                  "Vegetables, fruit, nuts, pulses, spices" = "Produce"),
                                save        = FALSE,
-                               save_dir    = file.path("output", "plot"),
+                               save_dir    = PLOT_DIR,
                                save_name   = NULL,   # NULL -> auto filename
                                width       = 12,
                                height      = 3,

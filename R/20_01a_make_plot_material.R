@@ -168,3 +168,103 @@ grid <- (row1 / row2) +
 
 svglite::svglite("output/plot/BF_Trace_grid_c146_c147+c149_2020-2022.svg",
                  width = 6, height = 10); print(grid); dev.off()
+
+
+
+p1 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2012:2014,
+  biofuel_sel = "c146",
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+p2 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2012:2014,
+  biofuel_sel = c("c147", "c149"),
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+# Build vertical title strips
+t1 <- make_title_strip(commodity_meta[comm_code == "c146", item])
+t2 <- make_title_strip(
+  paste(commodity_meta[comm_code %in% c("c147", "c149"), item], collapse = " + ")
+)
+
+# Compose: [title strip | sankey] stacked twice
+row1 <- t1 + p1 + plot_layout(widths = c(0.04, 1))   # strip ~4% of width
+row2 <- t2 + p2 + plot_layout(widths = c(0.04, 1))
+
+grid <- (row1 / row2) +
+  plot_layout(
+    guides = "collect",
+    heights = c(1, 1)
+  ) &
+  theme(
+    legend.position = "bottom",
+    plot.margin     = margin(2, 2, 2, 2)
+  )
+
+svglite::svglite("output/plot/BF_Trace_grid_c146_c147+c149_2012-2014.svg",
+                 width = 6, height = 10); print(grid); dev.off()
+
+
+
+
+######################################################################################################################
+# 2b. Flow chart (temporary) — c146+c147+c149 combined, 2012-2014 vs 2020-2022
+######################################################################################################################
+
+# Build the two trace Sankeys (same commodity set, different periods)
+p1 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2012:2014,
+  biofuel_sel = c("c146", "c147", "c149"),
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+p2 <- bf_sankey_gg(
+  trace_flows,
+  year_sel    = 2020:2022,
+  biofuel_sel = c("c146", "c147", "c149"),
+  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  merge_regions = c("EUR", "OCE", "ROW", "AFR"),
+  merge_label   = "Other",
+  normalize   = "raw"
+)
+
+# Build vertical title strips, now labeled by period instead of commodity
+t1 <- make_title_strip("2012-2014")
+t2 <- make_title_strip("2020-2022")
+
+# Compose: [title strip | sankey] stacked twice
+row1 <- t1 + p1 + plot_layout(widths = c(0.04, 1))
+row2 <- t2 + p2 + plot_layout(widths = c(0.04, 1))
+
+combo_label <- paste(commodity_meta[comm_code %in% c("c146", "c147", "c149"), item], collapse = " + ")
+
+grid <- (row1 / row2) +
+  plot_layout(
+    guides = "collect",
+    heights = c(1, 1)
+  ) +
+  plot_annotation(
+    title = combo_label,
+    theme = theme(plot.title = element_text(face = "bold"))
+  ) &
+  theme(
+    legend.position = "bottom",
+    plot.margin     = margin(2, 2, 2, 2)
+  )
+
+svglite::svglite("output/plot/BF_Trace_grid_c146+c147+c149_2012-2014_vs_2020-2022.svg",
+                 width = 6, height = 10); print(grid); dev.off()

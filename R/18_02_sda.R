@@ -40,13 +40,24 @@ setwd(fabio_root)
 
 # Read labels ------------------------------------------------------------------
 input_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline, E.rds -> output/) or "capped" (E_capped.rds ->
+# output_capped/). OUT_DIR is the default output dir for the SDA functions below.
+VARIANT <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "capped")))
+vsuf    <- if (VARIANT == "capped") "_capped" else ""
+E_file  <- paste0("E", vsuf, ".rds")
+OUT_DIR <- paste0("output", vsuf)
+message(sprintf(">>> [18_02 SDA] variant = '%s'  (E: %s | out: %s)",
+                if (nzchar(VARIANT)) VARIANT else "baseline", E_file, OUT_DIR))
+
 regions <- fread(file = "inst/regions_full.csv") %>% filter(current == TRUE)
 io      <- fread(paste0(input_path, "io_labels.csv"))
 items   <- fread(file = "inst/items_full_bcp.csv") %>% filter(comm_code %in% unique(io$comm_code))
 fd      <- fread(file = paste0(input_path, "losses/fd_labels.csv"))
 ex      <- fread(file = paste0(input_path, "ex_labels.csv"))
 
-dir.create("output", showWarnings = FALSE, recursive = TRUE)
+dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # Load static data once (all years, value allocation) ---------------------------
 # X, Y, Z and E are year-independent containers and only need to be read once.
@@ -55,7 +66,7 @@ allocation <- "value"
 X <- readRDS(paste0(input_path, "losses/X.rds"))
 Y <- readRDS(paste0(input_path, "losses/Y.rds"))
 Z <- readRDS(paste0(input_path, "losses/Z_", allocation, ".rds"))
-E <- readRDS(paste0(input_path, "E.rds"))
+E <- readRDS(paste0(input_path, E_file))
 
 # Make E_bar, 3-year centred average of the environmental extensions.
 yrs_E_bar <- as.character(2012:2022)
@@ -121,7 +132,7 @@ fp_sda <- function(country         = NULL,
                    col_detail      = c("commodity", "cell"),
                    pairwise        = FALSE,
                    save            = FALSE,
-                   output_dir      = "output",
+                   output_dir      = OUT_DIR,
                    regions, io, fd, ex,
                    X = NULL, Y = NULL, Z = NULL, E = NULL,
                    L_base = NULL, L_curr = NULL) {
@@ -134,7 +145,7 @@ fp_sda <- function(country         = NULL,
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
-  if (!is.null(extension) && is.null(E)) E <- readRDS(paste0(input_path, "E.rds"))
+  if (!is.null(extension) && is.null(E)) E <- readRDS(paste0(input_path, E_file))
   if (is.null(L_base))
     L_base <- readRDS(paste0(input_path, sub, year_base,    "_L_", allocation, ".rds"))
   if (is.null(L_curr))
@@ -494,7 +505,7 @@ fp_sda_chained <- function(years      = 2012:2022,
                            col_detail = "commodity",
                            pairwise   = FALSE,
                            save       = FALSE,
-                           output_dir = "output",
+                           output_dir = OUT_DIR,
                            regions, io, fd, ex,
                            X = NULL, Y = NULL, Z = NULL, E = NULL) {
   
@@ -565,7 +576,7 @@ fp_sda_smoothed <- function(years_base    = 2012:2014,
                             col_detail    = "commodity",
                             pairwise      = FALSE,
                             save          = FALSE,
-                            output_dir    = "output",
+                            output_dir    = OUT_DIR,
                             regions, io, fd, ex,
                             X = NULL, Y = NULL, Z = NULL, E = NULL,
                             L_method      = c("average", "midyear")) {
@@ -576,7 +587,7 @@ fp_sda_smoothed <- function(years_base    = 2012:2014,
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
-  if (!is.null(extension) && is.null(E)) E <- readRDS(paste0(input_path, "E.rds"))
+  if (!is.null(extension) && is.null(E)) E <- readRDS(paste0(input_path, E_file))
   
   # X, Y, Z and E are all averaged within the window. Z must be averaged alongside
   # X, since Phi = Z[, C] / X[C] and mixing a window mean with a single year would
