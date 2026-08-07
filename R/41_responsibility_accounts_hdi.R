@@ -71,6 +71,28 @@
 #   <OUT_DIR>/FABIO_bcp_<metric>_hdi_coverage_<alloc>.csv
 #       per (year, biofuel_group): footprint, justice_total,
 #       conservation_gap_pct, imputed_hdi_exposure
+#   <OUT_DIR>/FABIO_bcp_<metric>_hdi_continent_flows_<alloc>.csv
+#       long: year, biofuel_group, producer_continent, consumer_continent,
+#             impact, producer_kept        (zero cells dropped)
+#       D and the HDI-weighted D, both folded onto continents on BOTH axes.
+#
+# WHY THE CONTINENT MATRIX IS WRITTEN HERE ------------------------------------
+# 48 draws the trade split of 43's regional accounts, and that split CANNOT be
+# rebuilt downstream from the country margins above: summing `justice_domestic`
+# over the countries of a region keeps the COUNTRY meaning of "domestic", so an
+# intra-EU flow stays an export inside an EU panel -- which inverts the reading
+# of the figure, since its whole argument is the export block being handed to
+# trade partners. The fold has to happen where the full D[p, c] still exists,
+# i.e. here. It costs one 8x8 matrix per (year, chain).
+#   dom(C)      = D_c[C, C]                       PBA(C) = rowSums(D_c)[C]
+#   exp(C)      = rowSums(D_c)[C] - dom(C)        CBA(C) = colSums(D_c)[C]
+#   hdi_exp(C)  = sum_{K != C} W_c[C, K]          the beta share C keeps as exporter
+#   hdi_imp(C)  = sum_{P != C} (D_c - W_c)[P, C]  the 1-beta share C keeps as importer
+# Both MARGINS are invariant under the fold, so all four account totals are
+# exactly what 43 already plots; only the diagonal/off-diagonal split moves. The
+# intra-regional flows need no beta at all: whichever side of an intra-EU pair
+# the HDI split charges, the charge lands inside the EU, so the block returns to
+# the region in full, exactly like domestic production. 48 checks both.
 #
 # RUN -------------------------------------------------------------------------
 #   Rscript R/41_responsibility_accounts_hdi.R
@@ -146,6 +168,16 @@ countries <- grid$countries
 R         <- grid$R
 T_origin  <- grid$T_origin
 S_fd      <- grid$S_fd
+
+# --- continent grid: the second axis, for 48 ---------------------------------
+# Built ONCE, from 40's continent_of(), so 41's country tagging below, 42's
+# value-generator tagging and 48's panels are the same partition of `countries`.
+# Fixing the levels here also fixes the row/column order of every matrix written
+# below, which is what lets 48 bind the two files by position as well as label.
+S_cont     <- continent_aggregator(countries)
+continents <- colnames(S_cont)
+message(sprintf(">>> [41] continent grid (%d regions): %s",
+                length(continents), paste(continents, collapse = " ")))
 
 # --- HDI weights -------------------------------------------------------------
 read_hdr <- function(file, url) {
@@ -271,7 +303,7 @@ compute_year <- function(yr) {
   
   comm  <- io$comm_code
   y_all <- as.vector(Matrix::rowSums(Yc))                       # final demand by product node
-  resp_rows <- list(); cover_rows <- list()
+  resp_rows <- list(); cover_rows <- list(); cont_rows <- list()
   
   for (g in names(biofuel_groups)) {
     sel <- as.numeric(comm %in% biofuel_groups[[g]])   # biofuel-group final demand only
@@ -288,6 +320,23 @@ compute_year <- function(yr) {
     exp_v  <- rowSums(D * Wp)       - dom_v * diag(Wp)        # producer share of exports
     imp_v  <- colSums(D * (1 - Wp)) - dom_v * (1 - diag(Wp))  # consumer share of imports
     just_v <- dom_v + exp_v + imp_v                   # F^just (Sun eq. 1)
+    
+    # --- the same flows, folded onto continents (see the header) -------------
+    # W_c is the part of each regional block charged to the PRODUCING region by
+    # the HDI split. It is a sum of beta * D over the country pairs INSIDE the
+    # block, so it carries the bilateral betas faithfully -- no regional average
+    # HDI is ever formed, which would be a different (and wrong) statistic. Only
+    # the OFF-DIAGONAL of W_c is ever used: on the diagonal both sides of the
+    # split are in the same region and the block returns to it in full.
+    Dc <- fold_continents(D,      S_cont)
+    Wc <- fold_continents(D * Wp, S_cont)
+    fl <- melt_continent_matrix(Dc, "impact")
+    fl[, producer_kept := as.vector(Wc)]              # same grid, same column-major order
+    fl <- fl[impact != 0 | producer_kept != 0]
+    if (nrow(fl)) {
+      setnames(fl, c("from", "to"), c("producer_continent", "consumer_continent"))
+      cont_rows[[g]] <- data.table(year = as.integer(yr), biofuel_group = g, fl)
+    }
     
     keep <- which(prod_v != 0 | cons_v != 0)
     if (length(keep)) resp_rows[[g]] <- data.table(
@@ -316,7 +365,8 @@ compute_year <- function(yr) {
   }
   
   list(resp  = rbindlist(resp_rows,  use.names = TRUE, fill = TRUE),
-       cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE))
+       cover = rbindlist(cover_rows, use.names = TRUE, fill = TRUE),
+       cont  = rbindlist(cont_rows,  use.names = TRUE, fill = TRUE))
 }
 
 # --- run all years -----------------------------------------------------------
@@ -324,6 +374,7 @@ res   <- lapply(resp_years, function(yr) { message("  year ", yr); compute_year(
 res   <- Filter(Negate(is.null), res)
 resp  <- rbindlist(lapply(res, `[[`, "resp"),  use.names = TRUE, fill = TRUE)
 cover <- rbindlist(lapply(res, `[[`, "cover"), use.names = TRUE, fill = TRUE)
+cflow <- rbindlist(lapply(res, `[[`, "cont"),  use.names = TRUE, fill = TRUE)
 
 resp[, imbalance := justice_based - avg_prod_cons]   # Sun Fig. 2 / Fig. 4
 resp[, continent := regions$continent[match(iso3c, regions$iso3c)]]
@@ -353,10 +404,57 @@ shift <- resp[, .(hdi           = mean(hdi),
                   imbalance     = sum(imbalance)), by = .(iso3c, continent)]
 print(head(shift[order(-abs(imbalance))], 15))
 
+# --- the fold must not move a single account --------------------------------
+# Aggregating D onto regions may only RE-CUT each bar, never re-size it: the row
+# and column margins of S'DS are the country margins summed by region, and the
+# HDI account follows because an intra-regional flow returns to its region in
+# full whichever side of it beta charges. Verified here, at source, against the
+# country table this same loop produced -- a fold bug found in 48 would already
+# have been written to disk and could be mistaken for a plotting error.
+if (nrow(cflow)) {
+  cc  <- continent_of(resp$iso3c)
+  ref <- resp[, .(pba = sum(production_based), cba = sum(consumption_based),
+                  hdi = sum(justice_based)),
+              by = .(year, biofuel_group, continent = cc)]
+  got <- merge(
+    cflow[, .(pba = sum(impact),
+              hdi_e = sum(producer_kept * (producer_continent != consumer_continent))),
+          by = .(year, biofuel_group, continent = producer_continent)],
+    cflow[, .(cba = sum(impact),
+              hdi_i = sum((impact - producer_kept) * (producer_continent != consumer_continent)),
+              dom_c = sum(impact * (producer_continent == consumer_continent))),
+          by = .(year, biofuel_group, continent = consumer_continent)],
+    by = c("year", "biofuel_group", "continent"), all = TRUE)
+  for (j in setdiff(names(got), c("year", "biofuel_group", "continent")))
+    set(got, which(is.na(got[[j]])), j, 0)
+  got[, hdi := dom_c + hdi_e + hdi_i]
+  cmp <- merge(ref, got, by = c("year", "biofuel_group", "continent"),
+               all = TRUE, suffixes = c("", "_fold"))
+  for (j in names(cmp)) set(cmp, which(is.na(cmp[[j]])), j, 0)
+  sref <- max(abs(cmp$pba), 1e-12)
+  dev  <- max(abs(cmp$pba - cmp$pba_fold), abs(cmp$cba - cmp$cba_fold),
+              abs(cmp$hdi - cmp$hdi_fold)) / sref
+  if (dev > 1e-9)
+    warning(sprintf(paste0("[41] the continent fold does not reproduce the country accounts ",
+                           "(max rel. %.3g). S'DS margins should equal the country margins summed ",
+                           "by region -- do NOT plot 48 until this is 0."), dev))
+  else
+    message(sprintf(">>> [41] continent fold verified against the country accounts (max rel. dev %.1e)", dev))
+  
+  # The one number that says how much the fold changes: everything traded
+  # between two countries of the SAME region is domestic to that region.
+  tr_ctry <- sum(resp$production_based) - sum(resp$justice_domestic)     # crosses ANY border
+  tr_cont <- cflow[producer_continent != consumer_continent, sum(impact)] # crosses a REGION border
+  message(sprintf(">>> [41] of the traded impact, %.1f%% never leaves its own region -- that share is domestic in 48 and trade in 45.",
+                  100 * (1 - tr_cont / max(tr_ctry, .Machine$double.eps))))
+}
+
 # --- save --------------------------------------------------------------------
 r_path <- acc_csv("hdi_responsibility")
 c_path <- acc_csv("hdi_coverage")
+f_path <- acc_csv("hdi_continent_flows")
 fwrite(resp[order(year, biofuel_group, -justice_based)], r_path)
 fwrite(cover[order(year, biofuel_group)], c_path)
-message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)",
-                r_path, nrow(resp), c_path, nrow(cover)))
+fwrite(cflow[order(year, biofuel_group, producer_continent, consumer_continent)], f_path)
+message(sprintf("Wrote %s (%d rows)\nWrote %s (%d rows)\nWrote %s (%d rows)",
+                r_path, nrow(resp), c_path, nrow(cover), f_path, nrow(cflow)))
