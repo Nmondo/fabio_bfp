@@ -20,6 +20,18 @@ source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline) or "capped": compile the parallel extension tree
+# data/extensions_capped/ into E_capped.rds, leaving E.rds untouched. ex_labels
+# is identical across runs (capping preserves the stressor row set), so it is not
+# suffixed.
+VARIANT  <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "")))
+vsuf     <- if (nzchar(VARIANT)) paste0("_", VARIANT) else ""
+EXT_ROOT <- paste0("data/extensions", vsuf)
+E_file   <- paste0("E", vsuf, ".rds")
+message(sprintf(">>> [16] variant = '%s'  (ext tree: %s | E file: %s)",
+                if (nzchar(VARIANT)) VARIANT else "baseline", EXT_ROOT, E_file))
+
 years <- 2011:2023
 
 
@@ -40,10 +52,10 @@ E_fd_labels <- fread("inst/E_fd_labels_initial.csv")
 # Prepping E_labels --------------
 # Check that the same files are present in sua and cbs folders
 
-nms_cbs    <- gsub(".rds", "", list.files("data/extensions/cbs",    pattern = "\\.rds$"))
-nms_sua    <- gsub(".rds", "", list.files("data/extensions/sua",    pattern = "\\.rds$"))
-nms_fd_cbs <- gsub(".rds", "", list.files("data/extensions/fd_cbs", pattern = "\\.rds$"))
-nms_fd_sua <- gsub(".rds", "", list.files("data/extensions/fd_sua", pattern = "\\.rds$"))
+nms_cbs    <- gsub(".rds", "", list.files(file.path(EXT_ROOT, "cbs"),    pattern = "\\.rds$"))
+nms_sua    <- gsub(".rds", "", list.files(file.path(EXT_ROOT, "sua"),    pattern = "\\.rds$"))
+nms_fd_cbs <- gsub(".rds", "", list.files(file.path(EXT_ROOT, "fd_cbs"), pattern = "\\.rds$"))
+nms_fd_sua <- gsub(".rds", "", list.files(file.path(EXT_ROOT, "fd_sua"), pattern = "\\.rds$"))
 
 pairs <- list(
   list(a = nms_cbs,    b = nms_sua,    name_a = "cbs",    name_b = "sua"),
@@ -92,16 +104,16 @@ if (!all(E_fd_labels$Stressor == nms_fd)) stop("Re-do column ordering for E_fd_l
 rm(missing_labels, missing_labels_fd)
 
 # Compile all extensions -----------------
-files_cbs <- list.files("data/extensions/cbs", pattern = "\\.rds$", full.names = TRUE)
+files_cbs <- list.files(file.path(EXT_ROOT, "cbs"), pattern = "\\.rds$", full.names = TRUE)
 data_cbs <- lapply(files_cbs, readRDS)
 
-files_fd_cbs <- list.files("data/extensions/fd_cbs", pattern = "\\.rds$", full.names = TRUE)
+files_fd_cbs <- list.files(file.path(EXT_ROOT, "fd_cbs"), pattern = "\\.rds$", full.names = TRUE)
 data_fd_cbs <- lapply(files_fd_cbs, readRDS)
 
-files_sua <- list.files("data/extensions/sua", pattern = "\\.rds$", full.names = TRUE)
+files_sua <- list.files(file.path(EXT_ROOT, "sua"), pattern = "\\.rds$", full.names = TRUE)
 data_sua <- lapply(files_sua, readRDS)
 
-files_fd_sua <- list.files("data/extensions/fd_sua", pattern = "\\.rds$", full.names = TRUE)
+files_fd_sua <- list.files(file.path(EXT_ROOT, "fd_sua"), pattern = "\\.rds$", full.names = TRUE)
 data_fd_sua <- lapply(files_fd_sua, readRDS)
 
 # Combine
@@ -230,9 +242,9 @@ E_bcp    <- reorder_cols(E_bcp,    target_order)
 ######################################  SAVE ################################################
 ##############################################################################################
 
-saveRDS(E_bcp,    paste0(output_dir_bcp, "E.rds"))
+saveRDS(E_bcp,    paste0(output_dir_bcp, E_file))
 # saveRDS(E_fd_bcp, paste0(output_dir_bcp, "E_fd.rds"))
-fwrite(E_labels,    paste0(output_dir_bcp, "ex_labels.csv"))
+fwrite(E_labels,    paste0(output_dir_bcp, "ex_labels.csv"))   # identical across variants
 # fwrite(E_fd_labels, paste0(output_dir_bcp, "ex_fd_labels.csv"))
 
 # 

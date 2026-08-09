@@ -37,7 +37,6 @@ library(paletteer)
 library(RColorBrewer)
 library(gridExtra)
 library(patchwork)
-library(svglite)
 
 items_full_bcp <- read_csv("inst/items_full_bcp.csv")
 items_full_bcp <- as.data.table(items_full_bcp)

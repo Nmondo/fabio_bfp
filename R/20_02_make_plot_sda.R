@@ -22,6 +22,10 @@ setwd(fabio_root)
 
 source("R/19_02_plot_function_sda.R")
 
+# SDA plots inherit the capping variant from 19_02 (default = capped; set
+# FABIO_VARIANT=uncapped for the baseline). This script passes no output_dir, so
+# the plot functions write to PLOT_DIR (= <output|output_capped>/plot).
+
 ######################################################################################################################
 #2 / 2b usage - SDA time series for top countries / continents
 ######################################################################################################################

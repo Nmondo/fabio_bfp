@@ -5,6 +5,15 @@ source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline) or "capped": route pressure reads + impact writes
+# to data/extensions_capped/ (forked by 15_5c).
+VARIANT  <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "")))
+vsuf     <- if (nzchar(VARIANT)) paste0("_", VARIANT) else ""
+EXT_ROOT <- paste0("data/extensions", vsuf)
+message(sprintf(">>> [15_9] variant = '%s'  (ext tree: %s)",
+                if (nzchar(VARIANT)) VARIANT else "baseline", EXT_ROOT))
+
 items <- fread("inst/sua/items_sua.csv")
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 conc <- fread("inst/conc_biodiversity_cfs.csv")
@@ -76,7 +85,7 @@ CF_list <- lapply(CF_list, function(dt){
 
 # get pressure data
 nms <- conc[source %in% c("ES"), unique(fabio_pressure)] 
-files <- paste0("data/extensions/sua/", nms, ".rds")
+files <- file.path(EXT_ROOT, "sua", paste0(nms, ".rds"))
 pressures <- setNames(lapply(files, readRDS), nms)
 pressures <- unformat_extension(pressures, nms, long = FALSE)
 
@@ -156,7 +165,7 @@ E_cbs <- lapply(cbs_extensions, format_extension, itms = items_cbs)
 
 # save
 for (nm in names(E_sua)) {
-  saveRDS(E_sua[[nm]], paste0("data/extensions/sua/", nm, ".rds"))
-  saveRDS(E_cbs[[nm]], paste0("data/extensions/cbs/", nm, ".rds"))
+  saveRDS(E_sua[[nm]], file.path(EXT_ROOT, "sua", paste0(nm, ".rds")))
+  saveRDS(E_cbs[[nm]], file.path(EXT_ROOT, "cbs", paste0(nm, ".rds")))
 }
            

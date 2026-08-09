@@ -193,7 +193,9 @@ compute_AY_origin <- function(years, biofuel_codes, target_iso3,
   code2iso <- setNames(regions$iso3c, as.character(regions$code))
   if (!identical(key(btd), c("comm_code","year"))) setkey(btd, comm_code, year)
   
-  target_cols <- fd[, which(iso3c %in% target_iso3 & fd == "fuel")]
+  ## ALL final-demand uses (not just fd == "fuel"): every fd column of a target
+  ## country is kept, and the per-country tapply(sum) below sums across them.
+  target_cols <- fd[, which(iso3c %in% target_iso3)]
   
   rbindlist(lapply(years, function(t) {
     ty <- as.character(t)
@@ -1291,6 +1293,34 @@ ggplot2::ggsave(
 )
 
 
+################################################################################
+##  10.  EXTRACT: rescaled embodied feedstock mix over ALL EU countries (saved)
+################################################################################
+## The main script (§3-§9) computes AY_resc / AY_resc2 over the SMALL comparison
+## set `target_iso3` only, and must stay that way. For the saved product we need
+## the rescaled ("resc") origin reconstruction over the FULL continent == "EU"
+## consumer set. So we run compute_AY_origin ONCE MORE with the EU consumer set:
+## a standalone object that leaves AY_resc / AY_resc2 (and everything upstream)
+## untouched. `target_iso3` only widens which consumer columns are extracted —
+## the per-(year, biofuel) origin resolution is unchanged — so this is just the
+## same "resc" reconstruction evaluated for more consumers.
+##
+## Only the resc model version is built (the file carries fabio_resc only), and
+## split_nonS = FALSE since fabio_nonS is not needed here.
 
+EU_countries <- regions[continent == "EU", iso3c]
 
+AY_resc_EU <- finalize_AY(
+  compute_AY_origin(years, biofuel_codes, EU_countries,
+                    m_resc$Z, m_resc$Y, m_resc$io, m_resc$fd, tcf, m_resc$btd, regions,
+                    split_nonS = FALSE),
+  m_resc$io)
+harmonise(AY_resc_EU)
 
+## same projection/schema as AY_resc2 (§5), so the saved file is identical in
+## structure to before — just extended to every EU-continent consumer country.
+AY_resc2_EU <- AY_resc_EU[, .(year, country, biofuel_code, comm_code,
+                              origin_country_iso3, item, fabio_resc = fabio_value)]
+
+dir.create("output/EU", recursive = TRUE, showWarnings = FALSE)
+fwrite(AY_resc2_EU, "output/EU/FABIO_EU_embodied_feedstock_mix.csv")

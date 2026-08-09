@@ -5,6 +5,16 @@ source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline) or "capped". The capped run reads/writes a
+# parallel extension tree (data/extensions_capped/) forked by 15_5c, so the
+# uncapped baseline is never touched. Tidy CF files are shared (see 15_8).
+VARIANT  <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "")))
+vsuf     <- if (nzchar(VARIANT)) paste0("_", VARIANT) else ""
+EXT_ROOT <- paste0("data/extensions", vsuf)
+message(sprintf(">>> [15_6] variant = '%s'  (ext tree: %s)",
+                if (nzchar(VARIANT)) VARIANT else "baseline", EXT_ROOT))
+
 items <- fread("inst/sua/items_sua.csv")
 regions <- fread("inst/regions_full.csv")[current==TRUE]
 conc <- fread("inst/conc_biodiversity_cfs.csv")
@@ -41,9 +51,9 @@ ibif_full <- merge(ibif_full, ibif, by = "iso3c", all.x = TRUE)
 
 # Combine impacts and pressures 
 nms <- conc[source == "IBIF", unique(fabio_pressure)]
-files <- paste0("data/extensions/sua/", nms, ".rds")
+files <- file.path(EXT_ROOT, "sua", paste0(nms, ".rds"))
 data_pressures <- setNames(lapply(files, readRDS), nms)
-data_pressures[["fd_gwp_total"]] <- readRDS("data/extensions/fd_sua/gwp_total.rds")
+data_pressures[["fd_gwp_total"]] <- readRDS(file.path(EXT_ROOT, "fd_sua", "gwp_total.rds"))
 pressures <- unformat_extension(data_pressures, c(nms, "fd_gwp_total"), long = TRUE)
 
 # widen to get all pressures
@@ -113,16 +123,16 @@ nms <- setdiff(names(E_sua), nm_fd)
 
 # non-fd extensions
 for (nm in nms) {
-  saveRDS(E_sua[[nm]], paste0("data/extensions/sua/", nm, ".rds"))
-  saveRDS(E_cbs[[nm]], paste0("data/extensions/cbs/", nm, ".rds"))
+  saveRDS(E_sua[[nm]], file.path(EXT_ROOT, "sua", paste0(nm, ".rds")))
+  saveRDS(E_cbs[[nm]], file.path(EXT_ROOT, "cbs", paste0(nm, ".rds")))
 }
 
 #fd extensions
-saveRDS(E_sua[[nm_fd]], paste0("data/extensions/fd_sua/ibif_co2_eq.rds"))
-saveRDS(E_cbs[[nm_fd]], paste0("data/extensions/fd_cbs/ibif_co2_eq.rds"))
+saveRDS(E_sua[[nm_fd]], file.path(EXT_ROOT, "fd_sua", "ibif_co2_eq.rds"))
+saveRDS(E_cbs[[nm_fd]], file.path(EXT_ROOT, "fd_cbs", "ibif_co2_eq.rds"))
 
-saveRDS(E_sua[[nm_fd]], paste0("data/extensions/fd_sua/ibif_total.rds"))
-saveRDS(E_cbs[[nm_fd]], paste0("data/extensions/fd_cbs/ibif_total.rds"))
+saveRDS(E_sua[[nm_fd]], file.path(EXT_ROOT, "fd_sua", "ibif_total.rds"))
+saveRDS(E_cbs[[nm_fd]], file.path(EXT_ROOT, "fd_cbs", "ibif_total.rds"))
 
 # tidy
 rm(list = ls())

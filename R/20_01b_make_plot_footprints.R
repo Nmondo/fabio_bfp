@@ -20,6 +20,10 @@ setwd(fabio_root)
 source("R/19_plot_definitions.R")
 source("R/19_01b_plot_function_footprints.R")
 
+# Plot + table output inherits the capping variant from 19_01b: PLOT_DIR
+# (= <output|output_capped>/plot) and ENV_DIR are defined there. Default is
+# capped; set FABIO_VARIANT=uncapped for the baseline.
+
 ######################################################################################################################
 ############################## PLOT RESULTS #########################################################################
 ######################################################################################################################
@@ -131,7 +135,7 @@ p_hm_ab <- (p_hm_a / p_hm_b) +
         plot.tag.position = "top",
         plot.margin       = margin(t = 12, r = 5, b = 5, l = 5))
 
-ggsave(file.path("output", "plot",
+ggsave(file.path(PLOT_DIR,
                  "2012-2014_vs_2020-2022_IBIF_LCIM_flows_continent_ab.svg"),
        p_hm_ab, width = 10, height = 12.5, dpi = 300)
 p_hm_ab
@@ -178,41 +182,41 @@ rbindlist(lapply(sort(unique(dt_endUseOrigin$year)), function(yr)
 ############################## SAVE PLOTS ###########################################################################
 ######################################################################################################################
 
-dir.create(file.path("output", "plot"), recursive = TRUE, showWarnings = FALSE)
+dir.create(PLOT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-ggsave(filename = file.path("output", "plot", "balance_LU_2012_2022.svg"),
+ggsave(filename = file.path(PLOT_DIR, "balance_LU_2012_2022.svg"),
        plot = plot_netLU_2012_2022,
        width = 10, height = 10, dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "balance_ibif_2012_2022.svg"),
+ggsave(filename = file.path(PLOT_DIR, "balance_ibif_2012_2022.svg"),
        plot = plot_ibif_2012_2022,
        width = 10, height = 10, dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "balance_lcim_terrestrial_2012_2022.svg"),
+ggsave(filename = file.path(PLOT_DIR, "balance_lcim_terrestrial_2012_2022.svg"),
        plot = plot_lcim_terrestrial_2012_2022,
        width = 10, height = 10, dpi = 300)
 
-# ggsave(filename = file.path("output", "plot", "feedstock_impact_by_indicator_grid.svg"),
+# ggsave(filename = file.path(PLOT_DIR, "feedstock_impact_by_indicator_grid.svg"),
 #        plot = p_grid_full,
 #        device = svg,
 #        width = 19, height = 12 , dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif_lu.svg"),
+ggsave(filename = file.path(PLOT_DIR, "feedstock_impact_ibif_lu.svg"),
        plot = p_grid,
        device = svg,
        width = 13, height = 12 , dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif_lcim.svg"),
+ggsave(filename = file.path(PLOT_DIR, "feedstock_impact_ibif_lcim.svg"),
        plot = p_ibif_lcim,
        device = svg,
        width = 13, height = 12 , dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "feedstock_impact_ibif.svg"),
+ggsave(filename = file.path(PLOT_DIR, "feedstock_impact_ibif.svg"),
        plot = p_ibif,
        device = svg,
        width = 7, height = 12 , dpi = 300)
 
-ggsave(filename = file.path("output", "plot", "feedstock_impact_lcim.svg"),
+ggsave(filename = file.path(PLOT_DIR, "feedstock_impact_lcim.svg"),
        plot = p_lcim,
        device = svg,
        width = 7, height = 12 , dpi = 300)
@@ -340,7 +344,7 @@ p_indicator_BRA_IDN_USA <-
   )
 
 ggsave(plot = p_indicator_BRA_IDN_USA,
-       filename = file.path(fabio_root, "output/plot/p_indicator_BRA_IDN_USA.pdf"),
+       filename = file.path(fabio_root, PLOT_DIR, "p_indicator_BRA_IDN_USA.pdf"),
        width = 12,
        height = 9,
        dpi = 300)
@@ -363,7 +367,7 @@ CONSUMER_CONT <- "EU"
 IND_KEEP <- c("ibif_co2_eq", "ibif_land_crop", "ibif_land_grass",
               "ibif_nh3", "ibif_total")          # ibif_total = sum of the four
 
-TAB_DIR  <- file.path("output", "table")
+TAB_DIR  <- file.path(ENV_DIR, "table")
 dir.create(TAB_DIR, recursive = TRUE, showWarnings = FALSE)
 TAB_FILE <- file.path(TAB_DIR, "EU_footprint_by_origin_continent.xlsx")
 
@@ -509,7 +513,7 @@ saveWorkbook(wb_EU, TAB_FILE, overwrite = TRUE)
 # ------------------------------------------------------------------------------
 
 BP_IND  <- "ibif_total"
-TAB_DIR <- file.path("output", "table")
+TAB_DIR <- file.path(ENV_DIR, "table")
 dir.create(TAB_DIR, recursive = TRUE, showWarnings = FALSE)
 
 # reg_cont is defined in the EU-table section above; redefine defensively so this

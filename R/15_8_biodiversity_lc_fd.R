@@ -5,6 +5,16 @@ source("R/00_system_variables.R")
 source("R/01_tidy_functions.R")
 source("R/00_prep_functions.R")
 
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline) or "capped": route pressure reads + impact writes
+# to data/extensions_capped/. The CF tidy files below are identical across runs,
+# so they are always read from the baseline data/extensions/tidy/.
+VARIANT  <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "")))
+vsuf     <- if (nzchar(VARIANT)) paste0("_", VARIANT) else ""
+EXT_ROOT <- paste0("data/extensions", vsuf)
+message(sprintf(">>> [15_8] variant = '%s'  (ext tree: %s)",
+                if (nzchar(VARIANT)) VARIANT else "baseline", EXT_ROOT))
+
 conc <- fread("inst/conc_biodiversity_cfs.csv")
 items <- fread("inst/sua/items_sua.csv")
 regions <- fread("inst/regions_full.csv")[current==TRUE]
@@ -20,14 +30,14 @@ FD_climate <- readRDS("data/extensions/tidy/fd_climate_tidy.rds")
 
 ## Pressures
 nms <- conc[source %in% c("LC", "FD"), unique(fabio_pressure)] 
-files <- paste0("data/extensions/sua/", nms, ".rds")
+files <- file.path(EXT_ROOT, "sua", paste0(nms, ".rds"))
 pressures <- setNames(lapply(files, readRDS), nms)
 pressures <- unformat_extension(pressures, nms, long = FALSE)
 
 ## Final demand pressures
 nms <- conc[source %in% c("LC", "FD") & fd_fabio_pressure != "", 
             unique(fd_fabio_pressure)] 
-files <- paste0("data/extensions/fd_sua/", nms, ".rds")
+files <- file.path(EXT_ROOT, "fd_sua", paste0(nms, ".rds"))
 fdem_pressures <- setNames(lapply(files, readRDS), nms)
 fdem_pressures <- unformat_extension(fdem_pressures, nms, long = FALSE)
 
@@ -223,13 +233,13 @@ E_fdem_cbs <-  c(fdem_cbs_extensions, format_extension, itms = items_cbs)
 
 # save
 for (nm in names(E_sua)) {
-  saveRDS(E_sua[[nm]], paste0("data/extensions/sua/", nm, ".rds"))
-  saveRDS(E_cbs[[nm]], paste0("data/extensions/cbs/", nm, ".rds"))
+  saveRDS(E_sua[[nm]], file.path(EXT_ROOT, "sua", paste0(nm, ".rds")))
+  saveRDS(E_cbs[[nm]], file.path(EXT_ROOT, "cbs", paste0(nm, ".rds")))
 }
 
 for (nm in names(E_fdem_sua)) {
-  saveRDS(E_sua[[nm]], paste0("data/extensions/fd_sua/", nm, ".rds"))
-  saveRDS(E_cbs[[nm]], paste0("data/extensions/fd_cbs/", nm, ".rds"))
+  saveRDS(E_sua[[nm]], file.path(EXT_ROOT, "fd_sua", paste0(nm, ".rds")))
+  saveRDS(E_cbs[[nm]], file.path(EXT_ROOT, "fd_cbs", paste0(nm, ".rds")))
 }
 
 rm(list = ls())

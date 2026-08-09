@@ -37,9 +37,17 @@ model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "
 base_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"          # version-invariant root (E, ex)
 MRIO_PATH <- if (model_version == "bypass")
   paste0(sub("/+$", "", base_path), "/bypass/") else base_path   # version-specific MRIO
-OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
-message(sprintf(">>> [18b extensions] model_version = '%s'  (MRIO: %s | out: %s)",
-                model_version, MRIO_PATH, OUT_DIR))
+
+# ---- CAPPING VARIANT SWITCH --------------------------------------------------
+# FABIO_VARIANT = "" (baseline, loads E.rds -> output/) or "capped" (loads
+# E_capped.rds -> output_capped/), so the two runs can be compared side by side.
+VARIANT <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "capped")))
+vsuf    <- if (VARIANT == "capped") "_capped" else ""
+E_file  <- paste0("E", vsuf, ".rds")
+
+OUT_DIR   <- paste0(if (model_version == "bypass") "output/bypass" else "output", vsuf)
+message(sprintf(">>> [18b extensions] model_version = '%s' | variant = '%s'  (MRIO: %s | E: %s | out: %s)",
+                model_version, if (nzchar(VARIANT)) VARIANT else "baseline", MRIO_PATH, E_file, OUT_DIR))
 
 # Read labels ------------------------------------------------------------------
 input_path <- MRIO_PATH
@@ -60,7 +68,7 @@ allocation <- "value"
 X <- readRDS(paste0(input_path, "losses/X.rds"))
 Y <- readRDS(paste0(input_path, "losses/Y.rds"))
 Z <- readRDS(paste0(input_path, "losses/Z_", allocation, ".rds"))   # Z_value
-E <- readRDS(paste0(base_path, "E.rds"))                    # extensions: shared across versions
+E <- readRDS(paste0(base_path, E_file))                    # extensions: shared across versions
 
 # Make E_bar, 3-year average of the environmental extensions.
 yrs_E_bar <- as.character(2012:2022)
@@ -156,7 +164,7 @@ fp_feedstock <- function(country       = NULL,
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
   if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(base_path, "E.rds"))
+    E <- readRDS(paste0(base_path, E_file))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -341,7 +349,7 @@ fp_trade_breakdown_feedstock <- function(year,
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
   if (!is.null(extension) && is.null(E))
-    E <- readRDS(paste0(base_path, "E.rds"))
+    E <- readRDS(paste0(base_path, E_file))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -593,7 +601,7 @@ fp_enduse_origin <- function(year,
   sub <- if (losses) "losses/" else ""
   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
   if (is.null(Y)) Y <- readRDS(paste0(input_path, sub, "Y.rds"))
-  if (is.null(E)) E <- readRDS(paste0(base_path, "E.rds"))
+  if (is.null(E)) E <- readRDS(paste0(base_path, E_file))
   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
   
   Xi <- X[, as.character(year)]
@@ -674,6 +682,7 @@ fp_enduse_origin <- function(year,
 ibif_stressors <- unique(ex[Stressor %like% "ibif", Stressor])
 extensions_choice <- as.list(c(ibif_stressors,
                                "LCIM_EQ_terrestrial_climate","LCIM_EQ_terrestrial_acidification",
+                               "LCIM_EQ_terrestrial_land_use",
                                "land_harv"))
 
 for (yr in 2012:2022) {
@@ -721,18 +730,18 @@ for (yr in 2012:2022) {
   for (ext in extensions_choice) {
     ext_val <- ext
     message("--- ", yr, " | ext: ", ext, " ---")
-  fp_trade_breakdown_feedstock(
-    year         = yr,
-    extension    = ext_val,
-    commodity    = bp_set,
-    by_commodity = TRUE,
-    by_feedstock = TRUE,
-    bilateral    = TRUE,
-    save         = TRUE,
-    regions = regions, io = io, fd = fd, ex = ex,
-    X = X, Y = Y, Z = Z, E = E_bar
-  )
-}
+    fp_trade_breakdown_feedstock(
+      year         = yr,
+      extension    = ext_val,
+      commodity    = bp_set,
+      by_commodity = TRUE,
+      by_feedstock = TRUE,
+      bilateral    = TRUE,
+      save         = TRUE,
+      regions = regions, io = io, fd = fd, ex = ex,
+      X = X, Y = Y, Z = Z, E = E_bar
+    )
+  }
 }
 
 
@@ -803,7 +812,7 @@ for (ext in enduse_ext_choice) {
 #   if (is.null(X)) X <- readRDS(paste0(input_path, sub, "X.rds"))
 #   if (is.null(Z)) Z <- readRDS(paste0(input_path, sub, "Z_", allocation, ".rds"))
 #   if (!is.null(extension) && is.null(E))
-#     E <- readRDS(paste0(base_path, "E.rds"))
+#     E <- readRDS(paste0(base_path, E_file))
 #   if (is.null(L)) L <- readRDS(paste0(input_path, sub, year, "_L_", allocation, ".rds"))
 #
 #   Xi <- X[, as.character(year)]

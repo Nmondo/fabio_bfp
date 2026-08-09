@@ -33,9 +33,18 @@ regions <- setDT(read_csv("inst/regions.csv"))[current==TRUE]
 # Rescaled is the default, so behaviour is unchanged. Keep in sync with 18_02.
 model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
 model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
-IN_DIR <- if (model_version == "bypass") "output/bypass" else "output"
-message(sprintf(">>> [19_02] model_version = '%s'  (reading SDA from: %s)",
-                model_version, IN_DIR))
+
+# ---- CAPPING VARIANT (default = capped) --------------------------------------
+# FABIO_VARIANT = "capped" (default) or "uncapped". SDA CSVs come from 18_02 and
+# are variant-dependent; plots are written to a per-variant dir.
+VARIANT   <- tolower(trimws(Sys.getenv("FABIO_VARIANT", unset = "capped")))
+is_capped <- VARIANT == "capped"
+vsuf      <- if (is_capped) "_capped" else ""
+IN_DIR    <- paste0(if (model_version == "bypass") "output/bypass" else "output", vsuf)
+PLOT_DIR  <- file.path(IN_DIR, "plot")
+message(sprintf(">>> [19_02] model_version = '%s' | variant = '%s'  (SDA in: %s | plots: %s)",
+                model_version, VARIANT, IN_DIR, PLOT_DIR))
+dir.create(PLOT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 
 ######################################################################################################################
@@ -350,7 +359,7 @@ plot_SDA_chain <- function(first_year,
                            extension,
                            top_n      = 9,
                            input_dir  = IN_DIR,
-                           output_dir = file.path("output", "plot"),
+                           output_dir = PLOT_DIR,
                            width      = 12,
                            height     = 12) {
   
@@ -446,7 +455,7 @@ plot_SDA_chain_continent <- function(first_year,
                                      anchor_zero    = TRUE,   # cumulate from 0 in the base year (= first_year)
                                      show_total     = TRUE,   # overlay the NET cumulative delta (see note below)
                                      input_dir      = IN_DIR,
-                                     output_dir     = file.path("output", "plot"),
+                                     output_dir     = PLOT_DIR,
                                      width          = 12,
                                      height         = 12) {
   
@@ -615,7 +624,7 @@ plot_SDA_chain_continent <- function(first_year,
 
 plot_SDA_chained_drivers <- function(indicator,
                                      top_n_feedstock = 12,
-                                     output_dir = file.path("output", "plot"),
+                                     output_dir = PLOT_DIR,
                                      width = 11, height = 6.5, dpi = 300) {
   
   # --- Indicator metadata ----------------------------------------------------
@@ -803,7 +812,7 @@ plot_SDA_chained_drivers <- function(indicator,
 plot_SDA_chained_drivers_continent <- function(indicator,
                                                consumer_continent = "EU",
                                                top_n_feedstock = 12,
-                                               output_dir = file.path("output", "plot"),
+                                               output_dir = PLOT_DIR,
                                                width = 9, height = 6, dpi = 300) {
   
   # --- Indicator metadata ----------------------------------------------------
@@ -957,4 +966,3 @@ plot_SDA_chained_drivers_continent <- function(indicator,
   
   invisible(list(plots = plots, plot_base = plot_base))
 }
-
