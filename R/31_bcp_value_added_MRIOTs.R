@@ -96,7 +96,7 @@ BCP_AG_SECTORS <- data.table(
 # Raw upstream database trees (environment-overridable).
 FINEPRINT_ROOT <- Sys.getenv("FINEPRINT_ROOT", unset = "/mnt/nfs_fineprint/tmp")
 GLORIA_DIR     <- file.path(FINEPRINT_ROOT, "gloria", "v060-compiled")
-EXIOBASE_DIR   <- file.path(FINEPRINT_ROOT, "exiobase", "v3.10")
+EXIOBASE_DIR   <- file.path(FINEPRINT_ROOT, "exiobase", "v3.10", "ixi")
 
 GLORIA_README <- file.path(GLORIA_DIR, "labels", "GLORIA_ReadMe_060.xlsx")
 GLORIA_V_DIR  <- file.path(GLORIA_DIR, "IOTs_producer_prices", "V")
