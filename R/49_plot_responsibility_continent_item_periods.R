@@ -163,7 +163,9 @@ MIN_ITEM_SHARE_BYFUEL <- 0.03    # chain rows: below this share of a cell       
 ITEM_SCOPE <- "world"     # "world" | "set"
 
 # --- type size and furniture -------------------------------------------------
-BASE_SIZE    <- 14
+# Same value as 44/45/48: the eight region columns are read at panel width, and
+# the item legend below them scales with this through KEY_WIDTH_IN.
+BASE_SIZE    <- 16
 SHOW_TITLES  <- TRUE      # FALSE -> the text goes to captions_*.txt instead
 SHOW_CAPTION <- TRUE
 

@@ -459,9 +459,12 @@ SEG_BORDER_LWD <- 0.25
 # --- type size and furniture -------------------------------------------------
 # ONE number for the type. 11pt was sized for a 17in standalone SVG; these figures
 # now go into a document at roughly their natural size, where 7pt axis text lands
-# at about 5pt on the page. Everything in the theme is expressed relative to this,
-# so raise BASE_SIZE and the whole figure scales together.
-BASE_SIZE <- 14
+# at about 5pt on the page. The binding case is the eight-panel grid -- the EU set
+# and the continents -- where a panel is barely wider than the three account
+# labels underneath it, so the type has to be legible at PANEL width, not at
+# canvas width. Everything in the theme is expressed relative to this, so raise
+# BASE_SIZE and the whole figure scales together.
+BASE_SIZE <- 16
 
 # The title and subtitle are dropped from the CANVAS, not from the record: with
 # SHOW_TITLES = FALSE the text is written to captions_*.txt beside the SVGs, one

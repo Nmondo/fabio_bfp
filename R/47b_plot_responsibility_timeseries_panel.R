@@ -78,8 +78,17 @@ COUNTRY_SET <- "eu"
 # run. Leave NULL to require 44.
 MANUAL_COUNTRIES <- NULL
 FREE_Y   <- TRUE     # free per ROW under facet_grid; FALSE = one scale for the whole grid
-PANEL_W  <- 1.55     # inches per country column
-PANEL_H  <- 2.15     # inches per fuel row
+
+# --- type size and furniture -------------------------------------------------
+# One number for the type, and the same value as 44/45/48/49. This grid, 44's
+# figure 2 and 45 are meant to be read column-for-column, so type that disagreed
+# between them would break that reading before anything else did. The panel
+# geometry below is sized WITH it: eight country columns at 11pt fitted in 1.55in
+# each, and holding that width while the type grew would just collide the year
+# labels, so both dimensions carry the same 16/11 factor.
+BASE_SIZE <- 16
+PANEL_W  <- 2.25     # inches per country column
+PANEL_H  <- 3.1      # inches per fuel row
 X_BREAKS <- 5        # year label pitch; 4 collides at this column width
 
 # --- long table: year x biofuel x country x account --------------------------
@@ -238,8 +247,14 @@ plot_panel <- function(d_all, countries, chain_tot, share) {
                 inherit.aes = FALSE, fill = "grey50", alpha = 0.16) +
     geom_line(aes(colour = account, linetype = account), linewidth = 0.6) +
     geom_point(aes(colour = account), size = 0.7) +
-    scale_colour_manual(values = account_palette, drop = FALSE) +
-    scale_linetype_manual(values = account_linetype, drop = FALSE) +
+    # 40's ACCOUNT_LEGEND_LABELS on BOTH scales, and no name on either: ggplot
+    # merges the colour and linetype guides into one only when their titles AND
+    # their labels agree, so a label set given to just one of them would split
+    # the legend in two.
+    scale_colour_manual(values = account_palette,
+                        labels = ACCOUNT_LEGEND_LABELS, drop = FALSE) +
+    scale_linetype_manual(values = account_linetype,
+                          labels = ACCOUNT_LEGEND_LABELS, drop = FALSE) +
     scale_x_continuous(breaks = scales::breaks_width(X_BREAKS),
                        guide  = guide_axis(check.overlap = TRUE)) +
     scale_y_continuous(expand = expansion(mult = c(0.02, 0.08))) +
@@ -252,15 +267,15 @@ plot_panel <- function(d_all, countries, chain_tot, share) {
                scales   = if (FREE_Y) "free_y" else "fixed",
                switch   = "both",
                labeller = labeller(biofuel_group = biofuel_label)) +
-    labs(x = NULL, y = y_lab, colour = "Account", linetype = "Account",
+    labs(x = NULL, y = y_lab, colour = NULL, linetype = NULL,
          title = sprintf("%s responsibility over time: %s, by fuel (%s VA base, %s allocation)",
                          META$short_label, SET_TITLE, VA_BASE, allocation),
          subtitle = paste0(sub,
                            if (FREE_Y) "\nTop row is all three chains pooled. Y AXIS IS FREE PER ROW: compare countries within a row, never heights across rows -- not even against Total." else "")) +
     guides(colour = guide_legend(nrow = 1), linetype = guide_legend(nrow = 1)) +
-    theme_minimal(base_size = 11) +
+    theme_minimal(base_size = BASE_SIZE) +
     theme(legend.position   = "bottom",
-          legend.title      = element_text(face = "bold"),
+          legend.title      = element_blank(),
           # The switched strips are their OWN theme elements: setting strip.text.x
           # / strip.text.y leaves the bottom and left strips at the inherited
           # defaults, so the settings appear to do nothing.
@@ -276,8 +291,11 @@ plot_panel <- function(d_all, countries, chain_tot, share) {
           panel.grid.minor  = element_blank(),
           panel.spacing.x   = unit(6, "pt"),
           panel.spacing.y   = unit(9, "pt"),
-          axis.text.x       = element_text(size = 8),
-          plot.subtitle     = element_text(size = 8.5, colour = "grey30"))
+          # The year labels are the densest text on the canvas -- one per
+          # X_BREAKS across a 2.25in column -- so they sit further below
+          # BASE_SIZE than anything else in the theme.
+          axis.text.x       = element_text(size = BASE_SIZE - 5),
+          plot.subtitle     = element_text(size = BASE_SIZE - 4, colour = "grey30"))
 }
 
 # --- run ---------------------------------------------------------------------

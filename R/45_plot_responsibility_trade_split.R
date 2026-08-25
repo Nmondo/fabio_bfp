@@ -131,8 +131,11 @@ RANK_BY <- "max"       # "max" | "mean" | "CBA" | "HDI" | "PBA"
 
 # --- type size and furniture -------------------------------------------------
 # One number for the type; everything in the theme is relative to it. 11pt was
-# sized for a wide standalone SVG and lands at ~5pt on a document page.
-BASE_SIZE <- 14
+# sized for a wide standalone SVG and lands at ~5pt on a document page. The
+# eight-panel EU set is read at PANEL width, not at canvas width, so the value
+# matches 44's: the two figures are meant to be lined up column-for-column, and
+# type that disagreed between them would break that reading first.
+BASE_SIZE <- 16
 
 # Title and subtitle off the CANVAS, not out of the record: with SHOW_TITLES =
 # FALSE the text is written to captions_*.txt beside the SVGs, one block per
@@ -617,8 +620,8 @@ SUB <- paste0(
   "CBA consumption-based | HDI justice-based (Sun et al. 2022) | VA value added-based ",
   "(Pi\u00f1ero et al. 2019, eq. 8): re-attributions of one and the same total.\n",
   "Every bar is the SAME country; only the charging rule moves, so the bar HEIGHT is that ",
-  "account. Segments locate the PRODUCTION the charged impact is attributed to (see legend):\ndark = produced here for export, ",
-  "mid-grey = produced and charged here, light = produced abroad. ",
+  "account. Segments locate the PRODUCTION the accounted-for impact is attributed to (see legend):\ndark = produced here for export, ",
+  "mid-grey = produced and accounted for here, light = produced abroad. ",
   if (SHOW_PBA)
     paste0("PBA charges the whole dark export block; CBA charges none of it (it vanishes); ",
            "HDI keeps HDI_p/(HDI_p+HDI_c) of it.")
@@ -643,8 +646,9 @@ SUB <- paste0(
 # describing the wrong figure.
 
 # legend_nrow: three keys in ONE row was safe at 11pt on a 24in canvas. At
-# BASE_SIZE 14 on a ~11in canvas the labels ("Production here, exported ->
-# charged here") no longer fit side by side, so the row count follows the width.
+# BASE_SIZE 16 on a ~13in canvas the labels ("Production here, exported ->
+# accounted for here") no longer fit side by side, so the row count follows the
+# width.
 plot_split <- function(p, title, subtitle, legend_nrow = 1L) {
   gg <- ggplot(p, aes(x = account, y = value / META$scale_factor, fill = component)) +
     panel_bands(p, "iso3c", SEPARATOR, BAND_FILL) +        # BENEATH the bars
@@ -705,15 +709,15 @@ for (s in names(sets)) {
   # one row. Hold the bar DENSITY constant instead of the canvas width (~0.45in
   # per bar) and cap it -- past ~24in the labels are the problem, not the space.
   # The FLOOR is what matters now that the sets are 5-7 countries: the subtitle is
-  # six lines of fixed-length text and needs ~13in whatever the country count is,
-  # so below that it wraps mid-clause. Wide canvas + few panels = fat bars; that
-  # is the trade for panels wide enough to label.
-  # The 13in floor held the six-line subtitle. Without it only the legend needs
-  # room -- but at BASE_SIZE 14 the three flow labels need ~11in side by side, so
-  # the floor drops to 11 and the legend wraps to two rows below that.
-  PLOT_W <- min(24, max(if (SHOW_TITLES) 13 else 11,
+  # six lines of fixed-length text and at BASE_SIZE - 4 needs ~14in whatever the
+  # country count is, so below that it wraps mid-clause. Wide canvas + few panels
+  # = fat bars; that is the trade for panels wide enough to label.
+  # With the titles off only the legend needs room -- its three flow labels come
+  # to ~13in side by side at BASE_SIZE - 3 -- so the floor drops to 13 and the
+  # legend wraps to two rows below that.
+  PLOT_W <- min(24, max(if (SHOW_TITLES) 14 else 13,
                         2 + 0.45 * length(iso) * length(ACCOUNTS)))
-  LEG_N  <- if (PLOT_W >= 12) 1L else 2L
+  LEG_N  <- if (PLOT_W >= 13) 1L else 2L
   
   p <- long[iso3c %in% iso]
   p[, iso3c := factor(iso3c, levels = iso)]

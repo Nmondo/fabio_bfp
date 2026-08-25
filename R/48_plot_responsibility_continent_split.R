@@ -118,7 +118,10 @@ DROP_REGIONS <- character(0)   # e.g. "Unknown" -- regions to leave out entirely
 REGION_ORDER <- "pba"   # "pba" | "cba" | "alpha"
 
 # --- type size and furniture -------------------------------------------------
-BASE_SIZE    <- 14
+# Same value as 44/45, so a region panel here and a country panel there are read
+# at the same size on the page; with eight regions side by side the panel, not
+# the canvas, sets what is legible.
+BASE_SIZE    <- 16
 SHOW_TITLES  <- TRUE    # FALSE -> the text goes to captions_*.txt instead
 SHOW_CAPTION <- TRUE
 
@@ -469,9 +472,9 @@ SUB <- paste0(
   "CBA consumption-based | HDI justice-based (Sun et al. 2022) | VA value added-based ",
   "(Pi\u00f1ero et al. 2019, eq. 8): re-attributions of one and the same total.\n",
   "Every bar is the SAME region; only the charging rule moves, so the bar HEIGHT is that ",
-  "account -- the same heights 43 draws. Segments locate the PRODUCTION the charged impact ",
-  "is attributed to (see legend):\ndark = produced in-region for export OUT of it, ",
-  "mid-grey = produced and charged in-region, light = produced outside it. ",
+  "account -- the same heights 43 draws. Segments locate the PRODUCTION the accounted-for ",
+  "impact is attributed to (see legend):\ndark = produced in-region for export, ",
+  "mid-grey = produced and accounted for in-region, light = produced outside it. ",
   if (SHOW_PBA)
     paste0("PBA charges the whole dark export block; CBA charges none of it (it vanishes); ",
            "HDI keeps HDI_p/(HDI_p+HDI_c) of it, pair by pair.")
@@ -532,13 +535,14 @@ plot_split <- function(p, title, subtitle, rows = "period", free_y = FALSE,
 
 # --- canvas ------------------------------------------------------------------
 # Hold the bar DENSITY constant (~0.42in per bar) rather than the canvas width,
-# with a floor set by the LEGEND: at BASE_SIZE 14 the three regional flow labels
-# are longer than 45's and need ~13in side by side, so below that the legend
-# wraps to two rows instead of overflowing.
+# with a floor set by the LEGEND: at BASE_SIZE 16 the three regional flow labels
+# are longer than 45's and need ~16in side by side, so below that the legend
+# wraps to two rows instead of overflowing. Eight regions come to ~15in on the
+# density rule alone, so for the usual grid it is this floor that sets the width.
 N_REG  <- length(ord)
-PLOT_W <- min(26, max(if (SHOW_TITLES) 14 else 12,
+PLOT_W <- min(26, max(if (SHOW_TITLES) 16 else 15,
                       2 + 0.42 * N_REG * length(ACCOUNTS)))
-LEG_N  <- if (PLOT_W >= 14) 1L else 2L
+LEG_N  <- if (PLOT_W >= 16) 1L else 2L
 caps   <- character(0)
 
 # --- [1] the pooled figure: rows = period, columns = region ------------------

@@ -201,6 +201,23 @@ account_palette <- setNames(c("#0072B2",   # blue
 # dashed = normative (how it ought to be attributed)
 account_linetype <- setNames(c("solid", "solid", "22", "22"), ACCOUNT_LEVELS)
 
+# The same four accounts, spelled out for the figure legends (43, 47, 47b), which
+# carry no legend title: "Production" beside a coloured line or swatch names a
+# quantity, not an attribution rule, and the reader meets these figures before the
+# accounts are defined in the text. Only the PRINTED label changes -- the factor
+# levels stay ACCOUNT_LEVELS, so every filter, dcast and setnames in the block
+# keeps working on the short names, as does 43's ACCOUNT_OF cross-check. Keyed off
+# ACCOUNT_LEVELS for the same reason account_palette is, and the VA entry keeps
+# carrying its variant so a figure cannot claim one definition while plotting the
+# other.
+ACCOUNT_LEGEND_LABELS <- setNames(
+  c("Production-based account",
+    "Consumption-based account",
+    "HDI-based account",
+    if (VA_VARIANT == "full") "Value-added-based account"
+    else "Value-added-based account (ex TLS)"),
+  ACCOUNT_LEVELS)
+
 # 43's divergence figures fill by ALLOCATION rather than by account; the two hues
 # are the entries above for the same two accounts, so the mapping survives.
 alloc_palette <- c("HDI (justice-based)" = "#009E73",
@@ -370,20 +387,24 @@ flow_colors <- c(domestic    = "grey47",
                  import_kept = "grey72")
 
 # The left side of each arrow names WHERE THE PRODUCTION IS, not where the damage
-# materialises -- see NONLOCAL_PATHWAYS. "charged here" means the party the
-# account charges: the consumer for PBA/CBA/HDI, the value generator for VA.
+# materialises -- see NONLOCAL_PATHWAYS. "accounted for here" means the party the
+# account books the impact to: the consumer for PBA/CBA/HDI, the value generator
+# for VA.
 # `unit` switches the spatial words between 45's countries and 48's regions; the
-# claim is identical, only the resolution of "here" changes.
+# claim is identical, only the resolution of "here" changes. "exported" needs no
+# qualifier on the regional side either: 41 and 42 fold their flow matrices onto
+# regions BEFORE this figure sees them, so an intra-regional flow has already
+# collapsed into `domestic` and nothing left in `export_kept` stays in-region.
 flow_labels_for <- function(unit = c("country", "region")) {
   unit <- match.arg(unit)
   if (unit == "country")
-    c(domestic    = "Production here \u2192 charged here",
-      export_kept = "Production here, exported \u2192 charged here",
-      import_kept = "Production abroad \u2192 charged here")
+    c(domestic    = "Production here \u2192 accounted for here",
+      export_kept = "Production here, exported \u2192 accounted for here",
+      import_kept = "Production abroad \u2192 accounted for here")
   else
-    c(domestic    = "Production in-region \u2192 charged in-region",
-      export_kept = "Produced in-region, exported OUT of it \u2192 charged in-region",
-      import_kept = "Production outside the region \u2192 charged in-region")
+    c(domestic    = "Production in-region \u2192 accounted for in-region",
+      export_kept = "Production in-region, exported \u2192 accounted for in-region",
+      import_kept = "Production outside the region \u2192 accounted for in-region")
 }
 
 # Which pathways of an indicator do NOT do their damage where the production is.

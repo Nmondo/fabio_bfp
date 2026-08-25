@@ -247,8 +247,9 @@ plot_accounts <- function(d, title, subtitle = NULL) {
   d <- copy(d)[, value := value / META$scale_factor]
   ggplot(d, aes(x = continent, y = value, fill = account)) +
     geom_col(position = position_dodge2(preserve = "single"), width = 0.75) +
-    scale_fill_manual(values = account_palette, drop = FALSE) +
-    labs(x = NULL, y = META$y_label, fill = "Account",
+    scale_fill_manual(values = account_palette,
+                      labels = ACCOUNT_LEGEND_LABELS, drop = FALSE) +
+    labs(x = NULL, y = META$y_label, fill = NULL,
          title = title, subtitle = subtitle) +
     # ggplot frees a scale per row/column, never per panel, so "free_y" on this
     # layout gives each chain -- and the Total row -- its own y axis while both
@@ -261,7 +262,7 @@ plot_accounts <- function(d, title, subtitle = NULL) {
                labeller = labeller(biofuel_group = chain_labeller)) +
     theme_minimal() +
     theme(legend.position   = "bottom",
-          legend.title      = element_text(face = "bold"),
+          legend.title      = element_blank(),
           strip.text        = element_text(face = "bold"),
           axis.text.x       = element_text(angle = 45, hjust = 1),
           strip.placement   = "outside",
