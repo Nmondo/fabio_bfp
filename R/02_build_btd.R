@@ -9,7 +9,6 @@ if (!nzchar(fabio_root)) {
 }
 setwd(fabio_root)
 setwd(fabio_root)
-btd_full_tidy <- readRDS("data/tidy/btd_full_tidy.rds")
 
 library("data.table")
 library("tidyverse")
@@ -71,8 +70,8 @@ eth <- baci[grep("^2207[0-9]*$", item_code), ]
 eth[, `:=`(item = "Alcohol, Non-Food", item_code = 2659)]
 
 eth <- dt_rename(eth, drop = FALSE,
-  rename = c("exporter" = "from", "exporter_code" = "from_code",
-    "importer" = "to", "importer_code" = "to_code"))
+                 rename = c("exporter" = "from", "exporter_code" = "from_code",
+                            "importer" = "to", "importer_code" = "to_code"))
 
 
 
@@ -136,4 +135,3 @@ unique(btd$item_code[btd$item_code %in% items$item_code])
 # Store -------------------------------------------------------------------
 
 saveRDS(btd, "data/tidy/btd_full_tidy.rds")
-
