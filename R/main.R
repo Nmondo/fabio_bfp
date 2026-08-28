@@ -101,10 +101,27 @@ source("R/13_mrio.R"); rm(list = ls()); gc()
 # Computing Leontief inverse ----------------------------------------------------
 source("R/14_leontief_inverse.R"); rm(list = ls()); gc()
 
+# Building environmental extensions ----------------------------------------------------
 
+# Requires the spatial fertiliser and cropland NetCDF grids (see script), plus
+# data/NPK/country_mapping.rds from R/00_7_prep_spatial_NPK.R
+# source("R/15_2_NPK_spatial.R"); rm(list = ls()); gc()
 
+source("R/15_1_land_mass_water.R"); rm(list = ls()); gc()
+source("R/15_3_NPK_fertilizer_application.R"); rm(list = ls()); gc()
+source("R/15_4_NP_balance.R"); rm(list = ls()); gc()
+source("R/15_5_ghg.R"); rm(list = ls()); gc()
+source("R/15_6_biodiversity_ibif.R"); rm(list = ls()); gc()
+source("R/15_7_biodiversity_tidy.R"); rm(list = ls()); gc()
+source("R/15_8_biodiversity_lc_fd.R"); rm(list = ls()); gc()
+source("R/15_9_ecosystem_services.R"); rm(list = ls()); gc()
 
+# Compiling the extension matrix ----------------------------------------------------
+source("R/16_extensions_main.R"); rm(list = ls()); gc()
 
-
-
-
+# Capped-pressure variant ----------------------------------------------------
+# 15_5b caps the pressure files in place and backs up the originals; 15_5c forks
+# them into data/extensions_capped/ and restores the baseline. Afterwards re-run
+# 15_6, 15_8, 15_9 and 16 with FABIO_VARIANT=capped to get E_capped.rds.
+# source("R/15_5b_cap_pressures.R"); rm(list = ls()); gc()
+# source("R/15_5c_fork_capped_tree.R"); rm(list = ls()); gc()
