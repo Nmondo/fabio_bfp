@@ -85,7 +85,7 @@ WRITE_FILES <- TRUE      # FALSE = audit-only dry run (nothing on disk is change
 EXT_DIRS    <- c("sua", "cbs")   # final-demand (fd_*) extensions are NOT capped here
 
 # Rows in E that are CHARACTERIZED IMPACTS, not pressures -> excluded by prefix.
-IMPACT_PREFIXES <- c("ES_", "FD_", "LCIM_", "ibif_")
+IMPACT_PREFIXES <- c("ES_", "FD_", "LCIM_", "LCIM1_", "ibif_")
 # 'biomass' is the production/output measure itself (intensity ~ 1 by construction).
 NON_PRESSURE_EXACT <- c("biomass")
 

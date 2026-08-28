@@ -78,16 +78,16 @@ nms <- copy(nms_sua)
 nms_fd <- copy(nms_fd_sua)
 rm(nms_cbs, nms_sua, nms_fd_sua, nms_fd_cbs, p, pairs, msg)
 
-nms <- setdiff(nms, setdiff(nms, E_labels$Stressor))
-
-
-
 # check if E_labels is fully updated
-missing_labels <- E_labels[!Stressor %in% nms]
-missing_labels_fd <- E_fd_labels[!Stressor %in% nms_fd]
+# Compare against the file lists BEFORE any filtering: compile_extension() below
+# takes its rownames straight from list.files(), so an unlabelled extension file
+# would otherwise add a row to E without adding one to ex_labels.csv, silently
+# offsetting the two.
+missing_labels    <- setdiff(nms,    E_labels$Stressor)
+missing_labels_fd <- setdiff(nms_fd, E_fd_labels$Stressor)
 
-if (nrow(missing_labels) > 0)    stop("E_labels needs to be updated -> ", paste(missing_labels,    collapse = ", "), " is present in extension folder but not in E_labels")
-if (nrow(missing_labels_fd) > 0) stop("E_labels needs to be updated -> ", paste(missing_labels_fd, collapse = ", "), " is present in fd extension folder but not in E_labels")
+if (length(missing_labels) > 0)    stop("E_labels needs to be updated -> ", paste(missing_labels,    collapse = ", "), " is present in extension folder but not in E_labels")
+if (length(missing_labels_fd) > 0) stop("E_fd_labels needs to be updated -> ", paste(missing_labels_fd, collapse = ", "), " is present in fd extension folder but not in E_fd_labels")
 
 # exclude possible extra lines in E_labels
 E_labels <- E_labels[Stressor %in% nms]
@@ -100,7 +100,7 @@ E_fd_labels <- E_fd_labels[order(match(E_fd_labels$Stressor, nms_fd)), ]
 # check that the ordering worked
 if (!all(E_labels$Stressor == nms)) stop("Re-do column ordering for E_labels to match files")
 if (!all(E_fd_labels$Stressor == nms_fd)) stop("Re-do column ordering for E_fd_labels to match files")
-  
+
 rm(missing_labels, missing_labels_fd)
 
 # Compile all extensions -----------------
@@ -122,6 +122,13 @@ E_fd_cbs <- compile_extension(data_fd_cbs, files_fd_cbs)
 
 E_sua <- compile_extension(data_sua, files_sua)  
 E_fd_sua <- compile_extension(data_fd_sua, files_fd_sua)  
+
+# Row order guard: compiled row order must equal the label order, since ex_labels.csv
+# is written separately from E and nothing downstream re-checks the pairing.
+if (!all(rownames(E_cbs[[as.character(years[1])]]) == E_labels$Stressor))
+  stop("E_cbs row order does not match E_labels.")
+if (!all(rownames(E_sua[[as.character(years[1])]]) == E_labels$Stressor))
+  stop("E_sua row order does not match E_labels.")
 
 
 
@@ -260,10 +267,3 @@ fwrite(E_labels,    paste0(output_dir_bcp, "ex_labels.csv"))   # identical acros
 # 
 # fwrite(E_labels, paste0(output_dir_v525, "ex_labels.csv"))
 # fwrite(E_fd_labels, paste0(output_dir_v525, "ex_fd_labels.csv"))
-
-
-
-
-
-
-
