@@ -59,7 +59,7 @@ saveRDS(harv_area[year %in% years], "data/NPK/harv_area_sua_incl_grazing.rds")
 # Starting with hfubc (this dataset has a timeline but relatively few data points)
 # can be downloaded from https://datadryad.org/downloads/file_stream/3940355
 hfubc <- fread("input/NPK/FUBC_1_to_9_data.csv")
-conc <- fread("inst/NPK/conc_HFUBC_sua.csv")
+conc_hfubc <- fread("inst/NPK/conc_HFUBC_sua.csv")
 
 # subset
 hfubc <- hfubc[,.(Country, iso3c = ISO3_code, Year, Crop, 
@@ -82,7 +82,7 @@ hfubc[, ':=' (N_rate = N/ha, P_rate = P/ha,
                                                  Year = NULL)] 
 
 # ensure concordance with fabio items
-hfubc <- merge(hfubc, conc, by.x = "Crop", by.y = "item_hfubc")
+hfubc <- merge(hfubc, conc_hfubc, by.x = "Crop", by.y = "item_hfubc")
 hfubc <- hfubc[item != "",]
 
 # create averages weighted by area for items that are more aggregated in fabio
@@ -105,7 +105,7 @@ numeric_cols <- names(P_app)[sapply(P_app, is.numeric)]
 P_app[, (numeric_cols) := lapply(.SD, function(x) x * 0.436), .SDcols = numeric_cols]
 app <- merge(app, P_app, by = c("iso_a3", "crop"), all = TRUE)
 
-conc <- fread("inst/NPK/conc_NPK_sua.csv")
+conc_NPK <- fread("inst/NPK/conc_NPK_sua.csv")
 
 
 # for ensuring concordance, harvested area from the cropgrids dataset is used
@@ -113,8 +113,7 @@ harv_area_grids <- readRDS("data/NPK/harvland_area_cropgrids.rds")
 harv_area_grids <- harv_area_grids[!is.na(iso_a3)]
 
 app <- merge(app, harv_area_grids, by = c("crop", "iso_a3"), all = TRUE)
-app <- merge(app, conc, by.x = "crop",
-             by.y = "item_npk", allow.cartesian = TRUE)
+app <- merge(app, conc_NPK, by.x = "crop", by.y = "item_npk", allow.cartesian = TRUE)
 app <- app[!is.na(item) & item != ""]
 
 # Aggregating countries not in fabio to RoW
@@ -145,9 +144,9 @@ app[,  `:=`(N_rate = fifelse(is.na(N_rate), weighted_N, N_rate),
            , `:=` (weighted_N = NULL, weighted_P = NULL)]
 
 # Creating full dt for gap filling
-app_full <- CJ(items[item_code %in% conc_NPK$item_code, item_code],
-                 regions[, iso3c],
-                 years_full)
+app_full <- CJ(items[item_code %in% conc_NPK$item_code |
+                       item_code %in% conc_hfubc$item_code, item_code],
+               regions[, iso3c], years_full)
 
 
 
@@ -204,7 +203,7 @@ app_full[item_code != 2001, `:=` (N_rate = fifelse(is.na(N_rate),N_reg, N_rate),
                  P_rate = fifelse(is.na(P_rate),P_reg, P_rate))]
 app_full[, `:=` (P_reg = NULL, N_reg = NULL)]
 app_full[is.na(N_rate), N_rate := 0]
-app_full[is.na(P_rate), N_rate := 0]
+app_full[is.na(P_rate), P_rate := 0]
 
 # filter for current years
 app <- app_full[ year %in% years,]
@@ -225,6 +224,3 @@ saveRDS(app, "data/NPK/SF_application_sua.rds")
 
 rm(list = ls())
 gc()
-
-
-
