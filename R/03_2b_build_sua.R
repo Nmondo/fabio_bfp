@@ -31,7 +31,7 @@ btd <- btd[year %in% years, ]
 # Adapt units for small animals
 # TODO: What's up here? -> no need to change anything anymore after Martin's update, but this code does not seem right
 btd[item_code %in% prod_trad[unit == "1000 An" & element == "Stocks", unique(item_code)],
-                                 `:=` (value = value/1000 , unit = "1000 head")]
+    `:=` (value = value/1000 , unit = "1000 head")]
 
 
 cat("\nGiving preference to units in the following order:\n",
@@ -181,11 +181,11 @@ addsua <- merge(addsua, prod_trad[element == "Export Quantity", .(year, area_cod
 
 # add missing imports and exports from btd
 addsua[, exports_btd := exps$value[match(paste(addsua$year, addsua$area_code, addsua$item_code),
-                                     paste(exps$year, exps$from_code, exps$item_code))]]
+                                         paste(exps$year, exps$from_code, exps$item_code))]]
 addsua[is.na(exports), exports := exports_btd]
 
 addsua[, imports_btd := imps$value[match(paste(addsua$year, addsua$area_code, addsua$item_code),
-                                     paste(imps$year, imps$to_code, imps$item_code))]]
+                                         paste(imps$year, imps$to_code, imps$item_code))]]
 addsua[is.na(imports), imports := imports_btd]
 
 # set missing values to 0 
@@ -219,8 +219,8 @@ tcf_crop_sua[, `:=` (proc = NULL, proc_code = NULL, child_code = NULL, parent_co
 # add years and child production from sua_prelim
 tcf_crop_sua[, child_code_fcl := items_sua$item_code[match(child, items_sua$item)]]
 tcf_crop_sua <- merge(sua_prelim[paste(area, item_code) %in% paste(tcf_crop_sua$area, tcf_crop_sua$child_code_fcl),
-                             .(area, year, item_code, child_production = production)], 
-                           tcf_crop_sua, 
+                                 .(area, year, item_code, child_production = production)], 
+                      tcf_crop_sua, 
                       by.x = c("area", "item_code"),
                       by.y = c("area", "child_code_fcl"),allow.cartesian = TRUE)
 tcf_crop_sua <- tcf_crop_sua[child_production > 0]
@@ -269,7 +269,7 @@ tcf_crop_sua[!is.finite(processing), processing := 0]
 
 tcf_crop_sua[, proc := proc_sua$proc[match(item_code, proc_sua$item_code)]]
 tcf_crop_sua <- tcf_crop_sua[, .(processing = mean(processing, na.rm = TRUE)), 
-                     by = .(area, year, proc, parent, parent_code_fcl)]
+                             by = .(area, year, proc, parent, parent_code_fcl)]
 
 
 # sum processing from different child items
@@ -314,7 +314,7 @@ addsua[item_code %in% c(165, 265, 328, 656, 661, 677, 256),
 # "Raw hides and skins of buffaloes", "Beeswax", "Shorn wool, greasy, including fleece-washed shorn wool"
 
 addsua[item_code %in% c(280,754, 767, 777, 778, 789, 780, 782, 788, 
-                            800, 813, 821, 826, 836, 919, 957, 987, 995, 1025, 1183), 
+                        800, 813, 821, 826, 836, 919, 957, 987, 995, 1025, 1183), 
        `:=` (other = na_sum(total_supply, -exports, -processing), food = 0)]
 
 # Allocate 'Fodder crops', 'vetches' and left-over cotton seed supply to feed
@@ -331,34 +331,41 @@ rm(outliers, parent_supply, proc_sua, tcf_crop_sua, addsua, sua_prelim, prod_tra
 
 # Fill Ethanol -----------------------------
 
-cat("\nAdding ethanol production data to SUA.\n")
+# Not run in the BCP build: R/00_4_prep_eth.R and R/01_3_tidy_eth.R are commented
+# out in main.R, so data/tidy/eth_tidy.rds does not exist. Liquid-biofuel volumes
+# come from 07_03a/07_03b instead. Item 2659 keeps FAO's reported production and
+# is balanced by the generic rebalance below plus the non-food-crops rule further
+# down, which moves its leftover balancing/residuals/processing to 'other'.
+# Same treatment as in R/03_1a_build_cbs.R.
 
-eth <- readRDS("data/tidy/eth_tidy.rds")
-eth <- eth[year %in% years]
-# Keep one unit and recode for merging
-eth <- eth[, `:=`(unit = NULL,
-                  item = "Alcohol, Non-Food", item_code = 2659)]
-
-eth_sua <- merge(sua[item == "Alcohol, Non-Food", ], eth, all = TRUE,
-                 by = c("area_code", "area", "year", "item", "item_code"))
-
-cat("Using EIA/IEA ethanol production values where FAO's",
-    "CBS are not (or under-) reported.\n")
-eth_sua[production < value | is.na(production), production := value]
-eth_sua[, value := NULL]
-
-# compute total supply
-eth_sua[, total_supply := na_sum(production, imports)]
-# reduce exports where they exceed total supply (per definition not the case any more!)
-eth_sua[(exports + other) > (total_supply + stock_withdrawal), exports := total_supply + stock_withdrawal - other]
-eth_sua[exports < 0, exports := 0]
-# all supply is assumed to go to other uses
-eth_sua[, other := na_sum(production, imports, -exports, -stock_addition)]
-# rebalance
-eth_sua[, balancing := na_sum(production, imports, -exports, -stock_addition, -other)]
-
-sua <- rbindlist(list(sua[item_code != 2659, ], eth_sua), use.names = TRUE)
-rm(eth, eth_sua)
+# cat("\nAdding ethanol production data to SUA.\n")
+# 
+# eth <- readRDS("data/tidy/eth_tidy.rds")
+# eth <- eth[year %in% years]
+# # Keep one unit and recode for merging
+# eth <- eth[, `:=`(unit = NULL,
+#                   item = "Alcohol, Non-Food", item_code = 2659)]
+# 
+# eth_sua <- merge(sua[item == "Alcohol, Non-Food", ], eth, all = TRUE,
+#                  by = c("area_code", "area", "year", "item", "item_code"))
+# 
+# cat("Using EIA/IEA ethanol production values where FAO's",
+#     "CBS are not (or under-) reported.\n")
+# eth_sua[production < value | is.na(production), production := value]
+# eth_sua[, value := NULL]
+# 
+# # compute total supply
+# eth_sua[, total_supply := na_sum(production, imports)]
+# # reduce exports where they exceed total supply (per definition not the case any more!)
+# eth_sua[(exports + other) > (total_supply + stock_withdrawal), exports := total_supply + stock_withdrawal - other]
+# eth_sua[exports < 0, exports := 0]
+# # all supply is assumed to go to other uses
+# eth_sua[, other := na_sum(production, imports, -exports, -stock_addition)]
+# # rebalance
+# eth_sua[, balancing := na_sum(production, imports, -exports, -stock_addition, -other)]
+# 
+# sua <- rbindlist(list(sua[item_code != 2659, ], eth_sua), use.names = TRUE)
+# rm(eth, eth_sua)
 
 
 
@@ -427,7 +434,7 @@ sua <- sua[, (cols) := lapply(.SD, function(x) ifelse(x < 0 | is.na(x), 0, x)),
 
 # Rebalance table
 sua_test <- sua[, balancing := na_sum(production, imports, stock_withdrawal,
-                          -exports, -food, -feed, -seed, -losses, -processing, -other, -tourist, -residuals)]
+                                      -exports, -food, -feed, -seed, -losses, -processing, -other, -tourist, -residuals)]
 
 # Note: the sum of balancing and residuals should never be <0 in the end
 # as long as we do not introduce an "unknown source" region, we need to adapt the other sua use elements accordingly
@@ -610,7 +617,7 @@ cat("\nFeed crops to 'feed'.\n")
 sua[item_code %in% c(2000, 2001, 2555, 2559, 2590, 2591, 2592, 2593, 2594,
                      2595, 2596, 2597, 2598, 2749) & na_sum( balancing, residuals) > 0,
     `:=`(feed = na_sum(feed, balancing, residuals),
-          balancing = 0, residuals = 0)]
+         balancing = 0, residuals = 0)]
 
 cat("\nRest (mostly 'food', 'feed' and 'processing') remains in 'unspecified', 'balancing' and 'residuals'.\n")
 
@@ -621,9 +628,3 @@ sua <- sua[year %in% years, ]
 # Save --------------------------------------------------------------------
 
 saveRDS(sua, "data/sua_full.rds")
-
-
-
-
-
-
