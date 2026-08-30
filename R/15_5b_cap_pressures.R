@@ -60,7 +60,7 @@ source("R/00_prep_functions.R")
 model_version <- Sys.getenv("FABIO_RUN_MODE", unset = "rescaled")
 model_version <- if (tolower(trimws(model_version)) == "bypass") "bypass" else "rescaled"
 
-base_path <- "/mnt/nfs_fineprint/tmp/fabio/v2_bcp/"
+base_path <- output_dir_bcp   # this run's artefacts (X from 13, E from 16)
 MRIO_PATH <- if (model_version == "bypass")
   paste0(sub("/+$", "", base_path), "/bypass/") else base_path
 OUT_DIR   <- if (model_version == "bypass") "output/bypass" else "output"
