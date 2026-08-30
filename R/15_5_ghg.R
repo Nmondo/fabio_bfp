@@ -369,7 +369,11 @@ energy_emissions_FAO <- energy_emissions_FAO[sector != "Forestry"]
 # Since only ISIC-A (primary production) value added accounts are used, this ensures only primary production receives on-farm energy use (might include some non-primary FABIO products such as Butter and Wool, as their raw variants are directly attributed to farms in ISIC-A)
 
 # get value added matrices
-E_bamboo_list <- readRDS("/mnt/nfs_fineprint/tmp/fabio/v2/E_bamboo.rds")
+# The VA accounts moved out of E_bamboo.rds into their own file upstream: v2's
+# 15_extensions_main.R now writes E_bamboo.rds for the emission extensions only,
+# and the value-added matrices live in V.rds (labels in v_labels.csv). See v2
+# 12_5_ghg.R, which is otherwise identical to this block.
+E_bamboo_list <- readRDS("/mnt/nfs_fineprint/tmp/fabio/v2/V.rds")
 
 # transpose and filter to get one table covering all years
 E_bamboo <- rbindlist(
@@ -385,9 +389,16 @@ E_bamboo <- rbindlist(
 setcolorder(E_bamboo, c("year", "id", setdiff(names(E_bamboo), c("year", "id"))))
 rm(E_bamboo_list); gc()
 
-# select value-added accounts (see "/mnt/nfs_fineprint/tmp/fabio/v2/ex_bamboo_labels.csv" for column names)
+# select value-added accounts (see "/mnt/nfs_fineprint/tmp/fabio/v2/v_labels.csv" for column names)
 # 14 years x 181 regions x 123 items
 E_bamboo <- E_bamboo |> select(year, id, starts_with("VA_"))
+
+# Guard the upstream contract: this block reads a file from the shared v2 tree
+# that is regenerated independently, so a renamed or dropped account should fail
+# here rather than 15 lines down inside a data.table j-expression.
+stopifnot(all(c("VA_capital_isic_a_exiobase", "VA_wages_isic_a_exiobase",
+                "VA_capital_isic_a_gloria",   "VA_wages_isic_a_gloria")
+              %in% names(E_bamboo)))
 
 # split regions and items from matrix colnames (turned rownames due to transpose in E_bamboo creation)
 E_bamboo$region <- substr(E_bamboo$id, 1, 3)
