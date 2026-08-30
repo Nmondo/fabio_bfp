@@ -86,7 +86,11 @@ fetch_comext <- function(url_data,
       read_xml() |> xml_ns_strip() |>
       xml_find_first(".//status/status") |> xml_text()
     
-    if (verbose) message(sprintf("[%5ds] %s", waited, status))
+    # A missing <status> node is Eurostat's queued state, not a parse failure:
+    # the pending envelope has a different shape from the AVAILABLE one.
+    if (verbose)
+      message(sprintf("[%5ds] %s", waited,
+                      if (is.na(status) || !nzchar(status)) "pending" else status))
     
     if (identical(status, "AVAILABLE")) break
     if (status %in% c("EXPIRED", "UNKNOWN_REQUEST", "ERROR"))
@@ -122,7 +126,22 @@ url_data <- paste0(
   "&c[TIME_PERIOD]=2022,2021,2020,2019,2018,2017,2016,2015,2014,2013,2012,2011,2010",
   "&compress=false&format=csvdata&formatVersion=1.0&lang=en&labels=both")
 
-bilateral_bf_bp_eu <- fetch_comext(url_data) %>%
+# Cache the raw extraction, as the ComTrade block below does with comtrade_cache/.
+# The async round trip can take many minutes and the result is not reproducible
+# on demand, so a rerun should never re-queue it needlessly. Delete the file to
+# force a refresh.
+comext_cache <- "intermediate_data/comext_bf_bp_eu_raw.rds"
+
+if (file.exists(comext_cache)) {
+  message("Using cached Comext extraction: ", comext_cache)
+  bilateral_bf_bp_eu_raw <- readRDS(comext_cache)
+} else {
+  bilateral_bf_bp_eu_raw <- fetch_comext(url_data)
+  dir.create("intermediate_data", showWarnings = FALSE, recursive = TRUE)
+  saveRDS(bilateral_bf_bp_eu_raw, comext_cache)
+}
+
+bilateral_bf_bp_eu <- bilateral_bf_bp_eu_raw %>%
   mutate(across(c(reporter, partner, product, indicators), ~ sub(":.*", "", .x)),
          across(c(freq, flow),                             ~ sub(".*:", "", .x))) %>%
   rename(FLOW = flow)
@@ -833,21 +852,6 @@ prices <- bind_rows(bf_bp_eu_prices, prices_baci_hs12, prices_comtrade, prices_s
 #   )
 # 
 # prices <- left_join(prices, caps, by = "product")
-
-
-# --- DDGS name alias ------------------------------------------------------------
-BCP_ITEM_ALIAS <- data.table(
-  item_alias = c("Dried distillers grains with solubles"),
-  item_code  = 654L,
-  comm_code  = "c171")
-
-setDT(btd_final_bcp)
-btd_final_bcp[BCP_ITEM_ALIAS, on = .(item = item_alias),
-              `:=`(item_code = fcoalesce(item_code, i.item_code),
-                   comm_code = fcoalesce(comm_code, i.comm_code))]
-
-miss <- btd_final_bcp[is.na(comm_code) | comm_code == "",
-                      .(t = sum(value), n = .N), by = .(item_code, item)]
 
 
 ###########################################################
