@@ -62,32 +62,32 @@ names(btd_bal) <- years
 for(i in seq_along(years)) {
   y <- years[i]
   cat("Calculating year ", y, ".\n", sep = "")
-
+  
   # Add BTD values to the template
   mapping <- merge(mapping_templ,
-    btd[year == y, c("from_code", "to_code", "item_code", "value")],
-    by = c("from_code", "to_code", "item_code"), all.x = TRUE)
+                   btd[year == y, c("from_code", "to_code", "item_code", "value")],
+                   by = c("from_code", "to_code", "item_code"), all.x = TRUE)
   # Add estimates
   mapping <- merge(mapping,
-    btd_est[year == y, .(from_code, to_code, item_code, val_est = value)],
-    by = c("from_code", "to_code", "item_code"), all.x = TRUE)
+                   btd_est[year == y, .(from_code, to_code, item_code, val_est = value)],
+                   by = c("from_code", "to_code", "item_code"), all.x = TRUE)
   # Prepare target-constraints for RAS
   constraint <- merge(constr_templ,
-    target[year == y, c("area_code", "item_code", "imports", "exports")],
-    by = c("area_code", "item_code"), all.x = TRUE)
+                      target[year == y, c("area_code", "item_code", "imports", "exports")],
+                      by = c("area_code", "item_code"), all.x = TRUE)
   # Replace NA constraints with 0
   constraint[, `:=`(imports = ifelse(is.na(imports), 0, imports),
-    exports = ifelse(is.na(exports), 0, exports))]
+                    exports = ifelse(is.na(exports), 0, exports))]
   # Balance imports and exports
   # Adjust constraints to have equal export and import numbers per item per year
   # This is very helpful for the iterative proportional fitting of bilateral trade data
   trade_bal <- constraint[, list(exp_t = sum(exports, na.rm = TRUE),
-    imp_t = sum(imports, na.rm = TRUE)), by = c("item_code")]
+                                 imp_t = sum(imports, na.rm = TRUE)), by = c("item_code")]
   constraint <- merge(constraint, trade_bal,
-    by = c("item_code"), all.x = TRUE)
-  constraint[, `:=`(imports = if_else(imp_t==0, 0, imports / imp_t * ((imp_t + exp_t) / 2)),
-                    exports = if_else(exp_t==0, 0, exports / exp_t * ((imp_t + exp_t) / 2)))]
-
+                      by = c("item_code"), all.x = TRUE)
+  constraint[, `:=`(imports = dplyr::if_else(imp_t==0, 0, imports / imp_t * ((imp_t + exp_t) / 2)),
+                    exports = dplyr::if_else(exp_t==0, 0, exports / exp_t * ((imp_t + exp_t) / 2)))]
+  
   # Eliminate estimates where data exist
   mapping[, val_est := ifelse(is.na(value), val_est, NA)]
   # Calculate totals for values and estimates per exporting country and item
@@ -100,13 +100,13 @@ for(i in seq_along(years)) {
   mapping[, gap := na_sum(val_target, -value_sum)]
   # Downscale export estimates in order not to exceed the total gap between reported exports and target values
   mapping[, val_est := ifelse(gap > 0, ifelse(gap < val_est_sum, val_est / val_est_sum * gap, val_est), NA)]
-
+  
   # Assign estimates to value column with a weight of 10%
   mapping[, `:=`(
     value = ifelse(is.na(value), ifelse(is.na(val_est), 0, val_est * 0.1), value),
     val_est = NULL)]
-
-
+  
+  
   # start parallel processing
   plan(multicore, workers = parallel::detectCores() - 2)
   
@@ -119,10 +119,10 @@ for(i in seq_along(years)) {
         from_code ~ to_code,
         fun.aggregate = sum, 
         value.var = "value"
-        )[, -"from_code"]
+      )[, -"from_code"]
       as(out, "matrix")
-      })
-
+    })
+  
   # Run iterative proportional fitting per item
   results <- future_lapply(as.character(items), function(j) {
     Ipfp(
@@ -139,7 +139,7 @@ for(i in seq_along(years)) {
   #   mapping_ras[[as.character(items[k])]] <- results[[k]]
   # }
   mapping_ras[as.character(items)] <- setNames(results, as.character(items)) # does the same as the for loop
-
+  
   btd_bal[[i]] <- future_lapply(names(mapping_ras), function(name) {
     out <- mapping_ras[[name]]
     out <- data.table(from_code = colnames(out), as.matrix(out))
