@@ -33,6 +33,11 @@ rm(list = ls()); gc()
 # source("R/00_7_prep_spatial_NPK.R")
 rm(list = ls()); gc()
 
+# Requires the GLORIA v060 satellite accounts under /mnt/nfs_fineprint/tmp/gloria/
+# and the FABIOv2 producer total values in data/total_value/ (both ISIC-A and
+# ISIC-C). Emits data/tidy/gloria_satellite_e.rds for R/15_5_ghg.R.
+source("R/00_8_prep_gloria_e.R"); rm(list = ls()); gc()
+
 
 # 1_tidy ------------------------------------------------------------------
 source("R/01_1_tidy_fao.R")
@@ -103,8 +108,12 @@ source("R/14_leontief_inverse.R"); rm(list = ls()); gc()
 
 # Building environmental extensions ----------------------------------------------------
 
-# Requires the spatial fertiliser and cropland NetCDF grids (see script), plus
-# data/NPK/country_mapping.rds from R/00_7_prep_spatial_NPK.R
+# Requires the CropGrids and NPKGrids NetCDF trees plus the IPCC climate-zone raster
+# under /mnt/nfs_fineprint/tmp/geo_data/, and both outputs of R/00_7_prep_spatial_NPK.R.
+# Its outputs derive only from static external geodata and are carried in data/NPK/,
+# so this is re-run only when the underlying grids change. Five of them are consumed
+# downstream: {cropland,harvland}_area_cropgrids (15_1, 15_3),
+# {N,P}_harvland_application_npkgrids (15_3) and climate_soils_harvland (15_4).
 # source("R/15_2_NPK_spatial.R"); rm(list = ls()); gc()
 
 source("R/15_1_land_mass_water.R"); rm(list = ls()); gc()
@@ -119,9 +128,19 @@ source("R/15_9_ecosystem_services.R"); rm(list = ls()); gc()
 # Compiling the extension matrix ----------------------------------------------------
 source("R/16_extensions_main.R"); rm(list = ls()); gc()
 
+# Building the value-added extension ------------------------------------------
+# source("R/00_9_prep_value_added.R"); rm(list = ls()); gc()
+
+source("R/30_bcp_total_producer_value.R"); rm(list = ls()); gc()
+source("R/31_bcp_value_added_MRIOTs.R"); rm(list = ls()); gc()
+source("R/32_bcp_value_added_brazil_sut.R"); rm(list = ls()); gc()
+source("R/33_bcp_value_added_neste.R"); rm(list = ls()); gc()
+source("R/34_bcp_value_added_combination.R"); rm(list = ls()); gc()
+source("R/35_bcp_value_added_extension.R"); rm(list = ls()); gc()
+
 # Capped-pressure variant ----------------------------------------------------
 # 15_5b caps the pressure files in place and backs up the originals; 15_5c forks
 # them into data/extensions_capped/ and restores the baseline. Afterwards re-run
 # 15_6, 15_8, 15_9 and 16 with FABIO_VARIANT=capped to get E_capped.rds.
 # source("R/15_5b_cap_pressures.R"); rm(list = ls()); gc()
-# source("R/15_5c_fork_capped_tree.R"); rm(list = ls()); gc()
+# source("R/15_5c_fork_capped_tree.R"); rm(list = ls()); gc())
