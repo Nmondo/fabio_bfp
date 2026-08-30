@@ -21,7 +21,7 @@ source("R/00_system_variables.R")   # years, output_dir_bcp
 source("R/19_plot_definitions.R")   # indicator_meta, continent_palette, fuel_colors
 
 # --- the run -----------------------------------------------------------------
-STRESSOR   <- "ibif_total"   # "ibif_total" | "LCIM_EQ_terrestrial"
+STRESSOR   <- "LCIM1_EQ_terrestrial"   # "ibif_total" | "LCIM_EQ_terrestrial" | "LCIM1_EQ_terrestrial"
 allocation <- "value"        # co-product rule of the Leontief inverse: "mass" | "value"
 VA_BASE    <- "exiobase"     # "gloria" | "exiobase"
 VA_VARIANT <- "full"         # VA definition carried by the account 43-45/47 draw:
