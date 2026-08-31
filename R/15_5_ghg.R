@@ -618,155 +618,156 @@ list_n2o[["waste_ind_water"]] <- waste_ind[, .(area_code, year, item_code,
 
 rm(prod, prod_proc, waste_ind, waste_totals, waste_inc)
 
-## Other PPAP categories --------------------------------------------
-ppap <- data_list[["ppap"]]
-
-other_pre_post_totals <- ppap[item %in% c("Food Processing",
-                                          "Food Transport",
-                                          "Food Packaging",
-                                          #"Cold Chain F-Gas", # available as co2eq, but excluded for now
-                                          "Pesticides Manufacturing",
-                                          "Fertilizers Manufacturing"
-) & !element %like% c("CO2eq")]
-
-# convert from kt to t
-other_pre_post_totals[, `:=` (value = value * 1000, unit = "tonnes")]
-
-# widen totals
-other_pre_post_totals[, colname := gsub(" ", "_", tolower(gsub("Emissions |[()]", "", 
-                                                               paste(item, element))))]
-
-other_pre_post_totals <- dcast(other_pre_post_totals, area_code + year ~ colname, value.var = "value")
-
-
-### Processing, transport, packaging, pesticide: output-based allocation ----------------------
-
-price_weights <- readRDS("data/total_value/FABIOv2_producer_total_values_isic_a.rds")
-price_weights$year <- as.numeric(price_weights$year)
-
-# restrict to the current year and region set before computing shares
-price_weights <- price_weights[year %in% years & area_code %in% regions$code]
-if (!all(years %in% unique(price_weights$year)))
-  stop("data/total_value/FABIOv2_producer_total_values_isic_a.rds does not cover all years: missing ",
-       paste(setdiff(years, unique(price_weights$year)), collapse = ", "))
-
-# Compute price share per crop within each country-year
-price_weights[, price_share := `total_value [USD]` / sum(`total_value [USD]`, na.rm = TRUE),
-              by = .(area_code, year)]
-
-# check if the shares sum correctly
-stopifnot("Price shares are not complete for all years" = price_weights[, round(sum(price_share, na.rm = TRUE)) == nrow(regions), by = year]$V1)
-stopifnot("Price shares are not complete for all countries" = price_weights[, round(sum(price_share, na.rm = TRUE)) == length(years), by = area_code]$V1)
-
-# For pesticide manufacturing, the approach is the same, but it is only distributed to crops
-price_weights[, value_sans_meat := 0]
-price_weights[
-  comm_group %in% c("Cereals", "Roots and tubers", "Sugar crops", "Vegetables, fruit, nuts, pulses, spices", "Oil crops", "Fodder crops"), 
-  value_sans_meat := `total_value [USD]`
-]
-
-# calculate weights for pesticides
-price_weights[, total_sans_meat := sum(value_sans_meat, na.rm = TRUE), 
-              by = .(area_code, year)]
-price_weights[, price_share_sans_meat := fifelse(
-  total_sans_meat > 0,
-  value_sans_meat / total_sans_meat,
-  NA # Explicitly place NA for the value if there is no data for the year, to impute in the next step
-)]
-price_weights[, total_sans_meat := NULL]
-
-# Calculate averages by both area_code and item_code for imputation of missing years (needed for 200 (Singapore))
-region_averages <- price_weights[!is.na(price_share_sans_meat), 
-                                 .(avg_price_share = mean(price_share_sans_meat)), 
-                                 by = .(area_code, item_code)]
-
-# Impute only for areas where shares are NA (no value data for any crop products)
-price_weights[region_averages, 
-              price_share_sans_meat := ifelse(is.na(price_share_sans_meat), 
-                                              i.avg_price_share, 
-                                              price_share_sans_meat),
-              on = .(area_code, item_code)]
-
-# check if the shares sum correctly
-stopifnot("Price shares are not complete for all years" = price_weights[, round(sum(price_share_sans_meat, na.rm = TRUE)) == nrow(regions), by = year]$V1)
-stopifnot("Price shares are not complete for all countries" = price_weights[, round(sum(price_share_sans_meat, na.rm = TRUE)), by = area_code]$V1 == length(years))
-
-# Keep only needed columns
-price_weights <- price_weights[, .(area_code, year, item_code, price_share, price_share_sans_meat)]
-
-# merge 
-other_pre_post_totals <- merge(other_pre_post_totals, price_weights,
-                               by = c("area_code", "year"),
-                               allow.cartesian = TRUE)
-
-# Fertilizer production: attribute based on shares of fertilizer (15_4)
-fertilizer_shares <- readRDS("data/NPK/SF_application_sua.rds")
-
-fertilizer_shares[, fert_total := N_kg + P_kg]
-fertilizer_shares[, fert_share := fert_total / sum(fert_total, na.rm = T), 
-                  by = .(iso3c, year)]
-
-fertilizer_shares <- merge(regions, fertilizer_shares, by = "iso3c")
-fertilizer_shares[, area_code := code]
-
-fertilizer_shares <- fertilizer_shares[, c("area_code", "year", "item_code", "fert_share")]
-
-# Left join, not an inner join. An inner join silently drops every
-# item that has no fertilizer share, which truncates the four price-share
-# categories (processing / packaging / transport / pesticides) to fertilised crops
-# only and breaks the emission totals. Items without a share get fert_share = 0,
-# so they receive no fertilizer-manufacturing emissions but keep their price share.
-other_pre_post_totals <- merge(other_pre_post_totals, fertilizer_shares,
-                               by = c("area_code", "year", "item_code"), all.x = TRUE)
-other_pre_post_totals[is.na(fert_share), fert_share := 0]
-
-# Food processing: by price_share
-other_pre_post_totals[, food_processing_ch4 := food_processing_ch4 * price_share]
-other_pre_post_totals[, food_processing_co2 := food_processing_co2 * price_share]
-other_pre_post_totals[, food_processing_n2o := food_processing_n2o * price_share]
-
-# Food packaging: by price_share
-other_pre_post_totals[, food_packaging_ch4 := food_packaging_ch4 * price_share]
-other_pre_post_totals[, food_packaging_co2 := food_packaging_co2 * price_share]
-other_pre_post_totals[, food_packaging_n2o := food_packaging_n2o * price_share]
-
-# Food transport: by price_share
-other_pre_post_totals[, food_transport_ch4 := food_transport_ch4 * price_share]
-other_pre_post_totals[, food_transport_co2 := food_transport_co2 * price_share]
-other_pre_post_totals[, food_transport_n2o := food_transport_n2o * price_share]
-
-# Pesticide manufacturing: by price_share (only for crops)
-other_pre_post_totals[, pesticides_manufacturing_ch4 := pesticides_manufacturing_ch4 * price_share_sans_meat]
-other_pre_post_totals[, pesticides_manufacturing_co2 := pesticides_manufacturing_co2 * price_share_sans_meat]
-other_pre_post_totals[, pesticides_manufacturing_n2o := pesticides_manufacturing_n2o * price_share_sans_meat]
-
-# Fertilizer manufacturing: by fert_share
-other_pre_post_totals[, fertilizers_manufacturing_co2 := fertilizers_manufacturing_co2 * fert_share]
-other_pre_post_totals[, fertilizers_manufacturing_n2o := fertilizers_manufacturing_n2o * fert_share]
-# fertilizer N2O emissions are not reported at the production step, hence not present in the data
-
-# assign to lists; 
-list_ch4[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_ch4)]
-list_co2[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_co2)]
-list_n2o[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_n2o)]
-
-list_ch4[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_ch4)]
-list_co2[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_co2)]
-list_n2o[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_n2o)]
-
-list_ch4[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_ch4)]
-list_co2[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_co2)]
-list_n2o[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_n2o)]
-
-list_ch4[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_ch4)]
-list_co2[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_co2)]
-list_n2o[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_n2o)]
-
-list_co2[["ppap_fertilizers_manufacturing"]] <- other_pre_post_totals[, .(area_code, year, item_code, value = fertilizers_manufacturing_co2)]
-list_n2o[["ppap_fertilizers_manufacturing"]] <- other_pre_post_totals[, .(area_code, year, item_code, value = fertilizers_manufacturing_n2o)]
-
-# tidy environment
-rm(fertilizer_shares, other_pre_post_totals, ppap, price_weights, region_averages)
+# PPAP emissions not yet ready for inclusion!!
+# ## Other PPAP categories --------------------------------------------
+# ppap <- data_list[["ppap"]]
+# 
+# other_pre_post_totals <- ppap[item %in% c("Food Processing",
+#                                           "Food Transport",
+#                                           "Food Packaging",
+#                                           #"Cold Chain F-Gas", # available as co2eq, but excluded for now
+#                                           "Pesticides Manufacturing",
+#                                           "Fertilizers Manufacturing"
+# ) & !element %like% c("CO2eq")]
+# 
+# # convert from kt to t
+# other_pre_post_totals[, `:=` (value = value * 1000, unit = "tonnes")]
+# 
+# # widen totals
+# other_pre_post_totals[, colname := gsub(" ", "_", tolower(gsub("Emissions |[()]", "", 
+#                                                                paste(item, element))))]
+# 
+# other_pre_post_totals <- dcast(other_pre_post_totals, area_code + year ~ colname, value.var = "value")
+# 
+# 
+# ### Processing, transport, packaging, pesticide: output-based allocation ----------------------
+# 
+# price_weights <- readRDS("data/total_value/FABIOv2_producer_total_values_isic_a.rds")
+# price_weights$year <- as.numeric(price_weights$year)
+# 
+# # restrict to the current year and region set before computing shares
+# price_weights <- price_weights[year %in% years & area_code %in% regions$code]
+# if (!all(years %in% unique(price_weights$year)))
+#   stop("data/total_value/FABIOv2_producer_total_values_isic_a.rds does not cover all years: missing ",
+#        paste(setdiff(years, unique(price_weights$year)), collapse = ", "))
+# 
+# # Compute price share per crop within each country-year
+# price_weights[, price_share := `total_value [USD]` / sum(`total_value [USD]`, na.rm = TRUE),
+#               by = .(area_code, year)]
+# 
+# # check if the shares sum correctly
+# stopifnot("Price shares are not complete for all years" = price_weights[, round(sum(price_share, na.rm = TRUE)) == nrow(regions), by = year]$V1)
+# stopifnot("Price shares are not complete for all countries" = price_weights[, round(sum(price_share, na.rm = TRUE)) == length(years), by = area_code]$V1)
+# 
+# # For pesticide manufacturing, the approach is the same, but it is only distributed to crops
+# price_weights[, value_sans_meat := 0]
+# price_weights[
+#   comm_group %in% c("Cereals", "Roots and tubers", "Sugar crops", "Vegetables, fruit, nuts, pulses, spices", "Oil crops", "Fodder crops"), 
+#   value_sans_meat := `total_value [USD]`
+# ]
+# 
+# # calculate weights for pesticides
+# price_weights[, total_sans_meat := sum(value_sans_meat, na.rm = TRUE), 
+#               by = .(area_code, year)]
+# price_weights[, price_share_sans_meat := fifelse(
+#   total_sans_meat > 0,
+#   value_sans_meat / total_sans_meat,
+#   NA # Explicitly place NA for the value if there is no data for the year, to impute in the next step
+# )]
+# price_weights[, total_sans_meat := NULL]
+# 
+# # Calculate averages by both area_code and item_code for imputation of missing years (needed for 200 (Singapore))
+# region_averages <- price_weights[!is.na(price_share_sans_meat), 
+#                                  .(avg_price_share = mean(price_share_sans_meat)), 
+#                                  by = .(area_code, item_code)]
+# 
+# # Impute only for areas where shares are NA (no value data for any crop products)
+# price_weights[region_averages, 
+#               price_share_sans_meat := ifelse(is.na(price_share_sans_meat), 
+#                                               i.avg_price_share, 
+#                                               price_share_sans_meat),
+#               on = .(area_code, item_code)]
+# 
+# # check if the shares sum correctly
+# stopifnot("Price shares are not complete for all years" = price_weights[, round(sum(price_share_sans_meat, na.rm = TRUE)) == nrow(regions), by = year]$V1)
+# stopifnot("Price shares are not complete for all countries" = price_weights[, round(sum(price_share_sans_meat, na.rm = TRUE)), by = area_code]$V1 == length(years))
+# 
+# # Keep only needed columns
+# price_weights <- price_weights[, .(area_code, year, item_code, price_share, price_share_sans_meat)]
+# 
+# # merge 
+# other_pre_post_totals <- merge(other_pre_post_totals, price_weights,
+#                                by = c("area_code", "year"),
+#                                allow.cartesian = TRUE)
+# 
+# # Fertilizer production: attribute based on shares of fertilizer (15_4)
+# fertilizer_shares <- readRDS("data/NPK/SF_application_sua.rds")
+# 
+# fertilizer_shares[, fert_total := N_kg + P_kg]
+# fertilizer_shares[, fert_share := fert_total / sum(fert_total, na.rm = T), 
+#                   by = .(iso3c, year)]
+# 
+# fertilizer_shares <- merge(regions, fertilizer_shares, by = "iso3c")
+# fertilizer_shares[, area_code := code]
+# 
+# fertilizer_shares <- fertilizer_shares[, c("area_code", "year", "item_code", "fert_share")]
+# 
+# # Left join, not an inner join. An inner join silently drops every
+# # item that has no fertilizer share, which truncates the four price-share
+# # categories (processing / packaging / transport / pesticides) to fertilised crops
+# # only and breaks the emission totals. Items without a share get fert_share = 0,
+# # so they receive no fertilizer-manufacturing emissions but keep their price share.
+# other_pre_post_totals <- merge(other_pre_post_totals, fertilizer_shares,
+#                                by = c("area_code", "year", "item_code"), all.x = TRUE)
+# other_pre_post_totals[is.na(fert_share), fert_share := 0]
+# 
+# # Food processing: by price_share
+# other_pre_post_totals[, food_processing_ch4 := food_processing_ch4 * price_share]
+# other_pre_post_totals[, food_processing_co2 := food_processing_co2 * price_share]
+# other_pre_post_totals[, food_processing_n2o := food_processing_n2o * price_share]
+# 
+# # Food packaging: by price_share
+# other_pre_post_totals[, food_packaging_ch4 := food_packaging_ch4 * price_share]
+# other_pre_post_totals[, food_packaging_co2 := food_packaging_co2 * price_share]
+# other_pre_post_totals[, food_packaging_n2o := food_packaging_n2o * price_share]
+# 
+# # Food transport: by price_share
+# other_pre_post_totals[, food_transport_ch4 := food_transport_ch4 * price_share]
+# other_pre_post_totals[, food_transport_co2 := food_transport_co2 * price_share]
+# other_pre_post_totals[, food_transport_n2o := food_transport_n2o * price_share]
+# 
+# # Pesticide manufacturing: by price_share (only for crops)
+# other_pre_post_totals[, pesticides_manufacturing_ch4 := pesticides_manufacturing_ch4 * price_share_sans_meat]
+# other_pre_post_totals[, pesticides_manufacturing_co2 := pesticides_manufacturing_co2 * price_share_sans_meat]
+# other_pre_post_totals[, pesticides_manufacturing_n2o := pesticides_manufacturing_n2o * price_share_sans_meat]
+# 
+# # Fertilizer manufacturing: by fert_share
+# other_pre_post_totals[, fertilizers_manufacturing_co2 := fertilizers_manufacturing_co2 * fert_share]
+# other_pre_post_totals[, fertilizers_manufacturing_n2o := fertilizers_manufacturing_n2o * fert_share]
+# # fertilizer N2O emissions are not reported at the production step, hence not present in the data
+# 
+# # assign to lists; 
+# list_ch4[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_ch4)]
+# list_co2[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_co2)]
+# list_n2o[["ppap_food_processing"]]           <- other_pre_post_totals[, .(area_code, year, item_code, value = food_processing_n2o)]
+# 
+# list_ch4[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_ch4)]
+# list_co2[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_co2)]
+# list_n2o[["ppap_food_packaging"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_packaging_n2o)]
+# 
+# list_ch4[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_ch4)]
+# list_co2[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_co2)]
+# list_n2o[["ppap_food_transport"]]            <- other_pre_post_totals[, .(area_code, year, item_code, value = food_transport_n2o)]
+# 
+# list_ch4[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_ch4)]
+# list_co2[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_co2)]
+# list_n2o[["ppap_pesticides_manufacturing"]]  <- other_pre_post_totals[, .(area_code, year, item_code, value = pesticides_manufacturing_n2o)]
+# 
+# list_co2[["ppap_fertilizers_manufacturing"]] <- other_pre_post_totals[, .(area_code, year, item_code, value = fertilizers_manufacturing_co2)]
+# list_n2o[["ppap_fertilizers_manufacturing"]] <- other_pre_post_totals[, .(area_code, year, item_code, value = fertilizers_manufacturing_n2o)]
+# 
+# # tidy environment
+# rm(fertilizer_shares, other_pre_post_totals, ppap, price_weights, region_averages)
 
 # Final demand -----------------
 # Initialize lists
