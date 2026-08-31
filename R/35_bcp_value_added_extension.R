@@ -178,7 +178,7 @@ remap_v123   <- build_remap(items_v123, items_bcp)
 target_order <- paste0(io_labels_bcp$iso3c, "_", io_labels_bcp$comm_code)
 items_isic   <- setNames(items_v123$ISIC, items_v123$comm_code)   # comm_code -> ISIC
 
-va_v2       <- readRDS(paste0(output_dir, "V_updated.rds"))               # v2 value-added strands
+va_v2       <- readRDS(paste0(output_dir, "V.rds"))               # v2 value-added strands
 need_rows   <- sprintf("VA_%s_isic_%s_%s",
                        rep(VA_COMPONENTS, times = 4),
                        rep(rep(c("a", "c"), each = 3), times = 2),
