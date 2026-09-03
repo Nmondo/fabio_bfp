@@ -126,7 +126,6 @@ dt_tradeFeed_BP <- rbindlist(lapply(files_tradeFeed_BP, fread))
 dt_feedstock    <- rbindlist(lapply(files_feedstock_BF, fread))
 
 # Build combined LC Impact terrestrial indicator (climate + acidification; ruling out "land use") ----------------
-
 id_cols_trade <- c("country_origin", "country_consumer", "flow_type", "year",
                    "allocation", "feedstock", "commodity")
 

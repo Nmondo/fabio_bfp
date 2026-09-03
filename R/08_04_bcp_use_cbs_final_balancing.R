@@ -295,7 +295,11 @@ message(">>> 08_04: ", nrow(gap), " (area,item,year) have cbs$exports > their bt
 #                         and 1b gives it real bilateral origins.
 ###########################################################
 
-cbs_sua_adjusted <- cbs_sua_adjusted %>%
+# The ladder is evaluated into `ladder_detail` FIRST. The per-rung draws (red_*) and the
+# pre-ladder snapshots (*_f) are dropped by the select() below, so 1a reads them off this
+# intermediate rather than trying to recompute the ladder a second time (which would drift
+# the moment a rung changes). `ladder_detail` is removed at the end of 1a.
+ladder_detail <- cbs_sua_adjusted %>%
   mutate(
     # Safe copies (NA -> 0) to work with
     other_f          = replace_na(other, 0),
@@ -341,8 +345,10 @@ cbs_sua_adjusted <- cbs_sua_adjusted %>%
     self_topup     = red_exports,       # -> btd DIAGONAL (funded by the export cut)
     import_topup   = to_remove_8,       # -> btd OFF-DIAGONAL, bilateralised in 1b
     imports_adj    = imports_f + to_remove_8,
-    production_adj = production_f        # <- the Bug 1 fix: production is never minted
-  ) %>%
+    production_adj = production_f
+  )
+
+cbs_sua_adjusted <- ladder_detail %>%
   # Overwrite originals with adjusted values, then drop helpers
   mutate(
     other          = other_adj,
@@ -366,6 +372,124 @@ cbs_sua_adjusted <- cbs_sua_adjusted %>%
   select(year:use, input_use, self_topup, import_topup, production_pre)
 
 setDT(cbs_sua_adjusted)     # the dplyr pipe returns a tbl; everything below is data.table
+
+
+###########################################################
+#1a. LADDER DIAGNOSTIC — WHERE EVERY TONNE CAME FROM
+###########################################################
+# One WIDE row per (area, item, year) the ladder touched: the tonnage each rung supplied,
+# and that tonnage as a % of the cell's PRE-ladder supply.
+#
+# WHY PRE-LADDER SUPPLY IS THE DENOMINATOR. `supply` is recomputed at the end of the script
+# as production + imports_adj, i.e. it already CONTAINS the step-8 import top-up. Dividing by
+# it would shrink exactly the cells where the ladder did the most violence (a cell that had
+# to buy its whole requirement would score a modest %, because the purchase inflated its own
+# denominator). supply_pre = production + imports as they stood BEFORE the ladder is the
+# stable base: "we moved X% of what this country actually had".
+#
+# SIGN CONVENTION
+#   t_from_*  tonnage REMOVED from that use (>= 0)      -- rungs 1-7
+#   t_add_*   tonnage ADDED to that supply row (>= 0)   -- rung 8, plus production
+# t_add_production is 0 by construction since the Bug 1 fix (production_adj = production_f).
+# It is kept as a VISIBLE column, not dropped: if anyone re-mints production upstream, it
+# shows up here as a non-zero column instead of hiding inside the 1c assert message.
+#
+# Rungs, in ladder order: other -> stock_addition -> tourist -> processing -> feed -> food
+#                         -> exports (capped at the btd row sum) -> imports.
+
+LADDER_DIAG_MIN_T <- 1      # skip cells whose whole requirement is below this (t)
+LADDER_DIAG_TOL   <- 1e-6   # "this rung supplied something" threshold (t)
+
+rung_t   <- c("t_from_other", "t_from_stock_addition", "t_from_tourist",
+              "t_from_processing", "t_from_feed", "t_from_food", "t_from_exports",
+              "t_add_imports", "t_add_production")
+rung_lbl <- c("other", "stock_addition", "tourist", "processing", "feed", "food",
+              "exports", "imports", "production")
+pct_cols <- sub("^t_", "pct_", rung_t)
+
+ladder_diag <- as.data.table(ladder_detail)[
+  , .(year, area_code, area, item_code, item, comm_code,
+      supply_pre  = production_f   + imports_f,     # BEFORE the ladder
+      supply_post = production_adj + imports_adj,   # AFTER  the ladder
+      req_t = to_remove_1,                          # = input_use_adj, what had to be found
+      t_from_other          = red_other,
+      t_from_stock_addition = red_stock,
+      t_from_tourist        = red_tourist,
+      t_from_processing     = red_processing,
+      t_from_feed           = red_feed,
+      t_from_food           = red_food,
+      t_from_exports        = red_exports,          # == self_topup (funds the btd diagonal)
+      t_add_imports         = to_remove_8,          # == import_topup (bilateralised in 1b)
+      t_add_production      = production_adj - production_f,
+      # what the CBS could still have given on the export rung but btd refused to carry:
+      # this is the tonnage the btd ceiling pushed down into imports rather than self-supply
+      t_blocked_by_btd_cap  = pmax(pmin(to_remove_7, exports_cbs_f) - red_exports, 0))
+][req_t >= LADDER_DIAG_MIN_T]
+
+if (nrow(ladder_diag)) {
+  
+  m <- as.matrix(ladder_diag[, ..rung_t])
+  
+  # (i) the diagnostic must add up to the requirement, or it is describing a ladder that is
+  #     not the one that ran. Cheap, and it fails loudly if a rung is added and not wired in.
+  ladder_diag[, accounted_t := rowSums(m)]
+  diag_bad <- ladder_diag[abs(accounted_t - req_t) > pmax(1e-6 * req_t, 1e-3)]
+  fabio_assert(nrow(diag_bad) == 0,
+               "08_04: the ladder diagnostic accounts for a different tonnage than the ladder moved in %d cells — a rung was added to the ladder without being added to rung_t.",
+               nrow(diag_bad),
+               data = diag_bad[order(-abs(accounted_t - req_t))][
+                 , .(area, item, year, req_t, accounted_t)])
+  
+  # (ii) percentages of the pre-ladder supply. supply_pre == 0 (a cell 08_01 minted with no
+  #      production and no imports) has no meaningful denominator -> NA, never Inf.
+  ladder_diag[, (pct_cols) := lapply(.SD, function(x)
+    fifelse(supply_pre > 0, 100 * x / supply_pre, NA_real_)), .SDcols = rung_t]
+  ladder_diag[, pct_req := fifelse(supply_pre > 0, 100 * req_t / supply_pre, NA_real_)]
+  
+  # (iii) how deep the ladder had to go, and how many rungs it took
+  mm <- (m > LADDER_DIAG_TOL) * col(m)               # column index where a rung fired, else 0
+  ladder_diag[, deepest_rung := fifelse(rowSums(m) > LADDER_DIAG_TOL,
+                                        rung_lbl[max.col(mm, ties.method = "last")],
+                                        NA_character_)]
+  ladder_diag[, n_rungs_used := rowSums(m > LADDER_DIAG_TOL)]
+  
+  ord <- c("year", "area_code", "area", "item_code", "item", "comm_code",
+           "supply_pre", "supply_post", "req_t", "pct_req",
+           "deepest_rung", "n_rungs_used",
+           rung_t, "t_blocked_by_btd_cap", "accounted_t", pct_cols)
+  setcolorder(ladder_diag, c(ord, setdiff(names(ladder_diag), ord)))
+  setorder(ladder_diag, -pct_req, -req_t, na.last = TRUE)
+  
+  data.table::fwrite(ladder_diag, "output/08_04_use_ladder_diagnostic.csv")
+  
+  # ---- console summary: the shape of the whole rebalancing in one block ----
+  req_tot <- sum(ladder_diag$req_t)
+  message(">>> 08_04: ladder diagnostic — ", nrow(ladder_diag), " (area,item,year) cells, ",
+          format(round(req_tot), big.mark = ","), " t of feedstock requirement sourced as:")
+  for (j in seq_along(rung_t)) {
+    tj  <- sum(ladder_diag[[rung_t[j]]], na.rm = TRUE)
+    hit <- which(ladder_diag[[rung_t[j]]] > LADDER_DIAG_TOL)
+    pv  <- ladder_diag[[pct_cols[j]]][hit]                    # only the cells that fired
+    med <- if (any(!is.na(pv))) sprintf("%.1f", median(pv, na.rm = TRUE)) else "-"
+    message(sprintf("      %-15s %14s t  (%5.1f%% of the requirement, %6d cells, median %s%% of supply)",
+                    rung_lbl[j], format(round(tj), big.mark = ","),
+                    100 * tj / max(req_tot, 1), length(hit), med))
+  }
+  n_nodenom <- ladder_diag[is.na(pct_req), .N]
+  if (n_nodenom)
+    message("      (", n_nodenom, " cells had zero pre-ladder supply — % columns are NA for ",
+            "them; they are 08_01-minted cells whose entire requirement is bought.)")
+  message("      blocked by the btd export ceiling: ",
+          format(round(sum(ladder_diag$t_blocked_by_btd_cap)), big.mark = ","),
+          " t pushed from the export rung down into imports.")
+  message("      -> output/08_04_use_ladder_diagnostic.csv")
+  
+} else {
+  message(">>> 08_04: ladder diagnostic — no cell carries a feedstock requirement above ",
+          LADDER_DIAG_MIN_T, " t; nothing written.")
+}
+
+rm(ladder_detail)   # the *_f / red_* scratch copy is large; the diagnostic is what survives
 
 
 ###########################################################
@@ -581,14 +705,5 @@ setwd(fabio_root)
 saveRDS(cbs_sua_bal, tag("data/cbs_sua_bal.rds"))
 saveRDS(btd_bal,     tag("data/btd_final_bal.rds"))   # NEW: btd + the 08_04 origin routing
 # btd_final_resc.rds / btd_final.rds are NOT mutated -> the step stays idempotent on re-run.
-
-###########################################################
-########### CANONICAL-CASE CHECK #########
-###########################################################
-
-chk <- as.data.table(cbs_sua_bal)
-print(chk[area == "Finland" & item == "Palm Oil", .(year, production, imports, input_use)])
-print(chk[area == "Netherlands" & item == "Palm Oil" & year == 2019,
-          .(production, imports, input_use)])
 
 rm(list = ls())

@@ -38,6 +38,9 @@ X_summary <- fread(file.path(MAT_DIR, "X_summary_c146_c147_c149.csv"))
 files_tradeFeed_BF <- fabio_files("FABIO_tradeFeed", "BF", alloc = "value")
 dt_tradeFeed       <- rbindlist(lapply(files_tradeFeed_BF, fread))
 
+files_tradeFeed_BP <- fabio_files("FABIO_tradeFeed", "BP", alloc = "value")
+dt_tradeFeed_BP <- rbindlist(lapply(files_tradeFeed_BP, fread))
+
 ## Build combined LC-Impact terrestrial indicator (climate + acidification;
 ## ruling out "land use") — same recomputation as 19_01b, so LCIM_EQ_terrestrial
 ## is available to the plots below alongside its sub-indicators.
@@ -823,3 +826,177 @@ grid_abc   <- plot_grid(top_row, legend_row, ncol = 1, rel_heights = c(1, 0.32))
 
 ggsave(file.path(EU_PLOT_DIR, "EU_grid_index_ibif_mix_abc.png"),
        grid_abc, width = 14, height = 6.5, dpi = 300, bg = "white")
+
+
+
+
+################### Extracting a table with EU results (by commodity, feedstock, indicators across IBIF, year, origin country) ################### 
+
+dt_tradeFeed <- dt_tradeFeed[country_consumer != GBR & country_consumer %in% EU_iso3]
+dt_tradeFeed <- dt_tradeFeed[indicator %like% "ibif" & year == 2022]
+dt_tradeFeed <- dt_tradeFeed[, .(value = sum(value, na.rm = TRUE)), 
+                             by = .(country_origin, indicator, feedstock, commodity, year)]
+dt_tradeFeed_BP <- dt_tradeFeed_BP[country_consumer != GBR & country_consumer %in% EU_iso3]
+dt_tradeFeed_BP <- dt_tradeFeed_BP[indicator %like% "ibif" & year == 2022]
+dt_tradeFeed_BP <- dt_tradeFeed_BP[, .(value = sum(value, na.rm = TRUE)), 
+                                   by = .(country_origin, indicator, year)]
+dt_tradeFeed_BP[, commodity := "Bio-based polymers and building blocks"]
+dt_tradeFeed_BP[, feedstock := "All"]
+
+dt_result <- rbind(dt_tradeFeed, dt_tradeFeed_BP)
+
+dt_result[regions, origin_continent := i.continent, on = .(country_origin = iso3c)]
+dt_result[regions, origin_area := i.name, on = .(country_origin = iso3c)]
+dt_result[country_origin == "GBR", origin_continent := "EUR"]
+dt_result[, commodity := fcase(
+  commodity == "c146", "Biogasoline",
+  commodity == "c147", "Biodiesel",
+  commodity == "c149", "Renewable diesel",
+  default = commodity
+)]
+
+setcolorder(dt_result, c("country_origin", "origin_area", "origin_continent", "year"))
+
+writexl::write_xlsx(
+  dt_result,
+  file.path("/home/mmondolfo/fabio_bfp/output/table", "dt_result.xlsx")
+)
+
+
+
+
+################################################################################
+##  TEMP — German versions of (i) the (a)(b)(c) grid and (ii) the origin-continent
+##  share figure. Paste at the end, run once, then comment out.
+##  Reuses: idx_dt, idx_pal, b_dt, c_dt, shared_pal, shared_levels,
+##          theme_panel, theme_leg, extract_legend, plot_eu_origin_share.
+################################################################################
+
+## --- German label maps --------------------------------------------------------
+idx_lab_de <- c(
+  "Biofuel consumption"            = "Verbrauch von Biokraftstoffen",
+  "Pristine area loss equivalents" = "Verlust unber\u00fchrter Naturfl\u00e4chen",
+  "Richness loss (excl. land use)" = "Verlust an Artenvielfalt (excl. Landnutzung)",
+  "Richness loss from land use"    = "Verlust an Artenvielfalt durch Landnutzung"
+)
+
+feed_lab_de <- c(
+  "Rapeseed Oil"     = "Raps\u00f6l",
+  "Soybean Oil"      = "Soja\u00f6l",
+  "Sugar Beet"       = "Zuckerr\u00fcben",
+  "Palm Oil"         = "Palm\u00f6l",
+  "Animal Fats"      = "Tierische Fette",
+  "Sugar Cane"       = "Zuckerrohr",
+  "Maize"            = "Mais",
+  "Used Cooking Oil" = "Altspeise\u00f6l",
+  "Other"            = "Sonstige",
+  "Wheat"            = "Weizen",
+  "Annex IX Part A"  = "Annex IX Part A"
+)
+
+de_lab <- function(x) {                       # English compact label -> German
+  out <- feed_lab_de[x]; out[is.na(out)] <- x[is.na(out)]; unname(out)
+}
+shared_lab_de <- de_lab(compact_lab(shared_levels))   # keyed on shared_levels order
+
+mix_y_lab_de  <- "Verbrauch von Biokraftstoffen (Mrd Liter)"
+ibif_y_lab_de <- "Verlust unber\u00fchrter Naturfl\u00e4chen (1.000 MSA-loss\u00b7km\u00b2)"
+
+## marginally smaller y-axis titles for the 3-panel grid only — panel (c)'s longer
+## German label was touching the top of the axis area at theme_panel's BASE_SZ+1 (13pt)
+theme_panel_de <- theme_panel + theme(axis.title = element_text(size = BASE_SZ + 0.3))
+
+## --- (a) base-100 index, German legend ---------------------------------------
+p_eu_index_de <- ggplot(idx_dt, aes(year, index, color = series)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.8) +
+  geom_hline(yintercept = 100, linetype = "dotted", color = "grey50") +
+  scale_color_manual(values = idx_pal, name = NULL,
+                     labels = unname(idx_lab_de[levels(idx_dt$series)])) +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  labs(x = NULL, y = paste0("Index (", base_year, " = 100)")) +
+  theme_minimal(base_size = 16) +
+  theme(panel.grid.minor = element_blank())
+
+p_a_full_de <- p_eu_index_de + theme_panel_de +
+  guides(color = guide_legend(ncol = 1)) + theme_leg
+leg_a_de <- extract_legend(p_a_full_de)
+p_a_de   <- p_a_full_de + theme(legend.position = "none")
+
+## --- (b) consumption mix and (c) IBIF, German axis titles + legend -----------
+p_c_de <- ggplot(c_dt, aes(year, value, fill = item)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  scale_fill_manual(values = shared_pal, name = NULL, drop = FALSE,
+                    breaks = shared_levels, labels = shared_lab_de) +
+  scale_x_continuous(breaks = scales::pretty_breaks(),
+                     expand = expansion(mult = c(0.04, 0.04))) +
+  scale_y_continuous(labels = num, expand = expansion(mult = c(0, 0.10))) +
+  labs(x = NULL, y = mix_y_lab_de) + theme_panel_de
+
+p_b_de <- ggplot(b_dt, aes(year, value, fill = feedstock)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  scale_fill_manual(values = shared_pal, name = NULL, drop = FALSE,
+                    breaks = shared_levels, labels = shared_lab_de) +
+  scale_x_continuous(breaks = scales::pretty_breaks(),
+                     expand = expansion(mult = c(0.04, 0.04))) +
+  scale_y_continuous(labels = num, expand = expansion(mult = c(0, 0.10))) +
+  labs(x = NULL, y = ibif_y_lab_de) + theme_panel_de
+
+legend_dt_de <- data.table(x = 1L, y = 0,
+                           lvl = factor(shared_levels, levels = shared_levels))
+leg_bc_de <- extract_legend(
+  ggplot(legend_dt_de, aes(x, y, fill = lvl)) +
+    geom_col() +
+    scale_fill_manual(values = shared_pal, name = NULL, drop = FALSE,
+                      breaks = shared_levels, labels = shared_lab_de) +
+    guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
+    theme_leg)
+
+grid_abc_de <- plot_grid(
+  plot_grid(p_a_de, p_c_de, p_b_de, nrow = 1,
+            labels = c("(a)", "(b)", "(c)"), label_size = 16,
+            align = "h", axis = "tb"),
+  plot_grid(leg_a_de, leg_bc_de, nrow = 1, rel_widths = c(1, 2)),
+  ncol = 1, rel_heights = c(1, 0.32)) +
+  theme(plot.background = element_rect(fill = "white", colour = NA))
+
+ggsave(file.path(EU_PLOT_DIR, "EU_grid_index_ibif_mix_abc_DE.png"),
+       grid_abc_de, width = 14, height = 6.5, dpi = 300, bg = "white")
+
+## --- origin-continent share, German y title and "Other" -> "Sonstige" --------
+## dt_tradeFeed is consumed by the table-export section above; reload if needed.
+if (!"country_consumer" %in% names(dt_tradeFeed) ||
+    !any(dt_tradeFeed$year %in% 2012:2014)) {
+  dt_tradeFeed <- rbindlist(lapply(files_tradeFeed_BF, fread))
+  .lc <- dt_tradeFeed[
+    indicator %in% c("LCIM_EQ_terrestrial_climate", "LCIM_EQ_terrestrial_acidification"),
+    .(value = sum(value, na.rm = TRUE)), by = id_cols_trade
+  ][, indicator := "LCIM_EQ_terrestrial"]
+  dt_tradeFeed <- rbindlist(list(dt_tradeFeed[indicator != "LCIM_EQ_terrestrial"], .lc),
+                            use.names = TRUE)
+  dt_tradeFeed <- dt_tradeFeed[country_consumer != GBR]
+}
+
+## rewrite the x-axis group labels in the manually drawn geom_text layers
+de_origin_lab <- function(p, map = c("Other" = "Sonstige")) {
+  for (i in seq_along(p$layers)) {
+    d <- p$layers[[i]]$data
+    if (is.data.frame(d) && "origin_cont" %in% names(d)) {
+      v <- as.character(d$origin_cont); hit <- v %in% names(map)
+      v[hit] <- unname(map[v[hit]]); d$origin_cont <- v
+      p$layers[[i]]$data <- d
+    }
+  }
+  p
+}
+
+p_share_de <- de_origin_lab(
+  plot_eu_origin_share(dt_tradeFeed, regions,
+                       years1 = 2012:2014, years2 = 2020:2022,
+                       indicator_select = "ibif_total",
+                       y_lab = ibif_y_lab_de))
+
+ggsave(file.path(EU_PLOT_DIR,
+                 "EU_origin_continent_share_ibif_total_avg_2012-14_2020-22_DE.png"),
+       p_share_de, width = 9, height = 9, dpi = 300)
+################################################################################
