@@ -646,7 +646,7 @@ continent_palette <- c(
   ASI = "#E69F00",  # orange
   EU  = "#0072B2",  # blue
   EUR = "#56B4E9",  # sky blue
-  LAM = "#009E73",  # green
+  LAC = "#009E73",  # green
   NAM = "#CC79A7",  # pink
   OCE = "#F0E442",  # yellow
   ROW = "#000000"   # black
@@ -1047,7 +1047,7 @@ plot_global_gap_country_bars <- function(cmp, ncol = 2,
                                            ASI = "#E69F00",
                                            EU  = "#0072B2",
                                            EUR = "#56B4E9",
-                                           LAM = "#009E73",
+                                           LAC = "#009E73",
                                            NAM = "#CC79A7",
                                            OCE = "#F0E442",
                                            ROW = "#000000"

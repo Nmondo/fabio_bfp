@@ -481,7 +481,7 @@ plot_feedstock_desc <- function(data,
 #   label:     regional annual total printed above each bar (bar height == true regional total, incl. "Other")
 #
 # NOTE on scales: facet_grid(scales = "free_y") frees y PER ROW (fuel) but SHARES it across the region columns of
-#   that row -> a large region squashes a small one. Use comparable regions (EU/ASI/NAM/LAM), or set
+#   that row -> a large region squashes a small one. Use comparable regions (EU/ASI/NAM/LAC), or set
 #   `independent_y = TRUE` to switch to ggh4x::facet_grid2(independent = "y") for a truly per-panel y-axis.
 
 # distinct qualitative colours by stacking Brewer palettes (self-contained; interpolates if > ~49 needed)
@@ -500,7 +500,7 @@ plot_feedstock_desc <- function(data,
 plot_country_consumption <- function(Y_summary,
                                      regions,
                                      comm_in       = NULL,                 # e.g. c("c146","c147","c149"); NULL = all
-                                     continent_in  = NULL,                 # e.g. c("EU","ASI","NAM","LAM"); NULL = all
+                                     continent_in  = NULL,                 # e.g. c("EU","ASI","NAM","LAC"); NULL = all
                                      items         = items_full_bcp,       # comm_code -> item (row-strip labels)
                                      n_top         = 10,
                                      share_thresh  = 0.10,
@@ -988,7 +988,3 @@ bf_sankey_gg <- function(sankey_flows,
   
   p
 }
-
-
-
-

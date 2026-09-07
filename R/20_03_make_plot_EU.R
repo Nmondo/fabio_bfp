@@ -425,13 +425,13 @@ plot_eu_origin_share <- function(dt_tradeFeed, regions,
   ## --- local continent colour overrides (layered on continent_palette) -------
   ## EU: highlight, vivid dark green. EUR (rest of Europe): a lighter green but
   ## kept saturated so it survives the dulling applied to non-highlight fills.
-  ## NAM blue, LAM sky blue (distinct from NAM's blue), ASI brown, OCE purple.
+  ## NAM blue, LAC sky blue (distinct from NAM's blue), ASI brown, OCE purple.
   cont_pal <- continent_palette
-  cont_pal[c("EU", "EUR", "NAM", "LAM", "ASI", "OCE")] <- c(
+  cont_pal[c("EU", "EUR", "NAM", "LAC", "ASI", "OCE")] <- c(
     "#2f7e07",   # EU  — vivid dark green (highlight)
     "#57a639",   # EUR — lighter green, still saturated
     "#1f78b4",   # NAM — blue
-    "#56c1e6",   # LAM — sky blue
+    "#56c1e6",   # LAC — sky blue
     "#8c510a",   # ASI — brown
     "#6a3d9a")   # OCE — purple
   

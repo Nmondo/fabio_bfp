@@ -50,7 +50,7 @@ ggsave(filename = file.path("output", "plot", "Y_global_2012_2022_BP.svg"),
 # Supply by region and feedstocks.
 p <- plot_feedstock_desc(Z_per_year,
                          c("c146","c147","c149"),
-                         c("EU","ASI","NAM","LAM"),
+                         c("EU","ASI","NAM","LAC"),
                          scale        = 1e3,
                          accuracy     = 1,
                          y_lab        = "Biofuel production (B liters)")  # default tcf_on_missing = "drop"
@@ -64,14 +64,14 @@ ggsave(
 p_country <- plot_country_consumption(
   Y_summary, regions,
   comm_in      = c("c146", "c147", "c149"),
-  continent_in = c("EU", "ASI", "NAM", "LAM"),
+  continent_in = c("EU", "ASI", "NAM", "LAC"),
   n_top        = 10,
   share_thresh = 0.10,
   scale        = 1e6,
   accuracy     = 1,
   y_lab        = "Biofuel consumption (B liters)")
 
-ggsave(file.path("output", "plot", "consumption_by_country_BF_EU-ASI-NAM-LAM.svg"),
+ggsave(file.path("output", "plot", "consumption_by_country_BF_EU-ASI-NAM-LAC.svg"),
        p_country, width = 12, height = 8, dpi = 300)
 
 
@@ -83,13 +83,13 @@ ggsave(file.path("output", "plot", "consumption_by_country_BF_EU-ASI-NAM-LAM.svg
 p_feed_early <- plot_sourcing_feedstock(
   dt_feedsrc, regions,
   commodities = c("c146", "c147", "c149"),
-  continents  = c("EU", "ASI", "NAM", "LAM"),
+  continents  = c("EU", "ASI", "NAM", "LAC"),
   period      = 2012:2014) + ggtitle("2012-2014")
 
 p_feed_late <- plot_sourcing_feedstock(
   dt_feedsrc, regions,
   commodities = c("c146", "c147", "c149"),
-  continents  = c("EU", "ASI", "NAM", "LAM"),
+  continents  = c("EU", "ASI", "NAM", "LAC"),
   period      = 2020:2022) + ggtitle("2020-2022")
 
 p_feed_src <- (p_feed_early / p_feed_late) +
@@ -130,7 +130,7 @@ p1 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2020:2022,
   biofuel_sel = "c146",
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"
@@ -140,7 +140,7 @@ p2 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2020:2022,
   biofuel_sel = c("c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"
@@ -175,7 +175,7 @@ p1 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2012:2014,
   biofuel_sel = "c146",
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"
@@ -185,7 +185,7 @@ p2 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2012:2014,
   biofuel_sel = c("c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"
@@ -226,7 +226,7 @@ p1 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2012:2014,
   biofuel_sel = c("c146", "c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"
@@ -236,7 +236,7 @@ p2 <- bf_sankey_gg(
   trace_flows,
   year_sel    = 2020:2022,
   biofuel_sel = c("c146", "c147", "c149"),
-  cont_order  = c("LAM", "NAM", "ASI", "EU"),
+  cont_order  = c("LAC", "NAM", "ASI", "EU"),
   merge_regions = c("EUR", "OCE", "ROW", "AFR"),
   merge_label   = "Other",
   normalize   = "raw"

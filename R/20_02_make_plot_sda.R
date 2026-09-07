@@ -36,7 +36,7 @@ plot_SDA_chain(2012, 2022, "ibif_total")
 # plot_SDA_chain(2012, 2022, "LCIM_EQ_terrestrial")
 
 plot_SDA_chain_continent(2012, 2022, "ibif_total",
-                         continents = c("EU", "ASI", "LAM", "NAM"))
+                         continents = c("EU", "ASI", "LAC", "NAM"))
 
 # plot_SDA_chain_continent(2012, 2022, "ibif_total",
 #                          continents     = character(0),
