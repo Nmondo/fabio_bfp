@@ -326,7 +326,12 @@ PANEL_SETS <- list(
     n      = Inf,
     pool   = "world",
     select = "PBA",
-    order  = "PBA",
+    # "fixed", not "PBA": CONTINENT_ORDER (40) is the block's shared continent
+    # axis. Ranking on PBA made this figure's axis a property of the indicator,
+    # so it disagreed with itself between IBIF and LCIM1 runs -- and with 48/49,
+    # which had the same problem. `select` stays "PBA" and does nothing here:
+    # n = Inf takes every continent, so nothing is selected away.
+    order  = "fixed",
     # "Unknown" is continent_of()'s fallback bucket. It should be empty; if it
     # is not, the console says which countries landed in it and the panel is
     # dropped rather than drawn as a mystery region. Take it out of `drop` if
@@ -803,11 +808,23 @@ pick_set <- function(nm, spec) {
   }
   # ...then re-sort THOSE panels left-to-right. sel$panel becomes the factor
   # levels at plot time, so this line alone sets the x axis of every row.
-  # "alpha" is 48's REGION_ORDER vocabulary and is the one ordering that sorts
-  # ASCENDING and on a name rather than on a score -- hence its own branch
-  # instead of another entry in the switch. order_by is NA there because there is
-  # no score behind the order, and writing the rank in would imply one.
-  if (identical(spec$order, "alpha")) {
+  # "fixed" and "alpha" are the two orderings that sort on a NAME rather than on
+  # a score -- hence their own branches instead of another entry in the switch.
+  # order_by is NA in both because there is no score behind the order, and
+  # writing the rank in would imply one. "alpha" is 48's REGION_ORDER vocabulary.
+  if (identical(spec$order, "fixed")) {
+    # The block's continent axis, from 40. Like "alpha" it sorts on a NAME and
+    # not on a score, so order_by is NA: writing a rank in would imply the panels
+    # were ranked. CONTINENT_ORDER names regions, so this is a continent-set
+    # order only -- at unit = "country" every panel would fall through to the
+    # alphabetical tail, which is what "alpha" already says out loud.
+    if (!identical(spec$unit, "continent"))
+      stop("[44] set '", nm, "': order = 'fixed' is the continent axis from 40; ",
+           "at unit = '", spec$unit, "' use a score or 'alpha'.")
+    lv <- continent_levels(sel$panel)
+    sel <- sel[order(match(panel, lv))]
+    sel[, order_by := NA_real_]
+  } else if (identical(spec$order, "alpha")) {
     setorder(sel, panel)
     sel[, order_by := NA_real_]
   } else {
@@ -1223,6 +1240,7 @@ ORDER_NOTE <- function(spec)
   switch(spec$order,
          rank  = "the same score",
          alpha = "name",
+         fixed = "the block's fixed continent order, the same in every figure",
          max   = "their largest pooled account",
          mean  = "their mean pooled account",
          sprintf("pooled %s", spec$order))

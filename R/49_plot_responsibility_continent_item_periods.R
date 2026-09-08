@@ -139,13 +139,16 @@ UNIT   <- "continent"     # "continent" | "country"
 TOP_N  <- Inf             # Inf = every panel of the unit. Ranked on PANEL_ORDER.
 DROP_PANELS <- "Unknown"  # continent_of()'s fallback bucket; should be empty
 
-# Left-to-right order of the panels, scored on the LAST period and pooled over
-# chains, so the two period rows and the chain rows all use ONE order and a
-# region sits in the same column in every figure of the set.
-# "PBA" matches 48's REGION_ORDER default. Two continent figures in one document
-# with different left-to-right axes is a reading error waiting to happen: change
-# this and 48's together, or neither.
-PANEL_ORDER <- "PBA"      # "PBA" | "CBA" | "VA" | "max" | "mean" | "alpha"
+# Left-to-right order of the panels. "fixed" takes CONTINENT_ORDER from 40, the
+# block's shared continent axis, and matches 48's REGION_ORDER default: two
+# continent figures in one document with different left-to-right axes is a
+# reading error waiting to happen: change this and 48's together, or neither.
+# The scored orders ("PBA" etc.) rank on the LAST period pooled over chains, so
+# the period rows and the chain rows still share ONE order WITHIN a figure -- but
+# that order is a property of the CURRENT indicator, so it moves a region between
+# the IBIF and LCIM1 versions of the same figure. Hence "fixed" by default.
+# "fixed" is meaningful for UNIT = "continent" only; the guard below says so.
+PANEL_ORDER <- "fixed"    # "fixed" | "PBA" | "CBA" | "VA" | "max" | "mean" | "alpha"
 
 BY_PERIOD_CHAINS <- TRUE  # also write figure [2], one file per period
 
@@ -682,7 +685,15 @@ panel_totals <- {
 if (!nrow(panel_totals))
   stop("[49] no ", UNIT_ONE[[UNIT]], " carries any ", STRESSOR, " in ", LAST, ".")
 
-if (identical(PANEL_ORDER, "alpha")) {
+if (identical(PANEL_ORDER, "fixed")) {
+  # CONTINENT_ORDER names regions, so ordering countries by it would silently
+  # degrade to alphabetical -- which "alpha" already says out loud.
+  if (!identical(UNIT, "continent"))
+    stop("[49] PANEL_ORDER = 'fixed' is the continent axis from 40; ",
+         "at UNIT = '", UNIT, "' use a scored order or 'alpha'.")
+  lv <- continent_levels(panel_totals$panel)
+  panel_totals <- panel_totals[order(match(panel, lv))]
+} else if (identical(PANEL_ORDER, "alpha")) {
   setorder(panel_totals, panel)
 } else {
   # NOT a name with a leading dot: data.table reserves that namespace for its own
@@ -693,7 +704,7 @@ if (identical(PANEL_ORDER, "alpha")) {
                                   {
                                     if (!PANEL_ORDER %in% ACCOUNTS)
                                       stop("[49] PANEL_ORDER must be one of ",
-                                           paste(c(ACCOUNTS, "max", "mean", "alpha"), collapse = " / "),
+                                           paste(c("fixed", ACCOUNTS, "max", "mean", "alpha"), collapse = " / "),
                                            ", not '", PANEL_ORDER, "'.")
                                     get(PANEL_ORDER)
                                   })]

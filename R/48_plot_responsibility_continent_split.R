@@ -111,11 +111,16 @@ BY_BIOFUEL  <- TRUE     # also write the per-chain variant, one file per period
 NEG_FLOWS   <- "clamp"  # malformed rows (see the header): "clamp" | "keep" | "drop"
 DROP_REGIONS <- character(0)   # e.g. "Unknown" -- regions to leave out entirely
 
-# Left-to-right order of the panels. "pba" ranks by production in the LAST
-# period, pooled over chains, so the two periods and the three chain rows all
-# use ONE order and a region sits in the same column in every figure of the set.
-# "alpha" restores 43's alphabetical axis.
-REGION_ORDER <- "pba"   # "pba" | "cba" | "alpha"
+# Left-to-right order of the panels. "fixed" takes CONTINENT_ORDER from 40, which
+# is the whole block's shared axis: every continent figure -- 43's divergences,
+# 44's `continents` set, 49 and this one -- then reads left to right the same way
+# whatever STRESSOR is set to. "pba"/"cba" rank on the LAST period of the CURRENT
+# indicator instead, which is why they are no longer the default: they made the
+# axis a property of the indicator, so the IBIF and LCIM1 versions of this figure
+# disagreed about which column a region sits in. Keep them for a one-off where
+# the ranking IS the point, and say so in the caption.
+# "alpha" restores 43's old alphabetical axis.
+REGION_ORDER <- "fixed"   # "fixed" | "pba" | "cba" | "alpha"
 
 # --- type size and furniture -------------------------------------------------
 # Same value as 44/45, so a region panel here and a country panel there are read
@@ -423,10 +428,11 @@ if (!nrow(p_pool))
 # --- panel order -------------------------------------------------------------
 LAST <- names(PERIODS)[length(PERIODS)]
 ord <- switch(REGION_ORDER,
+              fixed = continent_levels(p_pool$continent),
               alpha = sort(unique(as.character(p_pool$continent))),
               pba   = p_pool[period == LAST][order(-PBA), as.character(continent)],
               cba   = p_pool[period == LAST][order(-CBA), as.character(continent)],
-              stop("[48] REGION_ORDER must be 'pba', 'cba' or 'alpha'."))
+              stop("[48] REGION_ORDER must be 'fixed', 'pba', 'cba' or 'alpha'."))
 ord <- unique(c(ord, sort(setdiff(unique(as.character(p_pool$continent)), ord))))
 p_pool[, continent := factor(continent, levels = ord)]
 message("[48] panel order (", REGION_ORDER, "): ", paste(ord, collapse = " "))
@@ -619,13 +625,16 @@ cat(sprintf("\n-- %s | %s: regional accounts and their split, %s --\n",
             META$short_label, allocation, LAST))
 print(late[order(-PBA),
            .(continent,
-             PBA      = round(PBA / META$scale_factor),
-             CBA      = round(CBA / META$scale_factor),
-             HDI      = round(HDI / META$scale_factor),
-             VA       = round(VA  / META$scale_factor),
-             domestic = round(domestic    / META$scale_factor),
-             exports  = round(export_full / META$scale_factor),
-             imports  = round(import_full / META$scale_factor))])
+             # 2 digits, not 0: the scale factors are now chosen for the AXES
+             # (LCIM1 1e-4, IBIF 100), and the smaller continents land below 1
+             # in both -- bare round() printed them as a column of zeros.
+             PBA      = round(PBA / META$scale_factor, 2),
+             CBA      = round(CBA / META$scale_factor, 2),
+             HDI      = round(HDI / META$scale_factor, 2),
+             VA       = round(VA  / META$scale_factor, 2),
+             domestic = round(domestic    / META$scale_factor, 2),
+             exports  = round(export_full / META$scale_factor, 2),
+             imports  = round(import_full / META$scale_factor, 2))])
 cat("\n - PBA/CBA/HDI/VA must be identical to 43's four bars; only the split is new.\n")
 cat(" - domestic/exports/imports are BETWEEN REGIONS: intra-regional trade is domestic here.\n")
 

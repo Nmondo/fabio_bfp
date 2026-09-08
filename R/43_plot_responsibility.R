@@ -232,12 +232,17 @@ as_divergences <- function(d, keys) {
   m[]
 }
 
-# continents ordered by the size of what they are actually involved in, so a big
-# bar on a small base cannot be mistaken for a big shift (that is the % figure's
-# job, and it drops those continents outright).
-order_by_baseline <- function(m) {
-  ord <- m[, .(b = sum(baseline_5050)), by = continent][order(b), continent]
-  m[, continent := factor(continent, levels = ord)][]
+# continents in the block's fixed order (CONTINENT_ORDER, 40), so this figure
+# keeps the same left-to-right reading as 44, 48 and 49 whatever STRESSOR is set
+# to. It used to order by sum(baseline_5050) ascending -- "by the size of what
+# they are actually involved in" -- which was defensible on its own but made the
+# axis a function of the indicator, so the IBIF and LCIM1 versions of the same
+# figure disagreed about where a region sits. A big bar on a small base is still
+# not a big shift: that is what the % figure beside it is for.
+# rev(): coord_flip() draws the FIRST factor level at the BOTTOM, so the levels
+# have to run backwards for CONTINENT_ORDER to read top-to-bottom.
+order_continents <- function(m) {
+  m[, continent := factor(continent, levels = rev(continent_levels(continent)))][]
 }
 
 # --- plots -------------------------------------------------------------------
@@ -348,11 +353,10 @@ save_svg(paste0("responsibility_accounts_", FTAG),
          height = 2.6 + 2.9 * max(n_row, 1))    # 4 rows    -> 14.2in
 
 # --- [2] divergence from the 50/50 split, absolute ---------------------------
-# order_by_baseline() sees the total rows as well as the chains, which exactly
-# doubles every continent's baseline sum and therefore leaves the ORDER -- the
-# only thing it uses -- untouched.
+# order_continents() reads nothing but the set of continents present, so the
+# total rows sitting in the table alongside the chains cannot affect the axis.
 cont <- period_mean(dp, DIV_COLS, c("continent", "biofuel_group"))
-m    <- order_by_baseline(as_divergences(cont, c("continent", "biofuel_group")))
+m    <- order_continents(as_divergences(cont, c("continent", "biofuel_group")))
 m[, divergence := divergence / META$scale_factor]
 
 save_svg(paste0("responsibility_divergence_", FTAG),
@@ -374,7 +378,7 @@ pc[, share := 100 * baseline_5050 / sum(baseline_5050), by = .(period, biofuel_g
 # The cut is now made PANEL BY PANEL, so a continent can be material in the pool
 # and negligible in renewable diesel. It keeps its slot on the shared axis and
 # simply has no bar in the panels where it was cut -- `continent` is a factor
-# whose levels are fixed by order_by_baseline(), so dropping rows leaves a gap
+# whose levels are fixed by order_continents(), so dropping rows leaves a gap
 # rather than re-indexing the axis. A continent cut EVERYWHERE disappears.
 drop <- unique(pc[share < MIN_SHARE_PCT,
                   .(biofuel_group, continent = as.character(continent))])
@@ -385,7 +389,7 @@ if (nrow(drop))
             paste(sort(drop[biofuel_group == g, continent]), collapse = ", "))
 pc <- pc[share >= MIN_SHARE_PCT & baseline_5050 > 0]
 if (nrow(pc)) {
-  mp <- order_by_baseline(as_divergences(pc, c("continent", "biofuel_group")))
+  mp <- order_continents(as_divergences(pc, c("continent", "biofuel_group")))
   mp[, divergence := 100 * divergence / baseline_5050]   # NOT scaled by META: it is a %
   save_svg(paste0("responsibility_divergence_", FTAG, "_pct"),
            plot_divergence(mp, paste0(TTL_DIV, " - relative"),

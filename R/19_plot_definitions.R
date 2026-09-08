@@ -85,13 +85,13 @@ indicator_meta <- data.table(
   y_label      = c(
     "Land use (1000 ha)",
     "Pristine area loss equivalents (MSA-loss\u00b7km\u00b2)",
-    "Freshwater biodiversity loss (PDF\u00b7yr)",
-    "Marine biodiversity loss (PDF\u00b7yr)",
-    "Terrestrial biodiversity loss (PDF\u00b7yr)",
-    "Terrestrial biodiversity loss, excl. land use (PDF\u00b7yr)",
-    "Terrestrial biodiversity loss from land use (PDF\u00b7yr)",
-    "Terrestrial biodiversity loss from climate change (PDF\u00b7yr)",
-    "Terrestrial biodiversity loss from acidification (PDF\u00b7yr)"),
+    "Freshwater species richness loss [global PDF\u00b7yr]",
+    "Marine species richness loss [global PDF\u00b7yr]",
+    "Terrestrial species richness loss [global PDF\u00b7yr]",
+    "Terrestrial species richness loss, excl. land use [global PDF\u00b7yr]",
+    "Terrestrial species richness loss from land use [global PDF\u00b7yr]",
+    "Terrestrial species richness loss from climate change [global PDF\u00b7yr]",
+    "Terrestrial species richness loss from acidification [global PDF\u00b7yr]"),
   short_label  = c(
     "Land use", "IBIF",
     "Freshwater biodiversity loss",
@@ -102,6 +102,62 @@ indicator_meta <- data.table(
     "Terrestrial biodiversity loss (climate)",
     "Terrestrial biodiversity loss (acidification)")
 )
+
+# ---- LC-IMPACT v1.3 (LCIM1_*) ----------------------------------------------
+# Written by 15_8 from LC1_list, alongside the v2 rows above. Same damage unit --
+# global PDF*yr, see the cf_unit assignments in 15_7 -- but the v1.3 REALMS are
+# not the v2 realms: v1.3 has no marine climate CF, and waterborne nitrogen is
+# characterised as marine eutrophication, so LCIM1_EQ_marine is eutrophication
+# ONLY. Do not read a v1.3 realm as the v2 realm of the same name.
+#
+# Appended with rbind() rather than spliced into the four parallel c() calls
+# above: those have to stay aligned by hand, and a row added to one vector and
+# forgotten in another recycles silently into a wrong label.
+#
+# SCALE. Without a scale factor the biofuel chains are O(1e-3) global PDF*yr
+# worldwide, so every axis ticks in "6e-05" and 48's console table rounds to a
+# column of zeros. LCIM1_SCALE divides the plotted values and LCIM1_UNIT is
+# pasted into every label below from the same constant, so the numbers on the
+# axis and the unit above them cannot drift apart -- change the pair, never one.
+# Nothing outside 41-49 reads these rows, so unlike `ibif_total` (see 40) the
+# display scale can live here with the labels.
+LCIM1_SCALE <- 1e-4
+LCIM1_UNIT  <- "10\u207b\u2074 global PDF\u00b7yr"
+
+indicator_meta <- rbind(indicator_meta, data.table(
+  indicator    = c("LCIM1_EQ_freshwater",
+                   "LCIM1_EQ_marine",
+                   "LCIM1_EQ_terrestrial",
+                   "LCIM1_EQ_terrestrial_land_use",
+                   "LCIM1_EQ_terrestrial_climate",
+                   "LCIM1_EQ_terrestrial_acidification",
+                   "LCIM1_EQ_freshwater_climate",
+                   "LCIM1_EQ_freshwater_eutrophication",
+                   "LCIM1_EQ_freshwater_water_use",
+                   "LCIM1_EQ_marine_eutrophication"),
+  scale_factor = rep(LCIM1_SCALE, 10L),
+  y_label      = sprintf("%s [%s]", c(
+    "Freshwater species richness loss",
+    "Marine species richness loss",
+    "Terrestrial species richness loss",
+    "Terrestrial species richness loss from land use",
+    "Terrestrial species richness loss from climate change",
+    "Terrestrial species richness loss from acidification",
+    "Freshwater species richness loss from climate change",
+    "Freshwater species richness loss from eutrophication",
+    "Freshwater species richness loss from water use",
+    "Marine species richness loss from eutrophication"), LCIM1_UNIT),
+  short_label  = c(
+    "Freshwater species loss (LC-IMPACT 1.3)",
+    "Marine species loss (LC-IMPACT 1.3)",
+    "Terrestrial species loss (LC-IMPACT 1.3)",
+    "Terrestrial species loss, land use (LC-IMPACT 1.3)",
+    "Terrestrial species loss, climate (LC-IMPACT 1.3)",
+    "Terrestrial species loss, acidification (LC-IMPACT 1.3)",
+    "Freshwater species loss, climate (LC-IMPACT 1.3)",
+    "Freshwater species loss, eutrophication (LC-IMPACT 1.3)",
+    "Freshwater species loss, water use (LC-IMPACT 1.3)",
+    "Marine species loss, eutrophication (LC-IMPACT 1.3)")))
 
 commodity_meta <- data.table(
   item      = c("Biogasoline", "Biodiesel", "Renewable diesel"),

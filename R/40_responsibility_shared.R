@@ -21,7 +21,7 @@ source("R/00_system_variables.R")   # years, output_dir_bcp
 source("R/19_plot_definitions.R")   # indicator_meta, continent_palette, fuel_colors
 
 # --- the run -----------------------------------------------------------------
-STRESSOR   <- "LCIM1_EQ_terrestrial"   # "ibif_total" | "LCIM_EQ_terrestrial" | "LCIM1_EQ_terrestrial"
+STRESSOR   <- "ibif_total"   # "ibif_total" | "LCIM_EQ_terrestrial" | "LCIM1_EQ_terrestrial"
 allocation <- "value"        # co-product rule of the Leontief inverse: "mass" | "value"
 VA_BASE    <- "exiobase"     # "gloria" | "exiobase"
 VA_VARIANT <- "full"         # VA definition carried by the account 43-45/47 draw:
@@ -231,6 +231,33 @@ variant_palette <- c("Full VA (wages + capital + TLS)" = "#D55E00",
 PERIODS <- list("2012-2014" = 2012:2014,
                 "2020-2022" = 2020:2022)
 
+# --- the continent axis ------------------------------------------------------
+# ONE left-to-right order for every continent figure in the block: 43's
+# divergences, 44's `continents` set, 48 and 49 all take their levels from here.
+#
+# FIXED, not scored. Each of those four scripts used to rank regions on an
+# account of the CURRENT indicator, which means the axis is a function of the
+# indicator: IBIF's PBA ranking opens NAM, LAC, ASI, while LCIM1's opens ASI,
+# LAC, NAM -- the same region lands in a different column in two figures a reader
+# holds side by side, and neither figure says so. The order below is IBIF's
+# 2020-2022 pooled PBA ranking, frozen, so switching STRESSOR changes the bars
+# and never the axis.
+#
+# Re-rank it by hand if the story wants a different reading order; what must not
+# come back is deriving it from the data of whichever indicator is loaded.
+CONTINENT_ORDER <- c("NAM", "LAC", "ASI", "EU", "EUR", "OCE", "AFR", "ROW")
+
+# Levels for the continents ACTUALLY PRESENT, in CONTINENT_ORDER. Anything not
+# named above -- a new region code, continent_of()'s "Unknown" -- sorts
+# alphabetically after the named ones rather than being dropped: a region missing
+# from this vector must still reach the figure, where it is visible, instead of
+# vanishing out of an axis nobody re-reads.
+continent_levels <- function(x) {
+  x <- unique(as.character(x))
+  x <- x[!is.na(x)]
+  c(intersect(CONTINENT_ORDER, x), sort(setdiff(x, CONTINENT_ORDER)))
+}
+
 # --- tolerances --------------------------------------------------------------
 # TOL       the accounts re-attribute one total; a drift means the files do not
 #           belong together, so the bound is tight.
@@ -257,6 +284,24 @@ META <- {
     list(scale_factor = 1, y_label = STAG, short_label = STAG)
   } else as.list(indicator_meta[i, .(scale_factor, y_label, short_label)])
 }
+
+# DISPLAY RESCALING, THIS BLOCK ONLY.
+# `ibif_total`'s scale_factor in indicator_meta is load-bearing OUTSIDE 41-49:
+# 20_03 divides by it before its own extra /1000, and 19_01b's plot functions
+# scale by it. Raising it there to get readable axes here would silently rescale
+# the EU and footprint figures by the same factor -- so the override lives in the
+# responsibility block, which is the only consumer that wants it.
+# IBIF runs to ~3.7e5 MSA-loss*km2 for the three chains pooled, so /100 puts the
+# ticks in the hundreds instead of "160,000". The label carries the factor, so a
+# figure cannot show scaled numbers under an unscaled unit.
+# LCIM1_* needs no entry: nothing outside this block reads those rows, so their
+# display scale sits with their labels in 19.
+RESP_DISPLAY <- list(
+  ibif = list(scale_factor = 1000,
+              y_label = "Pristine area loss equivalents [1000 MSA-loss\u00b7km\u00b2]")
+)
+if (!is.null(RESP_DISPLAY[[STAG]]))
+  META[names(RESP_DISPLAY[[STAG]])] <- RESP_DISPLAY[[STAG]]
 
 # --- helpers -----------------------------------------------------------------
 run_banner <- function()
