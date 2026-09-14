@@ -606,7 +606,7 @@ va_symlog_axis <- function(v) {
   at   <- sort(unique(c(-rev(dec), 0, dec)))
   step <- abs(seq_along(at) - (length(at) + 1L) / 2L)
   lab  <- at
-  if (max(step) > 8L) lab[step > 0L & step %% 2L == 0L] <- NA
+  if (max(step) > 6L) lab[step > 0L & step %% 2L == 0L] <- NA
   list(breaks = va_symlog(at), labels = va_sci_expr(lab))
 }
 
@@ -642,24 +642,30 @@ va_symlog_plot <- function(d, colour, colours, colour_name, facets,
     labs(title = title, subtitle = subtitle,
          x = "Independent reference, value added (current US$, symlog scale)",
          y = "FABIO-BCP value-added extension (current US$, symlog scale)") +
-    theme_minimal(base_size = 10) +
+    theme_minimal(base_size = 12) +
     theme(
       aspect.ratio        = 1,
       panel.grid.minor    = element_blank(),
       panel.grid.major    = element_line(colour = "grey90", linewidth = 0.25),
+      # Shared axes and no frame left the panels running into each other; the
+      # border is darker than the zero lines so it reads as a frame and not as
+      # another gridline.
+      panel.border        = element_rect(colour = "grey60", fill = NA,
+                                         linewidth = 0.4),
       panel.spacing       = unit(1.2, "lines"),
-      strip.text          = element_text(face = "bold", size = 9.5),
       strip.placement     = "outside",
+      strip.text          = element_text(face = "bold", size = 11),
+      strip.text.y.left   = element_text(angle = 0, face = "bold", size = 11),
       legend.position     = "bottom",
       legend.box          = "vertical",
       # Title + subtitle form a left-aligned top band, set off by whitespace so
       # they can be cropped off cleanly when placing the figure in publication.
       plot.title.position = "plot",
-      plot.title          = element_text(face = "bold", size = 12,
+      plot.title          = element_text(face = "bold", size = 14,
                                          margin = margin(b = 4)),
-      plot.subtitle       = element_text(size = 8.5, lineheight = 1.2,
+      plot.subtitle       = element_text(size = 10, lineheight = 1.2,
                                          margin = margin(b = 16))) +
-    guides(colour = guide_legend(override.aes = list(shape = 16, size = 2.8)))
+    guides(colour = guide_legend(override.aes = list(shape = 16, size = 3.2)))
 }
 
 out_plot_dir <- file.path("output", "plot")
@@ -690,9 +696,10 @@ if (!nrow(sub_cells)) {
     sub_cells,
     colour = "component", colours = VA_COMPONENT_COLOURS,
     colour_name = "Value-added component", colour_labels = VA_MEASURE[VA_COMPONENTS],
-    # switch = "both": each strip sits beside the axis it qualifies -- the MRIO
-    # base down the left, the reference along the foot.
-    facets = facet_grid(base ~ reference, switch = "both"),
+    # switch = "y": the MRIO base reads down the left, horizontal and beside
+    # the y axis it qualifies; the references stay across the top, as the
+    # column strips do in every other figure of the set.
+    facets = facet_grid(base ~ reference, switch = "y"),
     title    = paste0("FABIO-BCP value added against the independent references at ",
                       "country x commodity x year x component resolution (L4)"),
     subtitle = paste0("One point per country x commodity x year x value-added ",
