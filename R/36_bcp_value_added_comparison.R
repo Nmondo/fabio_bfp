@@ -376,10 +376,53 @@ VA_COMPONENT_COLOURS <- c(wages = "#1f77b4", capital = "#d62728",
 
 # --- cells -------------------------------------------------------------------
 
+# --- true zero vs never measured --------------------------------------------
+#
+# Local copy of the vocabulary 00_validation_helpers.R carries in the
+# validation repo; this script keeps its own symlog stack and cannot source it.
+# The FAOSTAT availability lookup used there does NOT apply here: c146 / c147
+# are biofuels, outside the crop-and-livestock universe FAOSTAT reports, so no
+# primary source can adjudicate a zero on the MRIO side.  What does apply is
+# whether a side carries the cell at all, which va_match() below records before
+# it fills the gaps with zeros.
+#
+#   observed        a figure is present
+#   reported_zero   zero, and the side books that zero explicitly
+#   missing         the side carries the cell, but the figure is not finite
+#   absent          the side carries no row for the cell at all
+#
+# The last two are the readings a zero cannot be taken as a measurement, and
+# neither survives as a number: va_match() fills a non-finite figure and an
+# absent row to the same zero, so by the time a panel or a metric sees the cell
+# the status is the only record of which it was.  There is no aggregation step
+# between the cells and the scoring here — the combined files already resolve
+# (country, commodity, year, component) — so no cell ever has to reconcile two
+# statuses, and the levels need no precedence order.
+VA_UNOBSERVED <- c("absent", "missing")
+
+#' Cells withheld from a panel: one side is zero with nothing behind it, read
+#' off the status alone.  The test is the same on both sides, which is what
+#' keeps the exclusion symmetric, and it is returned per side because the
+#' panels report the two counts separately.
+va_withheld_sides <- function(ref, src, ref_status, src_status) {
+  list(src = src == 0 & src_status %chin% VA_UNOBSERVED,
+       ref = ref == 0 & ref_status %chin% VA_UNOBSERVED)
+}
+
+va_withheld <- function(ref, src, ref_status, src_status) {
+  w <- va_withheld_sides(ref, src, ref_status, src_status)
+  w$src | w$ref
+}
+
 #' The `<prefix>_usd` / `<prefix>_<component>_usd` columns of a combined file,
-#' long over measure.  Non-finite cells are dropped here and come back as
-#' structural zeros in the match, so an unpopulated cell reads as missing
-#' coverage rather than as agreement.
+#' long over measure.  Non-finite cells are dropped, and that is deliberate
+#' here: the references are WIDE COLUMNS of the combined table, so NA is how
+#' this table spells "no row", not a measurement that failed.  Dropping them
+#' leaves the cell out of the universe, va_match() reads it as `absent`, and a
+#' zero with nothing behind it stays distinguishable from a measured zero.
+#' Keeping them would put a row on both sides of every cell, which inflates the
+#' designed grid and leaves nothing absent to withhold.  01 / 02 mark instead of
+#' dropping because there a non-finite value is a row that exists and failed.
 va_long <- function(comb, prefix, components = TRUE) {
   cols <- c(total = paste0(prefix, "_usd"))
   if (components)
@@ -393,7 +436,9 @@ va_long <- function(comb, prefix, components = TRUE) {
             id.vars = c("iso3c", "comm_code", "year"), variable.name = "column",
             value.name = "value", variable.factor = FALSE)
   d[, component := names(cols)[match(column, cols)]]
-  d[is.finite(value), .(iso3c, comm_code, year, component, value)]
+  d <- d[is.finite(value)]
+  d[, status := "observed"]
+  d[, .(iso3c, comm_code, year, component, value, status)]
 }
 
 #' Pair one reference against the base cells.  The universe is the union of the
@@ -407,7 +452,23 @@ va_match <- function(src_cells, ref_cells) {
     scope, on = .(iso3c, comm_code, year), nomatch = 0L]
   univ  <- unique(rbindlist(list(ref_cells[, ..keys], s[, ..keys])))
   m     <- merge(merge(univ, ref_cells, by = keys, all.x = TRUE),
-                 s, by = keys, all.x = TRUE)
+                 s, by = keys, all.x = TRUE, suffixes = c("_ref", "_src"))
+  setnames(m, c("status_ref", "status_src"), c("ref_status", "src_status"),
+           skip_absent = TRUE)
+  if (!"ref_status" %in% names(m)) m[, ref_status := NA_character_]
+  if (!"src_status" %in% names(m)) m[, src_status := NA_character_]
+  # `absent` and `missing` are settled here because the fill below is what
+  # would otherwise destroy them: the first depends on the cell universe rather
+  # than on the figure, the second is erased outright once a non-finite figure
+  # and a measured zero are the same number.  A side that is present but zero is
+  # re-read as an explicit zero, so a table booking a zero is not confused with
+  # one booking nothing.
+  m[!is.na(ref_status) & !is.finite(ref), ref_status := "missing"]
+  m[!is.na(src_status) & !is.finite(src), src_status := "missing"]
+  m[is.na(ref_status), ref_status := "absent"]
+  m[is.na(src_status), src_status := "absent"]
+  m[ref == 0 & ref_status == "observed", ref_status := "reported_zero"]
+  m[src == 0 & src_status == "observed", src_status := "reported_zero"]
   m[is.na(ref), ref := 0]
   m[is.na(src), src := 0]
   m[]
@@ -430,7 +491,10 @@ comparison_cells <- function(base_name, csv_path) {
       setnames(va_long(comb, INLINE_REFERENCES$prefix[i],
                        INLINE_REFERENCES$components[i]), "value", "ref")),
       INLINE_REFERENCES$label),
-    lapply(EXTERNAL_REFERENCES, function(d) d[is.finite(ref)]))
+    # External references arrive as real tables, so here a non-finite value IS a
+    # row that failed and is marked rather than dropped.
+    lapply(EXTERNAL_REFERENCES, function(d)
+      copy(d)[, status := fifelse(is.finite(ref), "observed", "missing")]))
   
   # The reference is cut to the model window: a BioSAM year the pipeline does
   # not model is out of scope, not a coverage failure.
@@ -478,13 +542,13 @@ setorder(cells, base, reference, component, iso3c, comm_code, year)
 
 VA_MIN_USED <- 10L
 
-va_metrics <- function(ref, src) {
+va_metrics <- function(ref, src, ref_status = NULL, src_status = NULL) {
   pop <- ref != 0 | src != 0
   nz  <- ref != 0 & src != 0
   use <- nz & sign(ref) == sign(src)
   l   <- log10(abs(src[use]) / abs(ref[use]))
   ok  <- length(l) >= VA_MIN_USED
-  data.table(
+  out <- data.table(
     n          = length(ref),
     n_pop      = sum(pop),
     n_used     = length(l),
@@ -493,9 +557,23 @@ va_metrics <- function(ref, src) {
     med_ratio  = if (ok) 10^median(l) else NA_real_,
     mad_fold   = if (ok) 10^median(abs(l - median(l))) else NA_real_,
     rmsle_dex  = if (ok) sqrt(mean(l^2)) else NA_real_)
+  if (is.null(ref_status) || is.null(src_status)) return(out)
+  # coverage over the cells a reader can hold either side responsible for.
+  # Every column above keeps its published definition and value.
+  drop <- va_withheld(ref, src, ref_status, src_status)
+  keep <- pop & !drop
+  either <- function(x) sum(src_status == x | ref_status == x)
+  out[, `:=`(
+    n_obs        = sum(keep),
+    coverage_obs = if (any(keep)) sum(nz & keep) / sum(keep) else NA_real_,
+    n_withheld   = sum(pop & drop),
+    n_missing    = either("missing"),
+    n_zero_obs   = either("reported_zero"))]
+  out[]
 }
 
-metrics <- cells[, va_metrics(ref, src), by = .(level, component, reference, base)]
+metrics <- cells[, va_metrics(ref, src, ref_status, src_status),
+                 by = .(level, component, reference, base)]
 setorder(metrics, component, reference, base)
 
 fwrite(metrics, file.path(diag_dir,
@@ -625,6 +703,24 @@ va_symlog_plot <- function(d, colour, colours, colour_name, facets,
   # Cells empty on both sides sit exactly on the origin and carry no
   # disagreement to read; they are not plotted.
   d <- copy(d[ref != 0 | src != 0])
+  # A dot on an axis is only worth reading where the zero was measured.  Where
+  # the side that is zero carries no figure behind it, the dot says nothing
+  # about agreement and is withheld, so the panel shows exactly the cells
+  # sign_agree conditions on — the same rule the metrics apply, from the same
+  # function.
+  if (all(c("ref_status", "src_status") %in% names(d))) {
+    w     <- va_withheld_sides(d$ref, d$src, d$ref_status, d$src_status)
+    w_src <- w$src
+    w_ref <- w$ref
+    n_all <- nrow(d)
+    d     <- d[!(w_src | w_ref)]
+    if (n_all > nrow(d))
+      subtitle <- paste0(
+        subtitle,
+        sprintf(paste0(" %d of %d cells withheld: one side is zero with no ",
+                       "figure behind it (%d MRIO-side, %d reference-side)."),
+                n_all - nrow(d), n_all, sum(w_src), sum(w_ref)))
+  }
   d[, `:=`(xt = va_symlog(ref), yt = va_symlog(src))]
   ax <- va_symlog_axis(c(d$ref, d$src))
   
